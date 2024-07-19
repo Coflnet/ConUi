@@ -1,0 +1,36 @@
+<span>Namen eingeben:</span>
+<ng-select [items]="people$ | async"
+           bindLabel="name"
+           [addTag]="true"
+           [multiple]="false"
+           [hideSelected]="true"
+           [trackByFn]="trackByFn"
+           [minTermLength]="2"
+           [loading]="peopleLoading"
+           i18n-typeToSearchText="@@typeToSearchText"
+           typeToSearchText="Bitte gib mindestens zwei Zeichen ein"
+           i18n-addTagText="@@addTagText"
+           addTagText="Hinzufügen"
+           [typeahead]="peopleInput$"
+           [(ngModel)]="selectedPerson"
+           (blur)="selected($event)"
+           (change)="change($event)"
+           #searchBar></ng-select>
+
+<h2>{{selectedPerson?.name}} ausgewählt</h2>
+<app-field *ngFor="let field of personData" [field]="field"></app-field>
+<mat-form-field class="full-width">
+    <mat-label>Neues Feld</mat-label>
+    <input type="text"
+           placeholder="Auswählen/Eingeben"
+           aria-label="Neues Feld"
+           matInput
+           [formControl]="newFieldControl"
+           [matAutocomplete]="auto">
+    <mat-autocomplete #auto="matAutocomplete">
+      @for (option of options; track option) {
+        <mat-option [value]="option" (click)="addNamedField(option)">{{option}}</mat-option>
+      }
+    </mat-autocomplete>
+</mat-form-field>
+    <button mat-button (click)="addField()">Hinzufügen</button>

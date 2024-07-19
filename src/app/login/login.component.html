@@ -1,0 +1,8 @@
+<div class="login-container">
+    <h1>Connections</h1>
+    <p>Bitte melde dich an, damit deine Daten wiederauffindbar bleiben.</p>
+    <asl-google-signin-button type='standard' size='medium' *ngIf="isBrowser"></asl-google-signin-button>
+    <p>Deine E-Mail wird wie in der <a href="https://coflnet.com/privacy">Datenschutzerklärung</a> beschrieben gespeichert.</p>
+    <p>Wenn du dich nicht anmelden möchtest, kannst du auch <a mat-raised-button (click)="signInAnnonymously()">ohne Anmeldung Fortfahren</a>. <br>
+        Dadurch wird für dich in einem Cookie ein Schlüssel gespeichert, wenn du deine cookies löscht verlierst du Zugriff für immer. Du kannst später noch deinen Account absichern.</p>
+</div>

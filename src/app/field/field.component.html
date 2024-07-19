@@ -1,0 +1,4 @@
+<mat-form-field class="full-width">
+    <mat-label>{{field.key}}</mat-label>
+    <textarea matInput #input  [ngStyle]="{'height.px':'30'}"  [(ngModel)]="field.value" (blur)="blurred()"></textarea>
+</mat-form-field>
