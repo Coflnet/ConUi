@@ -96,7 +96,7 @@ export class EditorComponent implements OnInit {
       this.personData.push({ name: this.selectedPerson?.name, key: 'name', value: this.selectedPerson?.name, birthday: '0001-01-01', birthPlace: '', category: 'personal' });
       return;
     }
-    this.person.getPersonData(this.selectedPerson.id).subscribe(person => {
+    this.person.getPersonData(this.selectedPerson.id).subscribe((person: PersonData[])=> {
       this.personData = person
     });
   }
