@@ -22,10 +22,6 @@ export class LoginComponent {
     private authService: SocialAuthService,
     private router: Router,
     private ownauthService: AuthService) {
-    if (ownauthService.isLoggedIn.value) {
-      router.navigate(['/editor']);
-      return;
-    }
     this.isBrowser = isPlatformBrowser(platformId);
     this.authService.authState.subscribe((user) => {
       console.log('authState', user);

@@ -25,6 +25,11 @@ export function app(): express.Express {
     index: 'index.html',
   }));
 
+  // return /map to the client
+  server.get('/map', (req, res) => {
+    res.sendFile(join(browserDistFolder, 'index.html'));
+  });
+
   // All regular routes use the Angular engine
   server.get('**', (req, res, next) => {
     const { protocol, originalUrl, baseUrl, headers } = req;
