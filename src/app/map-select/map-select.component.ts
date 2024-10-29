@@ -17,20 +17,14 @@ export class MapSelectComponent {
   }
 
   private initMap(): void {
-    // Initialize the map and set its view
-    this.map = L.map('map').setView([51.505, -0.09], 13);
+    // Initialize the map and set its view to center of Germany
+    this.map = L.map('map').setView([49.1124747, 12.6696695], 9);
 
     // Set up the tile layer from OpenStreetMap
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
+      maxZoom: 20,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(this.map);
-
-    // Add a marker at the map center
-    L.marker([51.505, -0.09])
-      .addTo(this.map)
-      .bindPopup('A pretty CSS3 popup.<br> Easily customizable.')
-      .openPopup();
     
     // add option to select area
     this.map.on('click', (e) => {
