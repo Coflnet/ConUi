@@ -1,4 +1,5 @@
 import { Component, OnInit, Inject, PLATFORM_ID } from '@angular/core';
+import { MatButtonModule} from '@angular/material/button';
 import * as L from 'leaflet';
 
 /**
@@ -7,7 +8,7 @@ import * as L from 'leaflet';
 @Component({
   selector: 'app-map-select',
   standalone: true,
-  imports: [],
+  imports: [MatButtonModule],
   templateUrl: './map-select.component.html',
   styleUrl: './map-select.component.scss'
 })
@@ -29,13 +30,40 @@ export class MapSelectComponent {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(this.map);
-    
+
     // add option to select area
     this.map.on('click', (e) => {
-      L.marker(e.latlng)
+      let selectButton = document.createElement('button');
+      // add material design classes
+      selectButton.classList.add('mdc-button', 'mat-mdc-raised-button');
+      selectButton.innerHTML = '<br>Auswählen';
+      selectButton.onclick = () => {
+        console.log('Selected address:', e.latlng);
+        alert('Auswählen erfolgreich');
+      };
+      const marker = L.marker(e.latlng, {
+        icon: L.icon({
+          ...L.Icon.Default.prototype.options,
+          iconUrl: 'assets/marker-icon.png',
+          iconRetinaUrl: 'assets/marker-icon-2x.png',
+          shadowUrl: 'assets/marker-shadow.png'
+        })
+      })
         .addTo(this.map!)
-        .bindPopup('You clicked the map at ' + e.latlng.toString())
+        .bindPopup(selectButton, {
+          minWidth: 100
+        })
         .openPopup();
+      // get address at click
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${e.latlng.lat}&lon=${e.latlng.lng}&zoom=18&addressdetails=1`)
+        .then((response) => response.json())
+        .then((data) => {
+          let addr = data.address.road + ' ' + (data.address?.house_number ?? '');
+          selectButton.innerHTML = addr + ' <br>Auswählen';
+        });
+      marker.on('popupclose', () => {
+        marker.remove();
+      });
     });
 
     this.map.on('moveend', () => {
