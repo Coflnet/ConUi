@@ -1,4 +1,150 @@
+
+.input-label {
+    font-family: 'Arial', sans-serif; /* Konsistente Schriftart */
+    font-size: 18px; /* Gut lesbare Größe */
+    color: #555; /* Dezente Textfarbe */
+    margin-bottom: 8px; /* Abstand nach unten (zum Eingabefeld) */
+    text-align: center; /* Text links ausrichten */
+    padding-left: 5px; /* Leichter Innenabstand für bessere Lesbarkeit */
+  }
+
 ng-select {
     border: 1px solid #ccc;
 }
+  
+ h2 {
+    text-align: center;
+  }
+  
+  
+  /* Container für das ng-select */
+.name-input-container {
+    display: block;
+    margin: 20px auto; /* Abstand nach oben und zentriert */
+    max-width: 400px; /* Begrenzung der Breite */
+    padding: 10px; /* Innenabstand */
+    border-radius: 8px; /* Abgerundete Ecken */
+    background-color: #f9f9f9; /* Dezenter Hintergrund */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Leichter Schatten */
+    border: 1px solid #ddd; /* Dezente Umrandung */
+    font-family: Arial, sans-serif; /* Moderne Schriftart */
+    margin-top: 10px; /* Über der Überschrift */
+  }
+  
+  /* Placeholder-Text anpassen */
+  .name-input-container .ng-select-container {
+    color: #555; /* Dunklerer Text für Lesbarkeit */
+    font-size: 16px; /* Angenehme Schriftgröße */
+  }
+  
+  /* Hover-Effekt für das Eingabefeld */
+  .name-input-container:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); /* Betonung beim Hovern */
+    border-color: #bbb; /* Leicht veränderte Umrandung */
+  }
+  
+  /* Fokus-Effekt für das Eingabefeld */
+  .name-input-container.ng-select-focused {
+    border-color: #007bff; /* Hervorhebung der Umrandung in Blau */
+    box-shadow: 0 0 5px rgba(0, 123, 255, 0.5); /* Leichter Schimmer */
+  }
+  
+  /* Dropdown-Optionen Styling */
+  .name-input-container .ng-dropdown-panel {
+    border-radius: 8px; /* Gleiche Abrundung wie beim Container */
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2); /* Schatteneffekt */
+    border: 1px solid #ccc; /* Dezente Umrandung */
+  }
+  
+  /* Hintergrundfarbe für ausgewählte Option */
+  .name-input-container .ng-option-selected {
+    background-color: #007bff; /* Blau für ausgewählte Option */
+    color: #fff; /* Weißer Text */
+  }
+  
+  
+  /* Animation beim Erscheinen */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .name-input-container {
+    animation: fadeIn 0.3s ease-out;
+  }
+  
 
+/* Überschrift-Styling */
+.selected-person-title {
+    font-family: 'Arial', sans-serif; /* Moderne Schriftart */
+    font-size: 24px; /* Angenehme Lesbarkeit */
+    color: #333; /* Dezente dunkle Farbe */
+    text-align: center; /* Text zentrieren */
+    margin: 20px auto; /* Zentrierung und Abstand */
+    padding: 10px; /* Leichter Innenabstand */
+    background-color: #f9f9f9; /* Dezenter Hintergrund */
+    border-radius: 8px; /* Abgerundete Ecken */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Leichter Schatten */
+    width: fit-content; /* Passt sich der Textbreite an */
+  }
+  
+  /* Hover-Effekt für die Überschrift */
+  .selected-person-title:hover {
+    background-color: #e9ecef; /* Leicht dunklerer Hintergrund bei Hover */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Betonter Schatten bei Hover */
+    transform: scale(1.02); /* Leichtes Vergrößern */
+    transition: all 0.4s ease; /* Sanfte Übergänge */
+  }
+  
+  
+  
+  
+  
+
+  /* Container-Styling für die Felder */
+.fields-container {
+    display: flex;
+    flex-direction: column; 
+    gap: 20px; 
+    max-width: 600px; 
+    margin: 0 auto; 
+  }
+  
+  /* Styling für das Formularfeld */
+  mat-form-field.full-width {
+    width: 100%; 
+    margin-top: 10px;
+  }
+  
+  /* Styling für den Button unten rechts */
+  .add-field-button {
+    position: fixed; 
+    bottom: 20px; 
+    right: 20px; 
+    z-index: 1000; /* Sicherstellen, dass er über anderen Elementen liegt */
+    background-color: #007bff;
+    color: #fff; 
+    border-radius: 50px; /* Runde Ecken für einen modernen Look */
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Leichter Schatten */
+    padding: 10px 20px; /* Innenabstand für besseren Klickbereich */
+    transition: all 0.3s ease; /* Sanfter Hover-Effekt */
+    
+    font-size: 18px; /* Größerer Text */
+    padding: 20px 50px; /* Viel Platz für Text */
+    width: 160px; /* Breiter Button */
+    height: 70px; /* Höherer Button */
+  }
+  
+  /* Hover-Effekt für den Button */
+  .add-field-button:hover {
+    font-optical-sizing: auto;
+    background-color: #1787ff; /* Etwas heller bei Hover */
+    box-shadow: 0 6px 10px rgba(0, 0, 0, 0.3); /* Stärkerer Schatten bei Hover */
+    transform: scale(1.05); /* Leichtes Vergrößern */
+  }
+  
