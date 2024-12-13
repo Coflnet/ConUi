@@ -12,15 +12,14 @@ import { MatButtonModule } from '@angular/material/button';
 
 
 @Component({
-  selector: 'app-editor',
-  templateUrl: './editor.component.html',
-  standalone: true,
-  host: { ngSkipHydration: "true" },
-  imports: [FormsModule, NgSelectModule, AsyncPipe, FieldComponent, NgFor,
-    ReactiveFormsModule, MatAutocompleteModule, MatInputModule,
-    MatButtonModule
-  ],
-  styleUrls: ['./editor.component.scss']
+    selector: 'app-editor',
+    templateUrl: './editor.component.html',
+    host: { ngSkipHydration: "true" },
+    imports: [FormsModule, NgSelectModule, AsyncPipe, FieldComponent, NgFor,
+        ReactiveFormsModule, MatAutocompleteModule, MatInputModule,
+        MatButtonModule
+    ],
+    styleUrls: ['./editor.component.scss']
 })
 export class EditorComponent implements OnInit {
 

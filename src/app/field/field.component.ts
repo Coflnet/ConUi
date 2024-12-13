@@ -7,11 +7,10 @@ import { MatFormField } from '@angular/material/form-field';
 import { NgStyle } from '@angular/common';
 
 @Component({
-  selector: 'app-field',
-  standalone: true,
-  imports: [FormsModule, MatLabel, MatInput, MatFormField, NgStyle],
-  templateUrl: './field.component.html',
-  styleUrl: './field.component.scss'
+    selector: 'app-field',
+    imports: [FormsModule, MatLabel, MatInput, MatFormField, NgStyle],
+    templateUrl: './field.component.html',
+    styleUrl: './field.component.scss'
 })
 export class FieldComponent {
   @Input()

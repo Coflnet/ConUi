@@ -6,11 +6,10 @@ import * as L from 'leaflet';
  * This component only renders in the browser and initializes a map with OpenStreetMap tiles.
  */
 @Component({
-  selector: 'app-map-select',
-  standalone: true,
-  imports: [MatButtonModule],
-  templateUrl: './map-select.component.html',
-  styleUrl: './map-select.component.scss'
+    selector: 'app-map-select',
+    imports: [MatButtonModule],
+    templateUrl: './map-select.component.html',
+    styleUrl: './map-select.component.scss'
 })
 export class MapSelectComponent {
   private map: L.Map | undefined;
