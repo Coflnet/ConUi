@@ -25,7 +25,18 @@ export class AuthService {
   }
 
   public isAuthenticated(): boolean {
-    return this.storage.getToken() != null;
+    let token = this.storage.getToken();
+    if (token == null)
+      return false;
+    let parts = token.split('.');
+    if (parts.length != 3)
+      return false;
+    let payload = JSON.parse(atob(parts[1]));
+    let exp = payload.exp;
+    if (exp == null)
+      return false;
+    let now = Math.floor(Date.now() / 1000);
+    return now < exp;
   }
 
   public logout(): void {
