@@ -2,8 +2,12 @@ import { Injectable } from '@angular/core';
 import { AuthService as OwnAuth } from './client/api/auth.service';
 import { BehaviorSubject } from 'rxjs';
 import { SocialUser } from '@abacritt/angularx-social-login';
+import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
+import { initializeApp } from 'firebase/app';
 import { AuthStorageService } from './auth.interceptor';
 import cryptoRandomString from 'crypto-random-string';
+import { environment } from '../environments/environment';
+initializeApp(environment.firebaseConfig);
 
 @Injectable({
   providedIn: 'root',
@@ -19,9 +23,34 @@ export class AuthService {
     private ownAuth: OwnAuth) {
     const isLoggedIn = this.isAuthenticated();
     this.isLoggedIn.next(isLoggedIn);
+    storage.setRequestRefresh(() => {
+      this.signInAnnonymously();
+    });
     if (isLoggedIn)
       return;
+    this.startBackgroundLogin();
+  }
 
+  startBackgroundLogin() {
+    // firebase anonymous login
+    const auth = getAuth();
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const uid = user.uid;
+        console.log('user is signed in', uid, user);
+        user.getIdToken().then((token) => {
+          this.ownAuth.loginFirebase({ authToken: token }).subscribe((tokenContainer) => {
+            if (tokenContainer.authToken)
+              this.storage.setToken(tokenContainer.authToken);
+            this.isLoggedIn.next(true);
+          });
+        });
+      } else {
+        // User is signed out
+        // ...
+      }
+    });
+    
   }
 
   public isAuthenticated(): boolean {
@@ -90,29 +119,17 @@ export class AuthService {
     let currentStoed = localStorage.getItem('idtoken');
     if (currentStoed == token)
       return;
-    console.log("exchange token", token);
-    this.ownAuth.authWithGoogle({ token: token }).subscribe((data) => {
-      if (data.token)
-        this.storage.setToken(data.token);
-      localStorage.setItem('idtoken', token);
-      console.log("received exchanged token", data);
-      this.isLoggedIn.next(true);
-    });
+    alert('google signin is currently disabled');
   }
+
   signInAnnonymously() {
-    // get secret from secure storage 
-    let secret = localStorage.getItem('secret');
-    if (secret == null) {
-      // generate cryptographic random secret
-      secret = cryptoRandomString({ length: 32 });
-      localStorage.setItem('secret', secret);
-    }
-    var locale = navigator.language;
-    this.ownAuth.login({ secret: secret, locale : locale }).subscribe((data) => {
-      if (data.token)
-        this.storage.setToken(data.token);
-      console.log("received exchanged token", data);
-      this.isLoggedIn.next(true);
-    });
+    const auth = getAuth();
+    signInAnonymously(auth)
+      .then(() => {
+        console.log('logged in anonymously');
+      })
+      .catch((error) => {
+        console.error('error logging in anonymously', error);
+      });
   }
 }

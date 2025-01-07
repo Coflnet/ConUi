@@ -9,10 +9,7 @@
  */
 
 
-export interface SearchResult { 
-    name?: string | null;
-    description?: string | null;
-    id?: string | null;
-    link?: string | null;
+export interface TokenContainer { 
+    authToken?: string | null;
 }
 

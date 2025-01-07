@@ -9,13 +9,13 @@ configuration.ts
 encoder.ts
 git_push.sh
 index.ts
-model/anonymousLoginRequest.ts
-model/authToken.ts
+model/loginFirebase400Response.ts
+model/loginFirebase500Response.ts
 model/models.ts
 model/personData.ts
 model/resultType.ts
 model/searchEntry.ts
 model/searchResult.ts
-model/tokenResponse.ts
+model/tokenContainer.ts
 param.ts
 variables.ts
