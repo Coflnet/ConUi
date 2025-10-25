@@ -1,0 +1,37 @@
+<mat-toolbar color="primary" class="app-toolbar">
+  <button mat-icon-button (click)="toggleSidenav()" aria-label="Toggle menu">
+    <mat-icon>menu</mat-icon>
+  </button>
+  <span class="app-title">Connections</span>
+  <span class="spacer"></span>
+  <button mat-icon-button aria-label="Search">
+    <mat-icon>search</mat-icon>
+  </button>
+  <button mat-icon-button aria-label="Notifications">
+    <mat-icon>notifications</mat-icon>
+  </button>
+  <button mat-icon-button aria-label="User menu">
+    <mat-icon>account_circle</mat-icon>
+  </button>
+</mat-toolbar>
+
+<mat-sidenav-container class="sidenav-container">
+  <mat-sidenav 
+    #sidenav 
+    mode="side" 
+    [opened]="sidenavOpened()"
+    class="app-sidenav">
+    <mat-nav-list>
+      @for (item of navItems; track item.route) {
+        <a mat-list-item [routerLink]="item.route" routerLinkActive="active-link">
+          <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>
+          <span matListItemTitle>{{ item.label }}</span>
+        </a>
+      }
+    </mat-nav-list>
+  </mat-sidenav>
+
+  <mat-sidenav-content class="main-content">
+    <router-outlet></router-outlet>
+  </mat-sidenav-content>
+</mat-sidenav-container>

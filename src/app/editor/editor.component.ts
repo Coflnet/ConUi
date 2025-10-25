@@ -1,7 +1,7 @@
 import { Component, HostListener, OnInit, ViewChild } from '@angular/core';
 import { NgSelectComponent, NgSelectModule } from '@ng-select/ng-select';
 import { catchError, concat, distinctUntilChanged, Observable, of, Subject, switchMap, tap } from 'rxjs';
-import { PersonData, PersonService, SearchResult, SearchService } from '../client';
+import { PersonAttributeDto, PersonService, SearchResult, SearchService } from '../client';
 import { FormControl, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { AsyncPipe, NgFor } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -27,7 +27,7 @@ export class EditorComponent implements OnInit {
   peopleLoading = false;
   peopleInput$ = new Subject<string>();
   selectedPerson: SearchResult | null = null;
-  personData: PersonData[] = [];
+  personData: PersonAttributeDto[] = [];
   @ViewChild('searchBar', { static: true })
   searchBar: NgSelectComponent = null!;
   newFieldControl = new FormControl('');
@@ -78,7 +78,7 @@ export class EditorComponent implements OnInit {
   }
 
   public addNamedField(newFieldName: string) {
-    this.personData.push({ name: this.selectedPerson?.name, key: newFieldName, value: '', birthday: '0001-01-01', birthPlace: '', category: 'personal' });
+    this.personData.push({ personId: this.selectedPerson?.id ?? null, category: 'personal', key: newFieldName, value: '' });
     this.newFieldControl.setValue('');
   }
 
@@ -91,11 +91,11 @@ export class EditorComponent implements OnInit {
     console.log("selectedPerson", this.selectedPerson);
     this.personData = [];
     if (!this.selectedPerson?.id) {
-      // create person
-      this.personData.push({ name: this.selectedPerson?.name, key: 'name', value: this.selectedPerson?.name, birthday: '0001-01-01', birthPlace: '', category: 'personal' });
+      // create person (temporary inline attribute for name)
+      this.personData.push({ personId: null, category: 'personal', key: 'name', value: this.selectedPerson?.name ?? '' });
       return;
     }
-    this.person.getPersonData(this.selectedPerson.id).subscribe((person: PersonData[])=> {
+    this.person.getPersonData(this.selectedPerson.id).subscribe((person: PersonAttributeDto[])=> {
       this.personData = person
     });
   }
@@ -106,7 +106,7 @@ export class EditorComponent implements OnInit {
       this.peopleInput$.pipe(
         distinctUntilChanged(),
         tap(() => this.peopleLoading = true),
-        switchMap(term => this.searchService.serach(term).pipe(
+        switchMap(term => this.searchService.search(term).pipe(
           catchError(() => of([])), // empty list on error
           tap(() => this.peopleLoading = false)
         ))

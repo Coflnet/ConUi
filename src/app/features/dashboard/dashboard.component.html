@@ -1,0 +1,56 @@
+<div class="dashboard-container">
+  <h1 class="page-title">Dashboard</h1>
+  
+  <div class="stats-grid">
+    @for (stat of stats; track stat.label) {
+      <mat-card class="stat-card" [routerLink]="stat.route">
+        <mat-card-content>
+          <div class="stat-icon" [style.background-color]="stat.color">
+            <mat-icon>{{ stat.icon }}</mat-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-count">{{ stat.count }}</div>
+            <div class="stat-label">{{ stat.label }}</div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    }
+  </div>
+
+  <mat-card class="quick-actions-card">
+    <mat-card-header>
+      <mat-card-title>Quick Actions</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <div class="actions-grid">
+        <button mat-raised-button color="primary" routerLink="/people/new">
+          <mat-icon>person_add</mat-icon>
+          Add Person
+        </button>
+        <button mat-raised-button color="primary" routerLink="/events/new">
+          <mat-icon>event</mat-icon>
+          Add Event
+        </button>
+        <button mat-raised-button color="primary" routerLink="/places/new">
+          <mat-icon>add_location</mat-icon>
+          Add Place
+        </button>
+        <button mat-raised-button color="primary" routerLink="/things/new">
+          <mat-icon>add_box</mat-icon>
+          Add Thing
+        </button>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card class="recent-card">
+    <mat-card-header>
+      <mat-card-title>Recent Activity</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      @if (recentActivity.length === 0) {
+        <p class="empty-state">No recent activity. Start by adding some people or events!</p>
+      }
+    </mat-card-content>
+  </mat-card>
+</div>
