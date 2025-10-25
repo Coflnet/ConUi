@@ -7,14 +7,13 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { PersonCreateDto } from './personCreateDto';
 
 
-export interface SearchResult { 
-    name?: string | null;
-    description?: string | null;
-    id?: string | null;
-    link?: string | null;
-    type?: string | null;
-    score?: number;
+/**
+ * Bulk person creation request
+ */
+export interface BulkPersonRequest { 
+    people?: Array<PersonCreateDto> | null;
 }
 

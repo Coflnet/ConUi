@@ -9,12 +9,13 @@
  */
 
 
-export interface SearchResult { 
+/**
+ * Thing summary (lightweight version)
+ */
+export interface ThingSummaryDto { 
+    thingId?: string;
     name?: string | null;
-    description?: string | null;
-    id?: string | null;
-    link?: string | null;
     type?: string | null;
-    score?: number;
+    description?: string | null;
 }
 

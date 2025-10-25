@@ -9,12 +9,15 @@
  */
 
 
-export interface SearchResult { 
-    name?: string | null;
-    description?: string | null;
-    id?: string | null;
-    link?: string | null;
+/**
+ * Event summary (lightweight version)
+ */
+export interface EventSummaryDto { 
+    eventId?: string;
     type?: string | null;
-    score?: number;
+    description?: string | null;
+    date?: string;
+    placeId?: string | null;
+    placeName?: string | null;
 }
 

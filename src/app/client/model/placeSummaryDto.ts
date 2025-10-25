@@ -9,12 +9,14 @@
  */
 
 
-export interface SearchResult { 
+/**
+ * Place summary (lightweight version)
+ */
+export interface PlaceSummaryDto { 
+    placeId?: string;
     name?: string | null;
-    description?: string | null;
-    id?: string | null;
-    link?: string | null;
-    type?: string | null;
-    score?: number;
+    address?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
 }
 

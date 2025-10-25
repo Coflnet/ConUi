@@ -9,12 +9,11 @@
  */
 
 
-export interface SearchResult { 
-    name?: string | null;
-    description?: string | null;
-    id?: string | null;
-    link?: string | null;
+/**
+ * Faceted search count by type
+ */
+export interface SearchFacet { 
     type?: string | null;
-    score?: number;
+    count?: number;
 }
 

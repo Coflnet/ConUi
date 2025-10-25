@@ -9,12 +9,11 @@
  */
 
 
-export interface SearchResult { 
+/**
+ * Single person creation data
+ */
+export interface PersonCreateDto { 
     name?: string | null;
-    description?: string | null;
-    id?: string | null;
-    link?: string | null;
-    type?: string | null;
-    score?: number;
+    attributes?: { [key: string]: string; } | null;
 }
 

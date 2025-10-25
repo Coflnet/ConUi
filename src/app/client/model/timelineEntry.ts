@@ -9,12 +9,15 @@
  */
 
 
-export interface SearchResult { 
-    name?: string | null;
-    description?: string | null;
-    id?: string | null;
-    link?: string | null;
+/**
+ * Timeline entry for person
+ */
+export interface TimelineEntry { 
+    date?: string;
     type?: string | null;
-    score?: number;
+    title?: string | null;
+    description?: string | null;
+    relatedEntityId?: string | null;
+    location?: string | null;
 }
 

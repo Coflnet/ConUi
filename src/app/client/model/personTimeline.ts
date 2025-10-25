@@ -7,14 +7,15 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { TimelineEntry } from './timelineEntry';
 
 
-export interface SearchResult { 
+/**
+ * Person timeline view
+ */
+export interface PersonTimeline { 
+    personId?: string;
     name?: string | null;
-    description?: string | null;
-    id?: string | null;
-    link?: string | null;
-    type?: string | null;
-    score?: number;
+    timeline?: Array<TimelineEntry> | null;
 }
 
