@@ -9,14 +9,12 @@
  */
 
 
-export interface PersonData { 
+/**
+ * Flexible attributes for things (like PersonData)
+ */
+export interface ThingData { 
     userId?: string;
-    /**
-     * Name on birth, never changes
-     */
-    name?: string | null;
-    birthday?: string;
-    birthPlace?: string | null;
+    thingId?: string;
     /**
      * Category of this datapoint
      */

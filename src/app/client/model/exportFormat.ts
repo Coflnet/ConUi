@@ -9,11 +9,12 @@
  */
 
 
-export interface SearchResult { 
-    name?: string | null;
-    description?: string | null;
-    id?: string | null;
-    link?: string | null;
-    type?: string | null;
-}
+/**
+ * Export format
+ */
+export const ExportFormat = {
+    Json: 'Json',
+    Gedcom: 'Gedcom'
+} as const;
+export type ExportFormat = typeof ExportFormat[keyof typeof ExportFormat];
 

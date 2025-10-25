@@ -9,11 +9,12 @@
  */
 
 
-export interface SearchResult { 
-    name?: string | null;
-    description?: string | null;
-    id?: string | null;
-    link?: string | null;
-    type?: string | null;
+/**
+ * DTO for presigned URL response
+ */
+export interface PresignedUrlDto { 
+    url?: string | null;
+    expiresAt?: string;
+    fileName?: string | null;
 }
 

@@ -9,10 +9,15 @@
  */
 
 
-export const ResultType = {
+/**
+ * Types of entities in the system
+ */
+export const EntityType = {
     Unknown: 'Unknown',
     Person: 'Person',
-    Location: 'Location'
+    Place: 'Place',
+    Thing: 'Thing',
+    Event: 'Event'
 } as const;
-export type ResultType = typeof ResultType[keyof typeof ResultType];
+export type EntityType = typeof EntityType[keyof typeof EntityType];
 
