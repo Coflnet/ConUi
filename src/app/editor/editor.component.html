@@ -20,11 +20,18 @@
            class="name-input-container"></ng-select>
            
 
-<h2 class="selected-person-title">{{ selectedPerson?.name || 'Keine Person' }} ausgewählt</h2>
+<h2 class="selected-person-title">{{ personName || selectedPerson?.name || 'Keine Person' }} ausgewählt</h2>
 
 <div class="fields-container">
   <!-- Dynamische Felder -->
-  <app-field *ngFor="let field of personData" [field]="field"></app-field>
+  <div class="person-header">
+    <mat-form-field class="full-width small-name-field">
+      <mat-label>Name</mat-label>
+      <input matInput [(ngModel)]="personName">
+    </mat-form-field>
+  </div>
+
+  <app-field *ngFor="let field of personData" [field]="field" (saved)="onFieldSaved($event, field)"></app-field>
 
   <!-- Neues Feld mit Autovervollständigung -->
   <mat-form-field class="full-width">
@@ -46,4 +53,7 @@
 </div>
 
 <!-- Button unten rechts -->
-<button mat-button class="add-field-button" (click)="addField()">Hinzufügen</button>
+<div class="editor-actions">
+  <button mat-flat-button color="primary" (click)="saveAll()">Save All</button>
+  <button mat-button class="add-field-button" (click)="addField()">Hinzufügen</button>
+</div>

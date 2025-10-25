@@ -9,6 +9,7 @@ import { FieldComponent } from '../field/field.component';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
+import { MatFormFieldModule } from '@angular/material/form-field';
 
 
 @Component({
@@ -23,7 +24,8 @@ import { MatButtonModule } from '@angular/material/button';
         FieldComponent,
         MatAutocompleteModule,
         MatInputModule,
-        MatButtonModule
+    MatButtonModule,
+    MatFormFieldModule
     ],
     styleUrls: ['./editor.component.scss']
 })
@@ -34,6 +36,7 @@ export class EditorComponent implements OnInit {
   peopleInput$ = new Subject<string>();
   selectedPerson: SearchResult | null = null;
   personData: PersonAttributeDto[] = [];
+  personName: string = '';
   personFull = signal<PersonFullView | null>(null);
   @ViewChild('searchBar', { static: true })
   searchBar: NgSelectComponent = null!;
@@ -64,6 +67,7 @@ export class EditorComponent implements OnInit {
       // Use getPersonFull to get complete person data including relationships
       person.getPersonFull(id).subscribe(fullPerson => {
         this.personFull.set(fullPerson);
+        this.personName = fullPerson.name ?? '' as any;
         // Convert attributes dictionary to PersonAttributeDto array
         if (fullPerson.attributes) {
           this.personData = Object.entries(fullPerson.attributes).map(([key, value]) => ({
@@ -112,12 +116,14 @@ export class EditorComponent implements OnInit {
     this.personFull.set(null);
     if (!this.selectedPerson?.id) {
       // create person (temporary inline attribute for name)
-      this.personData.push({ personId: null, category: 'personal', key: 'name', value: this.selectedPerson?.name ?? '' });
+      this.personName = this.selectedPerson?.name ?? '';
+      this.personData.push({ personId: null, category: 'personal', key: 'name', value: this.personName });
       return;
     }
     // Use getPersonFull to get complete person data
     this.person.getPersonFull(this.selectedPerson.id).subscribe((fullPerson: PersonFullView) => {
       this.personFull.set(fullPerson);
+      this.personName = fullPerson.name ?? '' as any;
       // Convert attributes dictionary to PersonAttributeDto array
       if (fullPerson.attributes) {
         this.personData = Object.entries(fullPerson.attributes).map(([key, value]) => ({
@@ -130,6 +136,72 @@ export class EditorComponent implements OnInit {
         this.personData = [];
       }
     });
+  }
+
+  onFieldSaved(response: any, field: PersonAttributeDto) {
+    // If backend returned created person id or updated attribute, try to refresh the person view
+    if (response && response.personId) {
+      // If person was created, set selectedPerson id so future edits are attached
+      if (!this.selectedPerson) {
+        this.selectedPerson = { id: response.personId, name: this.personData.find(f => f.key === 'name')?.value ?? 'Unnamed' } as any;
+      } else if (!this.selectedPerson.id) {
+        this.selectedPerson.id = response.personId;
+      }
+      // reload full person
+      this.person.getPersonFull(response.personId).subscribe((fullPerson: PersonFullView) => {
+        this.personFull.set(fullPerson);
+        if (fullPerson.attributes) {
+          this.personData = Object.entries(fullPerson.attributes).map(([key, value]) => ({
+            personId: fullPerson.personId ?? null,
+            category: 'personal',
+            key,
+            value
+          }));
+        }
+      });
+    } else if (response && response.error) {
+      // TODO: surface an inline error to the user
+      console.error('Field save error', response.error);
+    } else {
+      // generic refresh: if we have a selectedPerson with id, reload attributes
+      if (this.selectedPerson?.id) {
+        this.person.getPersonFull(this.selectedPerson.id).subscribe((fullPerson: PersonFullView) => {
+          this.personFull.set(fullPerson);
+          if (fullPerson.attributes) {
+            this.personData = Object.entries(fullPerson.attributes).map(([key, value]) => ({
+              personId: fullPerson.personId ?? null,
+              category: 'personal',
+              key,
+              value
+            }));
+          }
+        });
+      }
+    }
+  }
+
+  saveAll() {
+    // If there's no selected person id, we may need to create the person by posting the name field first
+    const nameField = this.personData.find(f => f.key === 'name');
+    const nameValue = this.personName || nameField?.value;
+    if ((!this.selectedPerson || !this.selectedPerson.id) && nameValue) {
+      // create person by posting name attribute; backend will create person and return personId
+      const nf: PersonAttributeDto = { personId: null, category: 'personal', key: 'name', value: nameValue };
+      this.person.addPersonData(nf).subscribe({
+        next: (res) => {
+          // res may contain personId
+          this.onFieldSaved(res, nf);
+        },
+        error: (err) => console.error('Create person failed', err)
+      });
+    }
+
+    // Save all other fields
+    for (const f of this.personData) {
+      // attach personId if we have it
+      if (this.selectedPerson?.id) f.personId = this.selectedPerson.id;
+      this.person.addPersonData(f).subscribe({ next: () => { /* no-op */ }, error: (e) => console.error('Failed saving', f, e) });
+    }
   }
 
   private loadPeople() {

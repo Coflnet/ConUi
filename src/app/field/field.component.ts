@@ -1,4 +1,4 @@
-import { Component, ElementRef, Input, ViewChild } from '@angular/core';
+import { Component, ElementRef, EventEmitter, Input, Output, ViewChild } from '@angular/core';
 import { PersonAttributeDto, PersonService } from '../client';
 import { FormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -15,6 +15,8 @@ import { CommonModule, NgStyle } from '@angular/common';
 export class FieldComponent {
   @Input()
   field: PersonAttributeDto = { personId: null, category: null, key: '', value: '' };
+  @Output()
+  saved = new EventEmitter<any>();
   @ViewChild('input', { static: true })
   input: ElementRef<HTMLTextAreaElement> = null!;
   constructor(private personService: PersonService) { }
@@ -30,6 +32,15 @@ export class FieldComponent {
   }
 
   blurred() {
-    this.personService.addPersonData(this.field).subscribe();
+    this.personService.addPersonData(this.field).subscribe({
+      next: (res) => {
+        // emit backend response so parent can update person id or refresh view
+        this.saved.emit(res);
+      },
+      error: (err) => {
+        console.error('Failed to save field', this.field, err);
+        this.saved.emit({ error: err });
+      }
+    });
   }
 }
