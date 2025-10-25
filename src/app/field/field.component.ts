@@ -16,12 +16,17 @@ export class FieldComponent {
   @Input()
   field: PersonAttributeDto = { personId: null, category: null, key: '', value: '' };
   @ViewChild('input', { static: true })
-  input: ElementRef<HTMLElement> = null!;
+  input: ElementRef<HTMLTextAreaElement> = null!;
   constructor(private personService: PersonService) { }
   
   ngAfterViewInit() {
+    // Focus after the current change detection cycle to avoid
+    // ExpressionChangedAfterItHasBeenCheckedError from MatFormField.
+    // setTimeout schedules the focus on the next macrotask.
     console.log('field', this.input);
-    this.input.nativeElement.focus();
+    if (this.input && this.input.nativeElement) {
+      setTimeout(() => this.input.nativeElement.focus());
+    }
   }
 
   blurred() {

@@ -11,6 +11,7 @@ import {
 } from '@abacritt/angularx-social-login';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { AuthStorageService, authInterceptor } from './auth.interceptor';
+import { AuthService } from './AuthService';
 import { Configuration } from './client';
 import { environment } from '../environments/environment';
 export const appConfig: ApplicationConfig = {
@@ -33,11 +34,16 @@ export const appConfig: ApplicationConfig = {
       } as SocialAuthServiceConfig
     },
     provideHttpClient(withInterceptors([authInterceptor])),
+  // Eagerly instantiate AuthService so background anonymous login runs on app start
+  AuthService,
     {
       provide: Configuration,
-      useFactory: (authService: AuthStorageService) => new Configuration(
+      useFactory: (authStorage: AuthStorageService) => new Configuration(
         {
-          basePath: environment.basepath
+          basePath: environment.basepath,
+          credentials: {
+            'Bearer': () => authStorage.getToken() ?? undefined
+          }
         }
       ),
       deps: [AuthStorageService],

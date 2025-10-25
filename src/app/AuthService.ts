@@ -39,11 +39,35 @@ export class AuthService {
         const uid = user.uid;
         console.log('user is signed in', uid, user);
         user.getIdToken().then((token) => {
-          this.ownAuth.loginFirebase({ authToken: token }).subscribe((tokenContainer) => {
-            if (tokenContainer.authToken)
-              this.storage.setToken(tokenContainer.authToken);
-            this.isLoggedIn.next(true);
-          });
+          try {
+            // log a short fingerprint of the firebase id token (do not log the full token)
+            const short = token ? token.slice(0,8) + '...' + token.slice(-8) : 'null';
+            console.log('AuthService: got firebase id token (len=', token?.length ?? 0, ', head/tail=', short, ')');
+          } catch(e) {}
+          const attemptLogin = (body: any, label: string) => {
+            this.ownAuth.loginFirebase(body).subscribe((tokenContainer) => {
+              if (tokenContainer.authToken) {
+                this.storage.setToken(tokenContainer.authToken);
+                this.isLoggedIn.next(true);
+                console.log('AuthService: loginFirebase succeeded with payload', label);
+              } else {
+                console.log('AuthService: loginFirebase returned no authToken with payload', label);
+              }
+            }, err => {
+              try { console.log('AuthService: loginFirebase error with payload', label, 'status=', err && err.status, 'error=', err && err.error); } catch(e) { console.log('AuthService: loginFirebase error', err && err.status); }
+              if (err && err.status === 400) {
+                // try next fallback
+                if (label === 'authToken') {
+                  attemptLogin({ idToken: token }, 'idToken');
+                } else if (label === 'idToken') {
+                  attemptLogin({ token: token }, 'token');
+                }
+              }
+            });
+          };
+
+          // try default shape first
+          attemptLogin({ authToken: token }, 'authToken');
         });
       } else {
         // User is signed out
