@@ -1,8 +1,41 @@
 <div class="login-container">
     <h1>Connections</h1>
-    <p>Bitte melde dich an, damit deine Daten wiederauffindbar bleiben.</p>
-    <asl-google-signin-button type='standard' size='medium' *ngIf="isBrowser"></asl-google-signin-button>
-    <p>Deine E-Mail wird wie in der <a href="https://coflnet.com/privacy">Datenschutzerklärung</a> beschrieben gespeichert.</p>
-    <p>Wenn du dich nicht anmelden möchtest, kannst du auch <a mat-raised-button (click)="signInAnnonymously()">ohne Anmeldung Fortfahren</a>. <br>
-        Dadurch wird für dich in einem Cookie ein Schlüssel gespeichert, wenn du deine cookies löscht verlierst du Zugriff für immer. Du kannst später noch deinen Account absichern.</p>
+
+    <!-- Choice screen -->
+    <ng-container *ngIf="choosing">
+        <p>Bitte melde dich an, damit deine Daten wiederauffindbar bleiben.</p>
+        <div class="actions">
+            <button mat-raised-button color="primary" (click)="chooseEmailSignIn()">Mit E-Mail anmelden</button>
+            <button mat-stroked-button (click)="chooseEmailCreate()">Neues Konto erstellen</button>
+            <button mat-button color="accent" (click)="continueAnonymously()">Ohne Anmeldung fortfahren</button>
+        </div>
+        <p class="warning"><strong>Hinweis:</strong> Wenn du anonym fortfährst, kann es passieren, dass du deinen Fortschritt verlierst (z. B. beim Löschen von Cookies). Datei-Upload/Storage ist für anonyme Nutzer nicht verfügbar.</p>
+        <p>Alternativ kannst du dich mit Google anmelden:</p>
+        <asl-google-signin-button type='standard' size='medium' *ngIf="isBrowser"></asl-google-signin-button>
+    </ng-container>
+
+    <!-- Email sign-in / create form -->
+    <ng-container *ngIf="!choosing">
+        <p *ngIf="emailMode === 'signIn'">Melde dich mit deiner E-Mail an</p>
+        <p *ngIf="emailMode === 'create'">Erstelle ein neues Konto</p>
+
+        <mat-form-field class="full-width">
+            <mat-label>E-Mail</mat-label>
+            <input matInput [(ngModel)]="email" type="email">
+        </mat-form-field>
+
+        <mat-form-field class="full-width">
+            <mat-label>Passwort</mat-label>
+            <input matInput [(ngModel)]="password" type="password">
+        </mat-form-field>
+
+        <div class="actions">
+            <button mat-raised-button color="primary" (click)="submitEmailForm()">{{ emailMode === 'signIn' ? 'Anmelden' : 'Konto erstellen' }}</button>
+            <button mat-button (click)="backToChoice()">Zurück</button>
+        </div>
+
+        <div *ngIf="errorMessage" class="error">{{ errorMessage }}</div>
+    </ng-container>
+
+    <p class="privacy">Deine E-Mail wird wie in der <a href="https://coflnet.com/privacy">Datenschutzerklärung</a> beschrieben gespeichert.</p>
 </div>

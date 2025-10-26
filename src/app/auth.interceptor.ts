@@ -1,6 +1,7 @@
 import { isPlatformBrowser } from '@angular/common';
 import { HttpErrorResponse, HttpEvent, HttpHandler, HttpHandlerFn, HttpInterceptor, HttpInterceptorFn, HttpRequest } from '@angular/common/http';
 import { Inject, Injectable, PLATFORM_ID, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { environment } from '../environments/environment';
 import { catchError, Observable, switchMap, throwError } from 'rxjs';
 
@@ -9,6 +10,7 @@ export const authInterceptor: HttpInterceptorFn = (
   next: HttpHandlerFn
 ): Observable<HttpEvent<any>> => {
   const cookieService = inject(AuthStorageService);
+  const router = inject(Router);
   const token = cookieService.getToken();
   console.log('authInterceptor: token present?', !!token);
   if (token) {
@@ -23,7 +25,15 @@ export const authInterceptor: HttpInterceptorFn = (
     return next(cloned).pipe(
       catchError((error: HttpErrorResponse) => {
         if (error.status === 401) {
-          cookieService.removeToken()
+          // remove token silently (do not trigger background refresh)
+          try { cookieService.removeTokenSilent(); } catch(e) { cookieService.removeToken(); }
+          // redirect to login with returnUrl
+          try {
+            const returnUrl = router.url || req.url || '/dashboard';
+            router.navigate(['/login'], { queryParams: { returnUrl } });
+          } catch (e) {
+            // ignore navigation errors
+          }
         }
         console.log('error', error);
         return throwError(()=>error);
@@ -100,6 +110,16 @@ export class AuthStorageService {
   public removeToken(): void {
     localStorage.removeItem('token');
     this.requestRefresh();
+  }
+
+  /**
+   * Remove token silently without invoking the configured requestRefresh action.
+   * Use this when the token was rejected by the server and we want to force login.
+   */
+  public removeTokenSilent(): void {
+    try {
+      localStorage.removeItem('token');
+    } catch (e) {}
   }
 
   public setRequestRefresh(requestRefresh: ()=>void){

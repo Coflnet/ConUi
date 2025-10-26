@@ -1,5 +1,7 @@
-import { ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
+import { ApplicationConfig, provideZoneChangeDetection, APP_INITIALIZER } from '@angular/core';
 import { provideRouter } from '@angular/router';
+import { Router, NavigationStart } from '@angular/router';
+import { filter } from 'rxjs/operators';
 
 import { routes } from './app.routes';
 import { provideClientHydration } from '@angular/platform-browser';
@@ -9,7 +11,7 @@ import {
   GoogleLoginProvider,
   SocialAuthServiceConfig,
 } from '@abacritt/angularx-social-login';
-import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { provideHttpClient, withFetch, withInterceptors } from '@angular/common/http';
 import { AuthStorageService, authInterceptor } from './auth.interceptor';
 import { AuthService } from './AuthService';
 import { Configuration } from './client';
@@ -33,7 +35,7 @@ export const appConfig: ApplicationConfig = {
         }
       } as SocialAuthServiceConfig
     },
-    provideHttpClient(withInterceptors([authInterceptor])),
+    provideHttpClient(withInterceptors([authInterceptor]), withFetch()),
   // Eagerly instantiate AuthService so background anonymous login runs on app start
   AuthService,
     {
@@ -48,6 +50,29 @@ export const appConfig: ApplicationConfig = {
       ),
       deps: [AuthStorageService],
       multi: false
+    }
+    ,
+    // Global route guard: redirect unauthenticated users to /login except when visiting /dashboard or /login
+    {
+      provide: APP_INITIALIZER,
+      useFactory: (router: Router, authService: AuthService) => {
+        return () => {
+          router.events.pipe(filter(e => e instanceof NavigationStart)).subscribe((e: any) => {
+            try {
+              const url: string = e.url ?? '';
+              // allow /dashboard and /login
+              if (!authService.isAuthenticated() && url !== '/dashboard' && url !== '/login') {
+                // redirect to login and include the original URL so we can return after authentication
+                router.navigate(['/login'], { queryParams: { returnUrl: url } });
+              }
+            } catch (err) {
+              // swallow
+            }
+          });
+        };
+      },
+      deps: [Router, AuthService],
+      multi: true
     }
   ]
 };

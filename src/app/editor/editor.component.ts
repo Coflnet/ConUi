@@ -60,14 +60,16 @@ export class EditorComponent implements OnInit {
     private router: Router,
     private activeRoute: ActivatedRoute
   ) {
+    // Support routes that use either :id (app.routes.ts) or :person (legacy)
     activeRoute.params.subscribe(params => {
-      var id = params['person'];
-      if (!id)
-        return;
-      // Use getPersonFull to get complete person data including relationships
-      person.getPersonFull(id).subscribe(fullPerson => {
+      const id = params['id'] ?? params['person'];
+      if (!id) return;
+
+      // Load the full person view and populate editor state
+      this.person.getPersonFull(id).subscribe(fullPerson => {
         this.personFull.set(fullPerson);
         this.personName = fullPerson.name ?? '' as any;
+
         // Convert attributes dictionary to PersonAttributeDto array
         if (fullPerson.attributes) {
           this.personData = Object.entries(fullPerson.attributes).map(([key, value]) => ({
@@ -79,8 +81,12 @@ export class EditorComponent implements OnInit {
         } else {
           this.personData = [];
         }
+
+        // Ensure the ng-select shows the loaded person
+        this.selectedPerson = { id: fullPerson.personId ?? id, name: fullPerson.name } as any;
       });
-      console.log("params", id);
+
+      console.log('params', id);
     });
   }
 

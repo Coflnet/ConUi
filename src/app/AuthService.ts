@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { AuthService as OwnAuth } from './client/api/auth.service';
 import { BehaviorSubject } from 'rxjs';
 import { SocialUser } from '@abacritt/angularx-social-login';
-import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
+import { getAuth, onAuthStateChanged, signInAnonymously, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
 import { initializeApp } from 'firebase/app';
 import { AuthStorageService } from './auth.interceptor';
 import cryptoRandomString from 'crypto-random-string';
@@ -155,5 +155,34 @@ export class AuthService {
       .catch((error) => {
         console.error('error logging in anonymously', error);
       });
+  }
+
+  /**
+   * Sign in an existing user with email & password using Firebase Auth.
+   * The onAuthStateChanged listener will handle exchanging tokens with the backend.
+   */
+  public async signInWithEmail(email: string, password: string): Promise<void> {
+    const auth = getAuth();
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      console.log('signed in with email', email);
+    } catch (err) {
+      console.error('email sign-in failed', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Create a new Firebase user account with email & password and sign them in.
+   */
+  public async createAccountWithEmail(email: string, password: string): Promise<void> {
+    const auth = getAuth();
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+      console.log('created account for', email);
+    } catch (err) {
+      console.error('create account failed', err);
+      throw err;
+    }
   }
 }
