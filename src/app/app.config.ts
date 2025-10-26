@@ -1,7 +1,8 @@
-import { ApplicationConfig, provideZoneChangeDetection, APP_INITIALIZER } from '@angular/core';
+import { ApplicationConfig, provideZoneChangeDetection, APP_INITIALIZER, Inject, PLATFORM_ID } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { Router, NavigationStart } from '@angular/router';
 import { filter } from 'rxjs/operators';
+import { isPlatformBrowser } from '@angular/common';
 
 import { routes } from './app.routes';
 import { provideClientHydration } from '@angular/platform-browser';
@@ -55,8 +56,11 @@ export const appConfig: ApplicationConfig = {
     // Global route guard: redirect unauthenticated users to /login except when visiting /dashboard or /login
     {
       provide: APP_INITIALIZER,
-      useFactory: (router: Router, authService: AuthService) => {
+      useFactory: (router: Router, authService: AuthService, platformId: Object) => {
         return () => {
+          // Only attach the navigation listener in the browser. This avoids interfering with
+          // server-side prerender/route extraction which runs at build time.
+          if (!isPlatformBrowser(platformId)) return;
           router.events.pipe(filter(e => e instanceof NavigationStart)).subscribe((e: any) => {
             try {
               const url: string = e.url ?? '';
@@ -71,7 +75,7 @@ export const appConfig: ApplicationConfig = {
           });
         };
       },
-      deps: [Router, AuthService],
+      deps: [Router, AuthService, PLATFORM_ID],
       multi: true
     }
   ]
