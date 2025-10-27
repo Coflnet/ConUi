@@ -27,7 +27,7 @@
   <div class="person-header">
     <mat-form-field class="full-width small-name-field">
       <mat-label>Name</mat-label>
-      <input matInput [(ngModel)]="personName">
+      <input matInput [(ngModel)]="personName" (blur)="onNameBlur()">
     </mat-form-field>
   </div>
 

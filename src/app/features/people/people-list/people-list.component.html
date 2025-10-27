@@ -28,10 +28,12 @@
     } @else if (people().length === 0) {
       <div class="empty-state">
         <mat-icon class="empty-icon">people_outline</mat-icon>
-        <p>No people found</p>
-        <button mat-raised-button color="primary" routerLink="/people/new">
-          Add Your First Person
-        </button>
+        <p *ngIf="isSearchEmpty">No people yet. Use the search above or add a new person.</p>
+        <p *ngIf="!isSearchEmpty">No people matched your search.</p>
+        <div class="empty-actions">
+          <button mat-raised-button color="primary" routerLink="/people/new">Add Person</button>
+          <button mat-button *ngIf="!isSearchEmpty" (click)="searchTerm=''; onSearchChange('')">Clear search</button>
+        </div>
       </div>
     } @else {
       <table mat-table [dataSource]="people()" class="people-table">

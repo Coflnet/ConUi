@@ -70,17 +70,20 @@ export class EditorComponent implements OnInit {
         this.personFull.set(fullPerson);
         this.personName = fullPerson.name ?? '' as any;
 
+        // Preserve any unsaved local fields (personId == null) so user doesn't lose in-progress edits
+        const localUnsaved = this.personData.filter(f => !f.personId);
+
         // Convert attributes dictionary to PersonAttributeDto array
-        if (fullPerson.attributes) {
-          this.personData = Object.entries(fullPerson.attributes).map(([key, value]) => ({
-            personId: fullPerson.personId ?? null,
-            category: 'personal',
-            key,
-            value
-          }));
-        } else {
-          this.personData = [];
-        }
+        const serverAttrs = fullPerson.attributes
+          ? Object.entries(fullPerson.attributes).map(([key, value]) => ({
+              personId: fullPerson.personId ?? null,
+              category: 'personal',
+              key,
+              value
+            }))
+          : [];
+
+        this.personData = [...serverAttrs, ...localUnsaved];
 
         // Ensure the ng-select shows the loaded person
         this.selectedPerson = { id: fullPerson.personId ?? id, name: fullPerson.name } as any;
@@ -131,16 +134,16 @@ export class EditorComponent implements OnInit {
       this.personFull.set(fullPerson);
       this.personName = fullPerson.name ?? '' as any;
       // Convert attributes dictionary to PersonAttributeDto array
-      if (fullPerson.attributes) {
-        this.personData = Object.entries(fullPerson.attributes).map(([key, value]) => ({
-          personId: fullPerson.personId ?? null,
-          category: 'personal',
-          key,
-          value
-        }));
-      } else {
-        this.personData = [];
-      }
+      const localUnsaved = this.personData.filter(f => !f.personId);
+      const serverAttrs = fullPerson.attributes
+        ? Object.entries(fullPerson.attributes).map(([key, value]) => ({
+            personId: fullPerson.personId ?? null,
+            category: 'personal',
+            key,
+            value
+          }))
+        : [];
+      this.personData = [...serverAttrs, ...localUnsaved];
     });
   }
 
@@ -153,17 +156,41 @@ export class EditorComponent implements OnInit {
       } else if (!this.selectedPerson.id) {
         this.selectedPerson.id = response.personId;
       }
-      // reload full person
+
+      // Ensure unsaved local fields get the returned personId so future saves attach correctly
+      for (const f of this.personData) {
+        if (!f.personId) f.personId = response.personId;
+      }
+
+      // Merge server attributes into existing personData without dropping local unsaved fields
       this.person.getPersonFull(response.personId).subscribe((fullPerson: PersonFullView) => {
         this.personFull.set(fullPerson);
-        if (fullPerson.attributes) {
-          this.personData = Object.entries(fullPerson.attributes).map(([key, value]) => ({
-            personId: fullPerson.personId ?? null,
-            category: 'personal',
-            key,
-            value
-          }));
+        const serverAttrs = fullPerson.attributes
+          ? Object.entries(fullPerson.attributes).map(([key, value]) => ({
+              personId: fullPerson.personId ?? null,
+              category: 'personal',
+              key,
+              value
+            }))
+          : [];
+
+        // Update existing fields with server values, add missing server fields, keep local unsaved ones
+        const merged: PersonAttributeDto[] = [];
+        const localByKey = new Map(this.personData.map(f => [f.key, f]));
+        for (const sa of serverAttrs) {
+          const existing = localByKey.get(sa.key);
+          if (existing) {
+            existing.value = sa.value;
+            existing.personId = sa.personId;
+            merged.push(existing);
+            localByKey.delete(sa.key);
+          } else {
+            merged.push(sa);
+          }
         }
+        // append any remaining local (unsaved) fields
+        for (const remaining of localByKey.values()) merged.push(remaining);
+        this.personData = merged;
       });
     } else if (response && response.error) {
       // TODO: surface an inline error to the user
@@ -171,16 +198,33 @@ export class EditorComponent implements OnInit {
     } else {
       // generic refresh: if we have a selectedPerson with id, reload attributes
       if (this.selectedPerson?.id) {
+        // Refresh server data but merge into existing local fields instead of replacing
         this.person.getPersonFull(this.selectedPerson.id).subscribe((fullPerson: PersonFullView) => {
           this.personFull.set(fullPerson);
-          if (fullPerson.attributes) {
-            this.personData = Object.entries(fullPerson.attributes).map(([key, value]) => ({
-              personId: fullPerson.personId ?? null,
-              category: 'personal',
-              key,
-              value
-            }));
+          const serverAttrs = fullPerson.attributes
+            ? Object.entries(fullPerson.attributes).map(([key, value]) => ({
+                personId: fullPerson.personId ?? null,
+                category: 'personal',
+                key,
+                value
+              }))
+            : [];
+
+          const merged: PersonAttributeDto[] = [];
+          const localByKey = new Map(this.personData.map(f => [f.key, f]));
+          for (const sa of serverAttrs) {
+            const existing = localByKey.get(sa.key);
+            if (existing) {
+              existing.value = sa.value;
+              existing.personId = sa.personId;
+              merged.push(existing);
+              localByKey.delete(sa.key);
+            } else {
+              merged.push(sa);
+            }
           }
+          for (const remaining of localByKey.values()) merged.push(remaining);
+          this.personData = merged;
         });
       }
     }
@@ -208,6 +252,17 @@ export class EditorComponent implements OnInit {
       if (this.selectedPerson?.id) f.personId = this.selectedPerson.id;
       this.person.addPersonData(f).subscribe({ next: () => { /* no-op */ }, error: (e) => console.error('Failed saving', f, e) });
     }
+  }
+
+  onNameBlur() {
+    // Save name as a person attribute. If no selectedPerson.id, backend should create a person and return personId.
+    const nameValue = this.personName?.trim();
+    if (!nameValue) return;
+    const nameAttr: PersonAttributeDto = { personId: this.selectedPerson?.id ?? null, category: 'personal', key: 'name', value: nameValue };
+    this.person.addPersonData(nameAttr).subscribe({
+      next: (res) => this.onFieldSaved(res, nameAttr),
+      error: (err) => console.error('Failed saving name', err)
+    });
   }
 
   private loadPeople() {

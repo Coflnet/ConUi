@@ -36,6 +36,7 @@ export class PeopleListComponent implements OnInit {
   people = signal<SearchResult[]>([]);
   loading = signal(false);
   searchTerm = '';
+  get isSearchEmpty(): boolean { return !(this.searchTerm && this.searchTerm.trim().length > 0); }
   private searchSubject = new Subject<string>();
   
   // Pagination
