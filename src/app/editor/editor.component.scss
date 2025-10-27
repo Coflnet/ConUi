@@ -114,6 +114,21 @@ ng-select {
     max-width: 600px; 
     margin: 0 auto; 
   }
+
+/* Make the map area visible when creating a new place */
+.place-new-map {
+  max-width: 900px;
+  height: 420px; /* explicit height so Leaflet can render */
+  margin: 12px auto;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+.place-new-map #map {
+  height: 100% !important;
+  width: 100% !important;
+}
   
   /* Styling für das Formularfeld */
   mat-form-field.full-width {

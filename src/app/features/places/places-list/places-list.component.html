@@ -1,0 +1,135 @@
+<div class="places-container">
+  <div class="header">
+    <h1 class="page-title">Places</h1>
+    <button mat-raised-button color="primary" routerLink="/places/new">
+      <mat-icon>add_location</mat-icon>
+      Add Place
+    </button>
+  </div>
+
+  <mat-card class="search-card">
+    <mat-card-content>
+      <mat-form-field class="search-field" appearance="outline">
+        <mat-label>Search places</mat-label>
+        <input 
+          matInput 
+          [(ngModel)]="searchTerm"
+          (ngModelChange)="onSearchChange($event)"
+          placeholder="Search by name, city, country, or address..."
+          autocomplete="off">
+        <mat-icon matPrefix>search</mat-icon>
+      </mat-form-field>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card class="table-card">
+    @if (loading()) {
+      <div class="loading-state">Loading...</div>
+    } @else if (places().length === 0) {
+      <div class="empty-state">
+        <mat-icon class="empty-icon">map</mat-icon>
+        <p *ngIf="isSearchEmpty">No places recorded yet. Start by searching or adding locations that are meaningful to you.</p>
+        <p *ngIf="!isSearchEmpty">No places matched your search. Try different terms or add a new location.</p>
+        <div class="empty-actions">
+          <button mat-raised-button color="primary" routerLink="/places/new">
+            <mat-icon>add_location</mat-icon>
+            Add Location
+          </button>
+          <button mat-button *ngIf="!isSearchEmpty" (click)="searchTerm=''; onSearchChange('')">Clear search</button>
+        </div>
+      </div>
+    } @else {
+      <div class="mobile-cards">
+        @for (place of places(); track place.id) {
+          <mat-card class="mobile-card" (click)="viewPlace(place)">
+            <mat-card-header>
+              <mat-icon mat-card-avatar>location_on</mat-icon>
+              <mat-card-title>{{ place.name || 'Unnamed Place' }}</mat-card-title>
+              <mat-card-subtitle>{{ getPlaceType(place) }}</mat-card-subtitle>
+            </mat-card-header>
+            <mat-card-content>
+              <p class="description">{{ place.description || 'No description' }}</p>
+              @if (getLocation(place)) {
+                <p class="location">
+                  <mat-icon class="small-icon">place</mat-icon>
+                  {{ getLocation(place) }}
+                </p>
+              }
+            </mat-card-content>
+            <mat-card-actions>
+              <button mat-icon-button [routerLink]="['/places', place.id]" matTooltip="View details" (click)="$event.stopPropagation()">
+                <mat-icon>visibility</mat-icon>
+              </button>
+              <button mat-icon-button [routerLink]="['/places', place.id, 'edit']" matTooltip="Edit" (click)="$event.stopPropagation()">
+                <mat-icon>edit</mat-icon>
+              </button>
+              <button mat-icon-button (click)="deletePlace(place); $event.stopPropagation()" matTooltip="Delete" color="warn">
+                <mat-icon>delete</mat-icon>
+              </button>
+            </mat-card-actions>
+          </mat-card>
+        }
+      </div>
+
+      <table mat-table [dataSource]="places()" class="places-table desktop-table">
+        <ng-container matColumnDef="name">
+          <th mat-header-cell *matHeaderCellDef>Name</th>
+          <td mat-cell *matCellDef="let place">
+            <div class="place-name">
+              <mat-icon class="place-icon">location_on</mat-icon>
+              {{ place.name || 'Unnamed' }}
+            </div>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="type">
+          <th mat-header-cell *matHeaderCellDef>Type</th>
+          <td mat-cell *matCellDef="let place">
+            {{ getPlaceType(place) }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="location">
+          <th mat-header-cell *matHeaderCellDef>Location</th>
+          <td mat-cell *matCellDef="let place">
+            {{ getLocation(place) }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="description">
+          <th mat-header-cell *matHeaderCellDef>Description</th>
+          <td mat-cell *matCellDef="let place">
+            {{ place.description || '-' }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef>Actions</th>
+          <td mat-cell *matCellDef="let place">
+            <button mat-icon-button [routerLink]="['/places', place.id]" matTooltip="View details">
+              <mat-icon>visibility</mat-icon>
+            </button>
+            <button mat-icon-button [routerLink]="['/places', place.id, 'edit']" matTooltip="Edit">
+              <mat-icon>edit</mat-icon>
+            </button>
+            <button mat-icon-button (click)="deletePlace(place)" matTooltip="Delete" color="warn">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns;" class="place-row"></tr>
+      </table>
+
+      <mat-paginator
+        [length]="totalCount()"
+        [pageSize]="pageSize"
+        [pageIndex]="pageIndex"
+        [pageSizeOptions]="[10, 20, 50, 100]"
+        (page)="onPageChange($event)"
+        showFirstLastButtons>
+      </mat-paginator>
+    }
+  </mat-card>
+</div>

@@ -6,6 +6,9 @@ import { FormControl, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FieldComponent } from '../field/field.component';
+import { PlaceService } from '../client';
+import { PlaceDto } from '../client/model/placeDto';
+import { MapSelectComponent } from '../map-select/map-select.component';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
@@ -21,7 +24,8 @@ import { MatFormFieldModule } from '@angular/material/form-field';
         FormsModule,
         ReactiveFormsModule,
         NgSelectModule,
-        FieldComponent,
+  FieldComponent,
+  MapSelectComponent,
         MatAutocompleteModule,
         MatInputModule,
     MatButtonModule,
@@ -57,6 +61,7 @@ export class EditorComponent implements OnInit {
 
   constructor(private searchService: SearchService,
     private person: PersonService,
+    private placeService: PlaceService,
     private router: Router,
     private activeRoute: ActivatedRoute
   ) {
@@ -93,10 +98,49 @@ export class EditorComponent implements OnInit {
     });
   }
 
+  onMapLocationSelected(evt: { lat: number, lng: number, address?: string }) {
+    // Create a new place with the selected coordinates. Use personName if set, otherwise default to 'neu'.
+    const name = (this.personName && this.personName.trim().length > 0) ? this.personName.trim() : 'neu';
+    const dto: PlaceDto = {
+      name,
+      latitude: evt.lat,
+      longitude: evt.lng
+    };
+
+    this.placeService.createPlace(dto).subscribe({
+      next: (created: any) => {
+        // created should contain the new place and its id — navigate to it for further editing
+        const id = (created && (created.placeId || created.id || created.placeId)) || (created && created.id) || null;
+        try {
+          const resolvedId = id ?? created?.id ?? created?.placeId ?? created?.place?.id ?? null;
+          if (resolvedId) {
+            this.router.navigate(['/places', resolvedId]);
+          } else {
+            console.log('Place created', created);
+          }
+        } catch (e) {
+          console.log('Place created but navigation failed', created, e);
+        }
+      },
+      error: (err) => console.error('Failed creating place', err)
+    });
+  }
+
   ngOnInit() {
     this.loadPeople();
     this.searchBar.focus();
+    // detect whether this editor was opened as the 'new' page for places
+    try {
+      const snap: any = this.activeRoute.snapshot as any;
+      const url = this.router.url || snap._routerState?.url || '';
+      this.isPlaceNew = url.startsWith('/places/new') || url.includes('/places/new');
+    } catch (e) {
+      this.isPlaceNew = false;
+    }
   }
+
+  // whether editor is showing a place-new context (used to display map area)
+  isPlaceNew = false;
 
   trackByFn(item: SearchResult) {
     return (item.name ?? '') + (item.id ?? '');

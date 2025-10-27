@@ -1,0 +1,143 @@
+<div class="relationships-container">
+  <div class="header">
+    <h1 class="page-title">Relationships & Connections</h1>
+    <button mat-raised-button color="primary" routerLink="/relationships/new">
+      <mat-icon>add_link</mat-icon>
+      Add Connection
+    </button>
+  </div>
+
+  <mat-card class="search-card">
+    <mat-card-content>
+      <mat-form-field class="search-field" appearance="outline">
+        <mat-label>Search relationships</mat-label>
+        <input 
+          matInput 
+          [(ngModel)]="searchTerm"
+          (ngModelChange)="onSearchChange($event)"
+          placeholder="Search by person name or relationship type..."
+          autocomplete="off">
+        <mat-icon matPrefix>search</mat-icon>
+      </mat-form-field>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card class="table-card">
+    @if (loading()) {
+      <div class="loading-state">Loading...</div>
+    } @else if (relationships().length === 0) {
+      <div class="empty-state">
+        <mat-icon class="empty-icon">account_tree</mat-icon>
+        <p *ngIf="isSearchEmpty">No relationships yet. Start mapping connections between people in your family tree.</p>
+        <p *ngIf="!isSearchEmpty">No relationships matched your search.</p>
+        <div class="empty-actions">
+          <button mat-raised-button color="primary" routerLink="/relationships/new">Add Connection</button>
+          <button mat-button *ngIf="!isSearchEmpty" (click)="searchTerm=''; onSearchChange('')">Clear search</button>
+        </div>
+      </div>
+    } @else {
+      <div class="mobile-cards">
+        @for (rel of relationships(); track rel.id) {
+          <mat-card class="mobile-card" (click)="viewRelationship(rel)">
+            <mat-card-header>
+              <mat-icon mat-card-avatar class="relationship-avatar-icon">hub</mat-icon>
+              <mat-card-title>{{ getRelationshipTitle(rel) }}</mat-card-title>
+              <mat-card-subtitle>
+                <mat-icon class="inline-icon">link</mat-icon>
+                {{ getRelationshipType(rel) }}
+              </mat-card-subtitle>
+            </mat-card-header>
+            <mat-card-content>
+              <p class="description">{{ rel.description || 'No description' }}</p>
+              <div class="relationship-details">
+                <p class="detail-item">
+                  <mat-icon class="small-icon">person</mat-icon>
+                  <span>{{ getPersonA(rel) }}</span>
+                </p>
+                <mat-icon class="arrow-icon">arrow_forward</mat-icon>
+                <p class="detail-item">
+                  <mat-icon class="small-icon">person</mat-icon>
+                  <span>{{ getPersonB(rel) }}</span>
+                </p>
+              </div>
+            </mat-card-content>
+            <mat-card-actions>
+              <button mat-icon-button [routerLink]="['/relationships', rel.id]" matTooltip="View details" (click)="$event.stopPropagation()">
+                <mat-icon>visibility</mat-icon>
+              </button>
+              <button mat-icon-button [routerLink]="['/relationships', rel.id, 'edit']" matTooltip="Edit" (click)="$event.stopPropagation()">
+                <mat-icon>edit</mat-icon>
+              </button>
+              <button mat-icon-button (click)="deleteRelationship(rel); $event.stopPropagation()" matTooltip="Delete" color="warn">
+                <mat-icon>delete</mat-icon>
+              </button>
+            </mat-card-actions>
+          </mat-card>
+        }
+      </div>
+
+      <table mat-table [dataSource]="relationships()" class="relationships-table desktop-table">
+        <ng-container matColumnDef="personA">
+          <th mat-header-cell *matHeaderCellDef>Person A</th>
+          <td mat-cell *matCellDef="let rel">
+            <div class="person-cell">
+              <mat-icon class="person-icon">person</mat-icon>
+              {{ getPersonA(rel) }}
+            </div>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="type">
+          <th mat-header-cell *matHeaderCellDef>Relationship</th>
+          <td mat-cell *matCellDef="let rel">
+            {{ getRelationshipType(rel) }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="personB">
+          <th mat-header-cell *matHeaderCellDef>Person B</th>
+          <td mat-cell *matCellDef="let rel">
+            <div class="person-cell">
+              <mat-icon class="person-icon">person</mat-icon>
+              {{ getPersonB(rel) }}
+            </div>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="description">
+          <th mat-header-cell *matHeaderCellDef>Description</th>
+          <td mat-cell *matCellDef="let rel">
+            {{ rel.description || '-' }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef>Actions</th>
+          <td mat-cell *matCellDef="let rel">
+            <button mat-icon-button [routerLink]="['/relationships', rel.id]" matTooltip="View details">
+              <mat-icon>visibility</mat-icon>
+            </button>
+            <button mat-icon-button [routerLink]="['/relationships', rel.id, 'edit']" matTooltip="Edit">
+              <mat-icon>edit</mat-icon>
+            </button>
+            <button mat-icon-button (click)="deleteRelationship(rel)" matTooltip="Delete" color="warn">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns;" class="relationship-row"></tr>
+      </table>
+
+      <mat-paginator
+        [length]="totalCount()"
+        [pageSize]="pageSize"
+        [pageIndex]="pageIndex"
+        [pageSizeOptions]="[10, 20, 50, 100]"
+        (page)="onPageChange($event)"
+        showFirstLastButtons>
+      </mat-paginator>
+    }
+  </mat-card>
+</div>

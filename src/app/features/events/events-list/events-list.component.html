@@ -1,0 +1,145 @@
+<div class="events-container">
+  <div class="header">
+    <h1 class="page-title">Events & Timeline</h1>
+    <button mat-raised-button color="primary" routerLink="/events/new">
+      <mat-icon>add_circle_outline</mat-icon>
+      Record Event
+    </button>
+  </div>
+
+  <mat-card class="search-card">
+    <mat-card-content>
+      <mat-form-field class="search-field" appearance="outline">
+        <mat-label>Search events</mat-label>
+        <input 
+          matInput 
+          [(ngModel)]="searchTerm"
+          (ngModelChange)="onSearchChange($event)"
+          placeholder="Search by event name, date, or description..."
+          autocomplete="off">
+        <mat-icon matPrefix>search</mat-icon>
+      </mat-form-field>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card class="table-card">
+    @if (loading()) {
+      <div class="loading-state">Loading...</div>
+    } @else if (events().length === 0) {
+      <div class="empty-state">
+        <mat-icon class="empty-icon">calendar_today</mat-icon>
+        <p *ngIf="isSearchEmpty">No events recorded yet. Start documenting important moments and milestones.</p>
+        <p *ngIf="!isSearchEmpty">No events matched your search. Try different dates or keywords.</p>
+        <div class="empty-actions">
+          <button mat-raised-button color="primary" routerLink="/events/new">
+            <mat-icon>add_circle_outline</mat-icon>
+            Record Event
+          </button>
+          <button mat-button *ngIf="!isSearchEmpty" (click)="searchTerm=''; onSearchChange('')">Clear search</button>
+        </div>
+      </div>
+    } @else {
+      <div class="mobile-cards">
+        @for (event of events(); track event.id) {
+          <mat-card class="mobile-card" (click)="viewEvent(event)">
+            <mat-card-header>
+              <mat-icon mat-card-avatar class="event-avatar-icon">schedule</mat-icon>
+              <mat-card-title>{{ event.name || 'Unnamed Event' }}</mat-card-title>
+              <mat-card-subtitle>
+                <mat-icon class="inline-icon">event</mat-icon>
+                {{ getEventType(event) }} • {{ getEventDate(event) }}
+              </mat-card-subtitle>
+            </mat-card-header>
+            <mat-card-content>
+              <p class="description">{{ event.description || 'No description' }}</p>
+              @if (getEventLocation(event)) {
+                <p class="location">
+                  <mat-icon class="small-icon">place</mat-icon>
+                  {{ getEventLocation(event) }}
+                </p>
+              }
+            </mat-card-content>
+            <mat-card-actions>
+              <button mat-icon-button [routerLink]="['/events', event.id]" matTooltip="View details" (click)="$event.stopPropagation()">
+                <mat-icon>visibility</mat-icon>
+              </button>
+              <button mat-icon-button [routerLink]="['/events', event.id, 'edit']" matTooltip="Edit" (click)="$event.stopPropagation()">
+                <mat-icon>edit</mat-icon>
+              </button>
+              <button mat-icon-button (click)="deleteEvent(event); $event.stopPropagation()" matTooltip="Delete" color="warn">
+                <mat-icon>delete</mat-icon>
+              </button>
+            </mat-card-actions>
+          </mat-card>
+        }
+      </div>
+
+      <table mat-table [dataSource]="events()" class="events-table desktop-table">
+        <ng-container matColumnDef="name">
+          <th mat-header-cell *matHeaderCellDef>Event Name</th>
+          <td mat-cell *matCellDef="let event">
+            <div class="event-name">
+              <mat-icon class="event-icon">schedule</mat-icon>
+              {{ event.name || 'Unnamed Event' }}
+            </div>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="type">
+          <th mat-header-cell *matHeaderCellDef>Type</th>
+          <td mat-cell *matCellDef="let event">
+            {{ getEventType(event) }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="date">
+          <th mat-header-cell *matHeaderCellDef>Date</th>
+          <td mat-cell *matCellDef="let event">
+            {{ getEventDate(event) }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="location">
+          <th mat-header-cell *matHeaderCellDef>Location</th>
+          <td mat-cell *matCellDef="let event">
+            {{ getEventLocation(event) }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="description">
+          <th mat-header-cell *matHeaderCellDef>Description</th>
+          <td mat-cell *matCellDef="let event">
+            {{ event.description || '-' }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef>Actions</th>
+          <td mat-cell *matCellDef="let event">
+            <button mat-icon-button [routerLink]="['/events', event.id]" matTooltip="View details">
+              <mat-icon>visibility</mat-icon>
+            </button>
+            <button mat-icon-button [routerLink]="['/events', event.id, 'edit']" matTooltip="Edit">
+              <mat-icon>edit</mat-icon>
+            </button>
+            <button mat-icon-button (click)="deleteEvent(event)" matTooltip="Delete" color="warn">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns;" class="event-row"></tr>
+      </table>
+
+      <mat-paginator
+        [length]="totalCount()"
+        [pageSize]="pageSize"
+        [pageIndex]="pageIndex"
+        [pageSizeOptions]="[10, 20, 50, 100]"
+        (page)="onPageChange($event)"
+        showFirstLastButtons>
+      </mat-paginator>
+    }
+  </mat-card>
+</div>

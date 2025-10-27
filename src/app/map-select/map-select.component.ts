@@ -1,6 +1,5 @@
-import { Component, OnInit, Inject, PLATFORM_ID } from '@angular/core';
-import { MatButtonModule} from '@angular/material/button';
-import * as L from 'leaflet';
+import { Component, OnInit, Inject, PLATFORM_ID, Output, EventEmitter } from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
 
 /**
  * This component only renders in the browser and initializes a map with OpenStreetMap tiles.
@@ -12,26 +11,32 @@ import * as L from 'leaflet';
     styleUrl: './map-select.component.scss'
 })
 export class MapSelectComponent {
-  private map: L.Map | undefined;
+  private map: any | undefined;
+  @Output() locationSelected = new EventEmitter<{ lat: number, lng: number, address?: string }>();
 
   ngAfterViewInit(): void {
+    // init map only in browser runtime; leafet is loaded dynamically to avoid SSR errors
     this.initMap();
   }
 
   private initMap(): void {
-    // Initialize the map and set its view to center of Germany
-    let mapCenter = JSON.parse(localStorage.getItem('mapCenter') || 'null') ?? [49.1124747, 12.6696695];
-    let mapZoom = JSON.parse(localStorage.getItem('mapZoom') || 'null') ?? 9;
-    this.map = L.map('map').setView(mapCenter, mapZoom);
+    // Dynamically import leaflet only at runtime (avoid SSR importing window-bound libs)
+    (async () => {
+      try {
+        const L = await import('leaflet');
+        // Initialize the map and set its view to center of Germany
+        let mapCenter = JSON.parse(localStorage.getItem('mapCenter') || 'null') ?? [49.1124747, 12.6696695];
+        let mapZoom = JSON.parse(localStorage.getItem('mapZoom') || 'null') ?? 9;
+        this.map = (L as any).map('map').setView(mapCenter, mapZoom);
 
-    // Set up the tile layer from OpenStreetMap
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(this.map);
+        // Set up the tile layer from OpenStreetMap
+        (L as any).tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(this.map);
 
     // add option to select area
-    this.map.on('click', (e) => {
+  this.map.on('click', (e: any) => {
       let selectButton = document.createElement('button');
       // add material design classes
       selectButton.classList.add('mdc-button', 'mat-mdc-raised-button');
@@ -40,9 +45,9 @@ export class MapSelectComponent {
         console.log('Selected address:', e.latlng);
         alert('Auswählen erfolgreich');
       };
-      const marker = L.marker(e.latlng, {
-        icon: L.icon({
-          ...L.Icon.Default.prototype.options,
+      const marker = (L as any).marker(e.latlng, {
+        icon: (L as any).icon({
+          ...((L as any).Icon.Default.prototype.options || {}),
           iconUrl: 'assets/marker-icon.png',
           iconRetinaUrl: 'assets/marker-icon-2x.png',
           shadowUrl: 'assets/marker-shadow.png'
@@ -60,18 +65,28 @@ export class MapSelectComponent {
           let addr = data.address.road + ' ' + (data.address?.house_number ?? '');
           selectButton.innerHTML = addr + ' <br>Auswählen';
         });
-      marker.on('popupclose', () => {
+  marker.on('popupclose', () => {
         marker.remove();
       });
+      // Emit the selected location immediately; geocoded address may arrive later
+      try {
+        this.locationSelected.emit({ lat: e.latlng.lat, lng: e.latlng.lng });
+      } catch (err) {
+        console.warn('Failed emitting locationSelected', err);
+      }
     });
 
-    this.map.on('moveend', () => {
-      console.log(this.map!.getCenter());
-      localStorage.setItem('mapCenter', JSON.stringify(this.map!.getCenter()));
-    });
-    this.map.on('zoomend', () => {
-      console.log(this.map!.getZoom());
-      localStorage.setItem('mapZoom', JSON.stringify(this.map!.getZoom()));
-    });
+        this.map.on('moveend', () => {
+          console.log(this.map!.getCenter());
+          localStorage.setItem('mapCenter', JSON.stringify(this.map!.getCenter()));
+        });
+        this.map.on('zoomend', () => {
+          console.log(this.map!.getZoom());
+          localStorage.setItem('mapZoom', JSON.stringify(this.map!.getZoom()));
+        });
+      } catch (err) {
+        console.warn('Leaflet failed to load in browser environment', err);
+      }
+    })();
   }
 }

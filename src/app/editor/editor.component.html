@@ -20,7 +20,22 @@
            class="name-input-container"></ng-select>
            
 
-<h2 class="selected-person-title">{{ personName || selectedPerson?.name || 'Keine Person' }} ausgewählt</h2>
+<!-- If this is the place 'new' editor, show a map and explicit 'Keine Person ausgewählt' message -->
+@if (isPlaceNew) {
+  <div class="place-new-map">
+    @defer {
+      <app-map-select (locationSelected)="onMapLocationSelected($event)"></app-map-select>
+    } @placeholder {
+      <div class="map-placeholder">Karte konnte nicht geladen werden.</div>
+    } @loading {
+      <div class="map-loading">Lade Karte...</div>
+    }
+  </div>
+
+  <h2 class="selected-person-title">Keine Person ausgewählt</h2>
+} @else {
+  <h2 class="selected-person-title">{{ personName || selectedPerson?.name || 'Keine Person' }} ausgewählt</h2>
+}
 
 <div class="fields-container">
   <!-- Dynamische Felder -->

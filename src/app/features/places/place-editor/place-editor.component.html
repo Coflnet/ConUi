@@ -1,0 +1,19 @@
+<div class="place-editor">
+  <h1>Place Editor</h1>
+  <mat-form-field class="full-width">
+    <mat-label>Name</mat-label>
+    <input matInput [(ngModel)]="name" (blur)="saveName()" />
+  </mat-form-field>
+
+  <div class="map-area">
+    <app-map-select (locationSelected)="onMapLocationSelected($event)"></app-map-select>
+  </div>
+
+  <div class="fields">
+    <!-- place fields could be listed here -->
+    <p *ngIf="!place">Create a new place by selecting a point on the map.</p>
+    <div *ngIf="place">
+      <app-place-field [field]="{ placeId: place?.id, key: 'Beschreibung', value: '' }" (saved)="onPlaceFieldSaved($event)"></app-place-field>
+    </div>
+  </div>
+</div>

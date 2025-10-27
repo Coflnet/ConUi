@@ -1,0 +1,4 @@
+<mat-form-field class="full-width">
+  <mat-label>{{ field.key }}</mat-label>
+  <input matInput #input [(ngModel)]="field.value" (blur)="blurred()" />
+</mat-form-field>
