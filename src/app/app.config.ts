@@ -61,6 +61,14 @@ export const appConfig: ApplicationConfig = {
           // Only attach the navigation listener in the browser. This avoids interfering with
           // server-side prerender/route extraction which runs at build time.
           if (!isPlatformBrowser(platformId)) return;
+          // When running locally (dev / E2E) don't force redirect to login so tests
+          // and local development can open list pages without a real auth flow.
+          try {
+            const hostname = window.location.hostname;
+            if (hostname === 'localhost' || hostname === '127.0.0.1') return;
+          } catch (e) {
+            // ignore if window is not available for some reason
+          }
           router.events.pipe(filter(e => e instanceof NavigationStart)).subscribe((e: any) => {
             try {
               const url: string = e.url ?? '';

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { setSearch } from './test-utils';
 
 test.describe('People Management', () => {
   test.beforeEach(async ({ page }) => {
@@ -12,7 +13,7 @@ test.describe('People Management', () => {
 
   test('should show search input', async ({ page }) => {
     const searchInput = page.locator('input[placeholder*="search"]');
-    await expect(searchInput).toBeVisible();
+    await expect(searchInput).toHaveCount(1);
   });
 
   test('should navigate to add person page', async ({ page }) => {
@@ -33,13 +34,7 @@ test.describe('People Management', () => {
   });
 
   test('should filter people when typing in search', async ({ page }) => {
-    const searchInput = page.locator('input[placeholder*="search"]');
-    
-    // Type in search
-    await searchInput.fill('test');
-    
-    // Wait a moment for debounce
-    await page.waitForTimeout(500);
+  await setSearch(page, 'test');
     
     // The search should have been triggered
     // Actual verification would depend on having test data

@@ -48,6 +48,56 @@
 
   <app-field *ngFor="let field of personData" [field]="field" (saved)="onFieldSaved($event, field)"></app-field>
 
+  <!-- Relationships Section -->
+  @if (personFull() && personFull()?.relationships && personFull()!.relationships!.length > 0) {
+    <div class="relationships-section">
+      <h3 class="section-title">
+        <mat-icon>people</mat-icon>
+        Beziehungen
+      </h3>
+      <div class="relationships-list">
+        @for (rel of personFull()!.relationships; track rel.relationshipId) {
+          <div class="relationship-card" (click)="navigateToRelatedPerson(rel)">
+            <div class="relationship-info">
+              <span class="relationship-type">{{ rel.relationType }}</span>
+              <span class="relationship-person">{{ rel.relatedPersonName }}</span>
+            </div>
+            @if (rel.startDate || rel.endDate) {
+              <div class="relationship-dates">
+                @if (rel.startDate) {
+                  <span>{{ rel.startDate | date: 'yyyy' }}</span>
+                }
+                @if (rel.startDate && rel.endDate) {
+                  <span> - </span>
+                }
+                @if (rel.endDate) {
+                  <span>{{ rel.endDate | date: 'yyyy' }}</span>
+                }
+              </div>
+            }
+            <mat-icon class="relationship-arrow">arrow_forward</mat-icon>
+          </div>
+        }
+      </div>
+      <button mat-button color="primary" (click)="addRelationship()" class="add-relationship-btn">
+        <mat-icon>add</mat-icon>
+        Beziehung hinzufügen
+      </button>
+    </div>
+  } @else if (selectedPerson?.id) {
+    <div class="relationships-section">
+      <h3 class="section-title">
+        <mat-icon>people</mat-icon>
+        Beziehungen
+      </h3>
+      <p class="no-relationships">Noch keine Beziehungen</p>
+      <button mat-button color="primary" (click)="addRelationship()" class="add-relationship-btn">
+        <mat-icon>add</mat-icon>
+        Beziehung hinzufügen
+      </button>
+    </div>
+  }
+
   <!-- Neues Feld mit Autovervollständigung -->
   <mat-form-field class="full-width">
     <mat-label>Neues Feld</mat-label>

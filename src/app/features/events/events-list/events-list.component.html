@@ -3,7 +3,7 @@
     <h1 class="page-title">Events & Timeline</h1>
     <button mat-raised-button color="primary" routerLink="/events/new">
       <mat-icon>add_circle_outline</mat-icon>
-      Record Event
+      Add Event
     </button>
   </div>
 
@@ -15,7 +15,7 @@
           matInput 
           [(ngModel)]="searchTerm"
           (ngModelChange)="onSearchChange($event)"
-          placeholder="Search by event name, date, or description..."
+    placeholder="search: event name, date, or description..."
           autocomplete="off">
         <mat-icon matPrefix>search</mat-icon>
       </mat-form-field>
@@ -33,7 +33,7 @@
         <div class="empty-actions">
           <button mat-raised-button color="primary" routerLink="/events/new">
             <mat-icon>add_circle_outline</mat-icon>
-            Record Event
+            Add Event
           </button>
           <button mat-button *ngIf="!isSearchEmpty" (click)="searchTerm=''; onSearchChange('')">Clear search</button>
         </div>

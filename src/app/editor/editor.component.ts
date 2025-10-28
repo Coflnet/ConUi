@@ -1,7 +1,7 @@
 import { Component, HostListener, OnInit, ViewChild, signal } from '@angular/core';
 import { NgSelectComponent, NgSelectModule } from '@ng-select/ng-select';
 import { catchError, concat, distinctUntilChanged, Observable, of, Subject, switchMap, tap } from 'rxjs';
-import { PersonAttributeDto, PersonService, SearchResult, SearchService, PersonFullView } from '../client';
+import { PersonAttributeDto, PersonService, SearchResult, SearchService, PersonFullView, RelationshipSummaryDto } from '../client';
 import { FormControl, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -13,6 +13,7 @@ import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
 
 
 @Component({
@@ -29,7 +30,8 @@ import { MatFormFieldModule } from '@angular/material/form-field';
         MatAutocompleteModule,
         MatInputModule,
     MatButtonModule,
-    MatFormFieldModule
+    MatFormFieldModule,
+    MatIconModule
     ],
     styleUrls: ['./editor.component.scss']
 })
@@ -321,5 +323,20 @@ export class EditorComponent implements OnInit {
         ))
       )
     );
+  }
+
+  navigateToRelatedPerson(rel: RelationshipSummaryDto): void {
+    if (rel.relatedPersonId) {
+      this.router.navigate(['/people', rel.relatedPersonId]);
+    }
+  }
+
+  addRelationship(): void {
+    // Navigate to relationship editor with this person pre-selected
+    if (this.selectedPerson?.id) {
+      this.router.navigate(['/relationships/new'], {
+        queryParams: { fromPersonId: this.selectedPerson.id }
+      });
+    }
   }
 }

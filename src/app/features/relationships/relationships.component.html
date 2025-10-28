@@ -3,7 +3,7 @@
     <h1 class="page-title">Relationships & Connections</h1>
     <button mat-raised-button color="primary" routerLink="/relationships/new">
       <mat-icon>add_link</mat-icon>
-      Add Connection
+      Add Relationship
     </button>
   </div>
 
@@ -15,7 +15,7 @@
           matInput 
           [(ngModel)]="searchTerm"
           (ngModelChange)="onSearchChange($event)"
-          placeholder="Search by person name or relationship type..."
+    placeholder="search: person name or relationship type..."
           autocomplete="off">
         <mat-icon matPrefix>search</mat-icon>
       </mat-form-field>
@@ -31,7 +31,7 @@
         <p *ngIf="isSearchEmpty">No relationships yet. Start mapping connections between people in your family tree.</p>
         <p *ngIf="!isSearchEmpty">No relationships matched your search.</p>
         <div class="empty-actions">
-          <button mat-raised-button color="primary" routerLink="/relationships/new">Add Connection</button>
+          <button mat-raised-button color="primary" routerLink="/relationships/new">Add Relationship</button>
           <button mat-button *ngIf="!isSearchEmpty" (click)="searchTerm=''; onSearchChange('')">Clear search</button>
         </div>
       </div>

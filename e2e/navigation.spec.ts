@@ -31,7 +31,8 @@ test.describe('Navigation', () => {
     const navItems = ['Dashboard', 'People', 'Places', 'Events', 'Things', 'Timeline', 'Relationships', 'Share'];
     
     for (const item of navItems) {
-      await expect(page.locator('.app-sidenav').locator(`text=${item}`)).toBeVisible();
+      // The sidenav contains icons and text; target the title span to avoid strict-mode collisions
+      await expect(page.locator('.app-sidenav').locator(`.mat-mdc-list-item-title:has-text("${item}")`)).toBeVisible();
     }
   });
 

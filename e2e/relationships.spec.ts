@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { setSearch } from './test-utils';
 
 test.describe('Relationships Management', () => {
   test.beforeEach(async ({ page }) => {
@@ -12,15 +13,17 @@ test.describe('Relationships Management', () => {
 
   test('should show search input', async ({ page }) => {
     const searchInput = page.locator('input[placeholder*="search"]');
-    await expect(searchInput).toBeVisible();
+    await expect(searchInput).toHaveCount(1);
   });
 
-  test.skip('should navigate to add relationship page', async ({ page }) => {
-    // TODO: This requires the editor to support relationships entity type
+  test('should navigate to add relationship page', async ({ page }) => {
     await Promise.all([
       page.waitForURL(/\/relationships\/new/),
       page.locator('button:has-text("Add Relationship")').first().click()
     ]);
+    
+    // Should show the relationship editor form
+    await expect(page.locator('h1:has-text("Neue Beziehung")')).toBeVisible();
   });
 
   test('should show empty state when no relationships exist', async ({ page }) => {
@@ -34,10 +37,7 @@ test.describe('Relationships Management', () => {
   });
 
   test('should filter relationships when typing in search', async ({ page }) => {
-    const searchInput = page.locator('input[placeholder*="search"]');
-    
-    await searchInput.fill('parent');
-    await page.waitForTimeout(500);
+  await setSearch(page, 'parent');
   });
 
   test('should be mobile responsive', async ({ page }) => {
@@ -46,16 +46,14 @@ test.describe('Relationships Management', () => {
     await expect(page.locator('h1')).toBeVisible();
     await expect(page.locator('button:has-text("Add Relationship")').first()).toBeVisible();
     
-    const searchInput = page.locator('input[placeholder*="search"]');
-    await expect(searchInput).toBeVisible();
+  const searchInput = page.locator('input[placeholder*="search"]');
+  await expect(searchInput).toHaveCount(1);
   });
 
   test('should show mobile cards on small screens', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     
-    const searchInput = page.locator('input[placeholder*="search"]');
-    await searchInput.fill('test');
-    await page.waitForTimeout(500);
+  await setSearch(page, 'test');
     
     const tableCard = page.locator('.table-card');
     const hasTableCard = await tableCard.count();
@@ -65,9 +63,7 @@ test.describe('Relationships Management', () => {
   test('should display relationship details in mobile cards', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     
-    const searchInput = page.locator('input[placeholder*="search"]');
-    await searchInput.fill('family');
-    await page.waitForTimeout(500);
+  await setSearch(page, 'family');
     
     const cardCount = await page.locator('.mobile-card').count();
     
@@ -85,9 +81,7 @@ test.describe('Relationships Management', () => {
   test('should show person icons in relationship cards', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     
-    const searchInput = page.locator('input[placeholder*="search"]');
-    await searchInput.fill('test');
-    await page.waitForTimeout(500);
+  await setSearch(page, 'test');
     
     const cardCount = await page.locator('.mobile-card').count();
     
@@ -105,6 +99,42 @@ test.describe('Relationships Management', () => {
     const count = await paginator.count();
     expect(count).toBeGreaterThanOrEqual(0);
   });
+
+  test('should show relationship editor form fields', async ({ page }) => {
+    await page.goto('/relationships/new');
+    
+    // Check for person selection fields
+    await expect(page.locator('.person-fields')).toBeVisible();
+    
+    // Check for relationship type input
+    const typeInput = page.locator('input[placeholder*="Vater"]');
+    await expect(typeInput).toHaveCount(1);
+    
+    // Check for date fields
+    await expect(page.locator('text=Zeitraum')).toBeVisible();
+    
+    // Check for certainty slider (using heading to avoid strict mode)
+    await expect(page.locator('h2:has-text("Sicherheit")')).toBeVisible();
+    
+    // Check for notes field
+    await expect(page.locator('textarea')).toHaveCount(1);
+  });
+
+  test('should show save and cancel buttons in editor', async ({ page }) => {
+    await page.goto('/relationships/new');
+    
+    await expect(page.locator('button:has-text("Speichern")')).toBeVisible();
+    await expect(page.locator('button:has-text("Abbrechen")')).toBeVisible();
+  });
+
+  test('should navigate back when clicking cancel', async ({ page }) => {
+    await page.goto('/relationships/new');
+    
+    await Promise.all([
+      page.waitForURL(/\/relationships$/),
+      page.locator('button:has-text("Abbrechen")').click()
+    ]);
+  });
 });
 
 test.describe('Relationships Desktop View', () => {
@@ -114,9 +144,7 @@ test.describe('Relationships Desktop View', () => {
   });
 
   test('should display table on desktop', async ({ page }) => {
-    const searchInput = page.locator('input[placeholder*="search"]');
-    await searchInput.fill('test');
-    await page.waitForTimeout(500);
+  await setSearch(page, 'test');
     
     const desktopTable = page.locator('.desktop-table');
     const count = await desktopTable.count();
@@ -131,9 +159,7 @@ test.describe('Relationships Desktop View', () => {
   });
 
   test('should handle row clicks', async ({ page }) => {
-    const searchInput = page.locator('input[placeholder*="search"]');
-    await searchInput.fill('parent');
-    await page.waitForTimeout(500);
+  await setSearch(page, 'parent');
   });
 });
 
@@ -144,9 +170,7 @@ test.describe('Relationships Mobile Touch Interactions', () => {
   });
 
   test('should handle card taps', async ({ page }) => {
-    const searchInput = page.locator('input[placeholder*="search"]');
-    await searchInput.fill('test');
-    await page.waitForTimeout(500);
+  await setSearch(page, 'test');
     
     const cardCount = await page.locator('.mobile-card').count();
     
@@ -157,9 +181,7 @@ test.describe('Relationships Mobile Touch Interactions', () => {
   });
 
   test('should show action buttons in cards', async ({ page }) => {
-    const searchInput = page.locator('input[placeholder*="search"]');
-    await searchInput.fill('test');
-    await page.waitForTimeout(500);
+  await setSearch(page, 'test');
     
     const cardCount = await page.locator('.mobile-card').count();
     
@@ -173,9 +195,8 @@ test.describe('Relationships Mobile Touch Interactions', () => {
   });
 
   test('should display arrow icon between persons', async ({ page }) => {
-    const searchInput = page.locator('input[placeholder*="search"]');
-    await searchInput.fill('test');
-    await page.waitForTimeout(500);
+  await setSearch(page, 'test');
+  await page.waitForTimeout(500);
     
     const cardCount = await page.locator('.mobile-card').count();
     

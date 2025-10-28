@@ -162,4 +162,95 @@ ng-select {
     box-shadow: 0 6px 10px rgba(0, 0, 0, 0.3); /* Stärkerer Schatten bei Hover */
     transform: scale(1.05); /* Leichtes Vergrößern */
   }
+
+  /* Relationships Section */
+  .relationships-section {
+    margin: 30px auto;
+    max-width: 600px;
+    padding: 20px;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 20px;
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 16px;
+    
+    mat-icon {
+      color: #007bff;
+    }
+  }
+
+  .relationships-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .relationship-card {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    background-color: white;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    
+    &:hover {
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+      transform: translateX(4px);
+    }
+  }
+
+  .relationship-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .relationship-type {
+    font-weight: 500;
+    color: #007bff;
+    font-size: 14px;
+  }
+
+  .relationship-person {
+    color: #333;
+    font-size: 16px;
+  }
+
+  .relationship-dates {
+    color: #666;
+    font-size: 13px;
+    margin-right: 12px;
+  }
+
+  .relationship-arrow {
+    color: #999;
+    font-size: 20px;
+  }
+
+  .no-relationships {
+    color: #666;
+    text-align: center;
+    font-style: italic;
+    margin: 20px 0;
+  }
+
+  .add-relationship-btn {
+    width: 100%;
+    mat-icon {
+      margin-right: 8px;
+    }
+  }
+  
   

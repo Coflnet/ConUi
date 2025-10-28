@@ -1,0 +1,200 @@
+.relationship-editor-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+
+  .page-title {
+    font-size: 2rem;
+    font-weight: 300;
+    margin: 0;
+    color: rgba(0, 0, 0, 0.87);
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+
+    button {
+      mat-icon {
+        margin-right: 4px;
+      }
+    }
+  }
+}
+
+.editor-card {
+  margin-bottom: 24px;
+}
+
+.form-section {
+  margin-bottom: 32px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1.25rem;
+    font-weight: 500;
+    margin: 0 0 16px 0;
+    color: rgba(0, 0, 0, 0.87);
+
+    mat-icon {
+      color: rgba(0, 0, 0, 0.54);
+    }
+  }
+}
+
+.person-fields {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+
+  .person-field {
+    flex: 1;
+
+    .field-label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: rgba(0, 0, 0, 0.87);
+    }
+
+    .person-select {
+      width: 100%;
+    }
+  }
+
+  .relationship-arrow {
+    margin-top: 24px;
+
+    mat-icon {
+      color: rgba(0, 0, 0, 0.54);
+      font-size: 32px;
+      width: 32px;
+      height: 32px;
+    }
+  }
+}
+
+.person-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .person-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+    color: rgba(0, 0, 0, 0.54);
+  }
+}
+
+.full-width {
+  width: 100%;
+}
+
+.date-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.certainty-field {
+  .field-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 16px;
+    color: rgba(0, 0, 0, 0.87);
+  }
+
+  mat-slider {
+    width: 100%;
+  }
+
+  .certainty-hint {
+    margin-top: 8px;
+    font-size: 0.875rem;
+    color: rgba(0, 0, 0, 0.6);
+  }
+}
+
+.loading-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: rgba(0, 0, 0, 0.6);
+  font-size: 1.125rem;
+}
+
+// Mobile styles
+@media (max-width: 768px) {
+  .relationship-editor-container {
+    padding: 16px 8px;
+  }
+
+  .header {
+    .page-title {
+      font-size: 1.5rem;
+    }
+
+    .header-actions {
+      width: 100%;
+      justify-content: flex-end;
+
+      button {
+        span:not(.mat-button-wrapper) {
+          display: none;
+        }
+      }
+    }
+  }
+
+  .person-fields {
+    flex-direction: column;
+    gap: 24px;
+
+    .relationship-arrow {
+      margin-top: 0;
+      transform: rotate(90deg);
+    }
+  }
+
+  .date-fields {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .form-section {
+    .section-title {
+      font-size: 1.125rem;
+    }
+  }
+}
+
+// ng-select custom styling
+::ng-deep {
+  .person-select {
+    .ng-select-container {
+      min-height: 56px;
+    }
+
+    .ng-placeholder {
+      color: rgba(0, 0, 0, 0.6);
+    }
+  }
+}

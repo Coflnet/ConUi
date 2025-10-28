@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { setSearch } from './test-utils';
 
 test.describe('Places Management', () => {
   test.beforeEach(async ({ page }) => {
@@ -11,8 +12,8 @@ test.describe('Places Management', () => {
   });
 
   test('should show search input', async ({ page }) => {
-    const searchInput = page.locator('input[placeholder*="search"]');
-    await expect(searchInput).toBeVisible();
+  const searchInput = page.locator('input[placeholder*="search"]');
+  await expect(searchInput).toHaveCount(1);
   });
 
   test.skip('should navigate to add place page', async ({ page }) => {
@@ -34,10 +35,7 @@ test.describe('Places Management', () => {
   });
 
   test('should filter places when typing in search', async ({ page }) => {
-    const searchInput = page.locator('input[placeholder*="search"]');
-    
-    await searchInput.fill('test place');
-    await page.waitForTimeout(500);
+  await setSearch(page, 'test place');
   });
 
   test('should be mobile responsive', async ({ page }) => {
@@ -49,17 +47,15 @@ test.describe('Places Management', () => {
     await expect(page.locator('button:has-text("Add Place")').first()).toBeVisible();
     
     // Search should still be visible on mobile
-    const searchInput = page.locator('input[placeholder*="search"]');
-    await expect(searchInput).toBeVisible();
+  const searchInput = page.locator('input[placeholder*="search"]');
+  await expect(searchInput).toHaveCount(1);
   });
 
   test('should show mobile cards on small screens', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     
     // Type in search to potentially load results
-    const searchInput = page.locator('input[placeholder*="search"]');
-    await searchInput.fill('test');
-    await page.waitForTimeout(500);
+  await setSearch(page, 'test');
     
     // Mobile cards or desktop table container should exist in DOM
     const mobileCards = page.locator('.mobile-cards');
@@ -74,8 +70,48 @@ test.describe('Places Management', () => {
   test('should handle clear search on mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     
-    const searchInput = page.locator('input[placeholder*="search"]');
-    await searchInput.fill('test');
-    await page.waitForTimeout(500);
+  await setSearch(page, 'test');
+  });
+});
+
+// Optional CRUD tests using the API (requires TEST_TOKEN)
+test.describe('Places CRUD (API)', () => {
+  const apiBase = process.env['API_BASE'] || 'http://localhost:5042';
+  const token = process.env['TEST_TOKEN'];
+
+  test.beforeEach(async ({ page }) => {
+    if (!token) test.skip();
+    await page.goto('/places');
+  });
+
+  test('create -> retrieve -> update place via API and verify UI', async ({ page, request }) => {
+    if (!token) test.skip();
+    const unique = `e2e-place-${Date.now()}`;
+    const createRes = await request.post(`${apiBase}/api/Place`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { name: unique, latitude: 49.1, longitude: 12.66 }
+    });
+    expect(createRes.ok()).toBeTruthy();
+    const created = await createRes.json();
+    const id = created?.id;
+    expect(id).toBeTruthy();
+
+    // search via UI
+  await setSearch(page, unique);
+  await page.waitForTimeout(700);
+    await expect(page.locator('.mobile-card, .desktop-table')).toBeVisible();
+
+    // update
+    const updatedName = unique + '-updated';
+    const updateRes = await request.post(`${apiBase}/api/Place`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { id, name: updatedName }
+    });
+    expect(updateRes.ok()).toBeTruthy();
+
+    // verify
+  await setSearch(page, updatedName);
+  await page.waitForTimeout(700);
+    await expect(page.locator('text=' + updatedName)).toBeVisible();
   });
 });

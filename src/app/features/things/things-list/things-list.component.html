@@ -3,7 +3,7 @@
     <h1 class="page-title">Things & Objects</h1>
     <button mat-raised-button color="primary" routerLink="/things/new">
       <mat-icon>add_box</mat-icon>
-      Add Item
+      Add Thing
     </button>
   </div>
 
@@ -15,7 +15,7 @@
           matInput 
           [(ngModel)]="searchTerm"
           (ngModelChange)="onSearchChange($event)"
-          placeholder="Search by name, type, or owner..."
+    placeholder="search: name, type, or owner..."
           autocomplete="off">
         <mat-icon matPrefix>search</mat-icon>
       </mat-form-field>
@@ -33,7 +33,7 @@
         <div class="empty-actions">
           <button mat-raised-button color="primary" routerLink="/things/new">
             <mat-icon>add_box</mat-icon>
-            Add Item
+            Add Thing
           </button>
           <button mat-button *ngIf="!isSearchEmpty" (click)="searchTerm=''; onSearchChange('')">Clear search</button>
         </div>

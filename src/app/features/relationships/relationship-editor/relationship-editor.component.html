@@ -1,0 +1,186 @@
+<div class="relationship-editor-container">
+  <div class="header">
+    <h1 class="page-title">
+      @if (relationshipId && relationshipId !== 'new') {
+        Beziehung bearbeiten
+      } @else {
+        Neue Beziehung
+      }
+    </h1>
+    <div class="header-actions">
+      <button mat-button (click)="cancel()">
+        <mat-icon>close</mat-icon>
+        Abbrechen
+      </button>
+      @if (relationshipId && relationshipId !== 'new') {
+        <button mat-button color="warn" (click)="deleteRelationship()">
+          <mat-icon>delete</mat-icon>
+          Löschen
+        </button>
+      }
+      <button mat-raised-button color="primary" (click)="save()" [disabled]="saving()">
+        <mat-icon>save</mat-icon>
+        @if (saving()) {
+          Speichert...
+        } @else {
+          Speichern
+        }
+      </button>
+    </div>
+  </div>
+
+  @if (loading()) {
+    <mat-card>
+      <mat-card-content>
+        <div class="loading-state">Lädt...</div>
+      </mat-card-content>
+    </mat-card>
+  } @else {
+    <mat-card class="editor-card">
+      <mat-card-content>
+        <div class="form-section">
+          <h2 class="section-title">
+            <mat-icon>people</mat-icon>
+            Personen
+          </h2>
+          
+          <div class="person-fields">
+            <div class="person-field">
+              <label class="field-label">Von Person *</label>
+              <ng-select
+                [(ngModel)]="fromPersonId"
+                [items]="fromPersonResults$()"
+                bindLabel="name"
+                bindValue="id"
+                [typeahead]="fromPersonSearch$"
+                [loading]="loadingFromPerson()"
+                [addTag]="addPersonTag"
+                addTagText="Neue Person erstellen: "
+                placeholder="Person suchen..."
+                class="person-select">
+                <ng-template ng-option-tmp let-item="item">
+                  <div class="person-option">
+                    <mat-icon class="person-icon">person</mat-icon>
+                    <span>{{ item.name }}</span>
+                  </div>
+                </ng-template>
+              </ng-select>
+            </div>
+
+            <div class="relationship-arrow">
+              <mat-icon>arrow_forward</mat-icon>
+            </div>
+
+            <div class="person-field">
+              <label class="field-label">Zu Person *</label>
+              <ng-select
+                [(ngModel)]="toPersonId"
+                [items]="toPersonResults$()"
+                bindLabel="name"
+                bindValue="id"
+                [typeahead]="toPersonSearch$"
+                [loading]="loadingToPerson()"
+                [addTag]="addPersonTag"
+                addTagText="Neue Person erstellen: "
+                placeholder="Person suchen..."
+                class="person-select">
+                <ng-template ng-option-tmp let-item="item">
+                  <div class="person-option">
+                    <mat-icon class="person-icon">person</mat-icon>
+                    <span>{{ item.name }}</span>
+                  </div>
+                </ng-template>
+              </ng-select>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h2 class="section-title">
+            <mat-icon>label</mat-icon>
+            Beziehungstyp
+          </h2>
+          
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Beziehungstyp *</mat-label>
+            <input 
+              matInput 
+              [(ngModel)]="relationshipType"
+              [matAutocomplete]="auto"
+              placeholder="z.B. Vater, Freund, Chef...">
+            <mat-autocomplete #auto="matAutocomplete">
+              @for (type of relationshipTypes; track type.value) {
+                <mat-option [value]="type.value">
+                  {{ type.label }}
+                </mat-option>
+              }
+            </mat-autocomplete>
+            <mat-hint>Wählen Sie einen vordefinierten Typ oder geben Sie einen eigenen ein</mat-hint>
+          </mat-form-field>
+        </div>
+
+        <div class="form-section">
+          <h2 class="section-title">
+            <mat-icon>event</mat-icon>
+            Zeitraum
+          </h2>
+          
+          <div class="date-fields">
+            <mat-form-field appearance="outline" class="date-field">
+              <mat-label>Startdatum</mat-label>
+              <input matInput [matDatepicker]="startPicker" [(ngModel)]="startDate">
+              <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
+              <mat-datepicker #startPicker></mat-datepicker>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="date-field">
+              <mat-label>Enddatum</mat-label>
+              <input matInput [matDatepicker]="endPicker" [(ngModel)]="endDate">
+              <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
+              <mat-datepicker #endPicker></mat-datepicker>
+              <mat-hint>Optional - leer lassen für aktuelle Beziehungen</mat-hint>
+            </mat-form-field>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h2 class="section-title">
+            <mat-icon>verified</mat-icon>
+            Sicherheit
+          </h2>
+          
+          <div class="certainty-field">
+            <label class="field-label">Sicherheit: {{ certainty }}%</label>
+            <mat-slider 
+              min="0" 
+              max="100" 
+              step="5" 
+              discrete
+              [displayWith]="formatLabel">
+              <input matSliderThumb [(ngModel)]="certainty">
+            </mat-slider>
+            <div class="certainty-hint">
+              Wie sicher sind Sie über diese Beziehung?
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h2 class="section-title">
+            <mat-icon>notes</mat-icon>
+            Notizen
+          </h2>
+          
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Notizen</mat-label>
+            <textarea 
+              matInput 
+              [(ngModel)]="notes"
+              rows="4"
+              placeholder="Zusätzliche Informationen zur Beziehung..."></textarea>
+          </mat-form-field>
+        </div>
+      </mat-card-content>
+    </mat-card>
+  }
+</div>
