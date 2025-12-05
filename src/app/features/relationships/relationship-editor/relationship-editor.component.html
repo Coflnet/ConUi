@@ -1,4 +1,35 @@
 <div class="relationship-editor-container">
+  <!-- Error/Success Messages -->
+  @if (errorMessage()) {
+    <div class="message-banner error-banner">
+      <mat-icon>error</mat-icon>
+      <span>{{ errorMessage() }}</span>
+      <button mat-icon-button (click)="clearMessages()">
+        <mat-icon>close</mat-icon>
+      </button>
+    </div>
+  }
+
+  <!-- Delete Confirmation Dialog -->
+  @if (showDeleteConfirm()) {
+    <div class="delete-overlay">
+      <mat-card class="delete-confirm-card">
+        <mat-card-content>
+          <mat-icon class="warn-icon">warning</mat-icon>
+          <h3>Beziehung löschen?</h3>
+          <p>Diese Aktion kann nicht rückgängig gemacht werden.</p>
+          <div class="confirm-actions">
+            <button mat-button (click)="cancelDelete()">Abbrechen</button>
+            <button mat-raised-button color="warn" (click)="deleteRelationship()">
+              <mat-icon>delete</mat-icon>
+              Löschen
+            </button>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    </div>
+  }
+
   <div class="header">
     <h1 class="page-title">
       @if (relationshipId && relationshipId !== 'new') {
@@ -8,23 +39,25 @@
       }
     </h1>
     <div class="header-actions">
-      <button mat-button (click)="cancel()">
+      <button mat-button (click)="cancel()" matTooltip="Escape">
         <mat-icon>close</mat-icon>
-        Abbrechen
+        <span class="button-text">Abbrechen</span>
       </button>
       @if (relationshipId && relationshipId !== 'new') {
-        <button mat-button color="warn" (click)="deleteRelationship()">
+        <button mat-button color="warn" (click)="confirmDelete()">
           <mat-icon>delete</mat-icon>
-          Löschen
+          <span class="button-text">Löschen</span>
         </button>
       }
-      <button mat-raised-button color="primary" (click)="save()" [disabled]="saving()">
-        <mat-icon>save</mat-icon>
-        @if (saving()) {
-          Speichert...
-        } @else {
-          Speichern
-        }
+      <button mat-raised-button color="primary" (click)="save()" [disabled]="saving()" matTooltip="Strg+S">
+        <mat-icon>{{ saving() ? 'hourglass_empty' : 'save' }}</mat-icon>
+        <span class="button-text">
+          @if (saving()) {
+            Speichert...
+          } @else {
+            Speichern
+          }
+        </span>
       </button>
     </div>
   </div>
@@ -46,7 +79,7 @@
           
           <div class="person-fields">
             <div class="person-field">
-              <label class="field-label">Von Person *</label>
+              <label class="field-label" [class.error]="showValidation() && !fromPersonId">Von Person *</label>
               <ng-select
                 [(ngModel)]="fromPersonId"
                 [items]="fromPersonResults$()"
@@ -57,22 +90,34 @@
                 [addTag]="addPersonTag"
                 addTagText="Neue Person erstellen: "
                 placeholder="Person suchen..."
+                [class.invalid]="showValidation() && !fromPersonId"
                 class="person-select">
                 <ng-template ng-option-tmp let-item="item">
                   <div class="person-option">
-                    <mat-icon class="person-icon">person</mat-icon>
+                    <mat-icon class="person-icon">{{ item._isNew ? 'person_add' : 'person' }}</mat-icon>
                     <span>{{ item.name }}</span>
+                    @if (item._isNew) {
+                      <span class="new-badge">Neu</span>
+                    }
                   </div>
                 </ng-template>
               </ng-select>
+              @if (showValidation() && !fromPersonId) {
+                <div class="field-error">Bitte wählen Sie eine Person aus</div>
+              }
             </div>
 
             <div class="relationship-arrow">
-              <mat-icon>arrow_forward</mat-icon>
+              <button mat-icon-button 
+                      (click)="swapPersons()" 
+                      matTooltip="Personen tauschen"
+                      class="swap-button">
+                <mat-icon>swap_horiz</mat-icon>
+              </button>
             </div>
 
             <div class="person-field">
-              <label class="field-label">Zu Person *</label>
+              <label class="field-label" [class.error]="showValidation() && !toPersonId">Zu Person *</label>
               <ng-select
                 [(ngModel)]="toPersonId"
                 [items]="toPersonResults$()"
@@ -83,14 +128,21 @@
                 [addTag]="addPersonTag"
                 addTagText="Neue Person erstellen: "
                 placeholder="Person suchen..."
+                [class.invalid]="showValidation() && !toPersonId"
                 class="person-select">
                 <ng-template ng-option-tmp let-item="item">
                   <div class="person-option">
-                    <mat-icon class="person-icon">person</mat-icon>
+                    <mat-icon class="person-icon">{{ item._isNew ? 'person_add' : 'person' }}</mat-icon>
                     <span>{{ item.name }}</span>
+                    @if (item._isNew) {
+                      <span class="new-badge">Neu</span>
+                    }
                   </div>
                 </ng-template>
               </ng-select>
+              @if (showValidation() && !toPersonId) {
+                <div class="field-error">Bitte wählen Sie eine Person aus</div>
+              }
             </div>
           </div>
         </div>
@@ -101,7 +153,21 @@
             Beziehungstyp
           </h2>
           
-          <mat-form-field appearance="outline" class="full-width">
+          <!-- Quick type buttons -->
+          <div class="quick-types">
+            @for (type of quickTypes; track type.value) {
+              <button 
+                mat-stroked-button 
+                [class.active]="relationshipType === type.value"
+                (click)="setQuickType(type.value)"
+                class="quick-type-btn">
+                <mat-icon>{{ type.icon }}</mat-icon>
+                {{ type.label }}
+              </button>
+            }
+          </div>
+
+          <mat-form-field appearance="outline" class="full-width" [class.invalid]="showValidation() && !relationshipType">
             <mat-label>Beziehungstyp *</mat-label>
             <input 
               matInput 
@@ -115,7 +181,11 @@
                 </mat-option>
               }
             </mat-autocomplete>
-            <mat-hint>Wählen Sie einen vordefinierten Typ oder geben Sie einen eigenen ein</mat-hint>
+            @if (showValidation() && !relationshipType) {
+              <mat-error>Bitte geben Sie einen Beziehungstyp an</mat-error>
+            } @else {
+              <mat-hint>Wählen Sie einen vordefinierten Typ oder geben Sie einen eigenen ein</mat-hint>
+            }
           </mat-form-field>
         </div>
 

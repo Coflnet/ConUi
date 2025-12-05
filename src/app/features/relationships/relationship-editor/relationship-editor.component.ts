@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -12,6 +12,9 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatChipsModule } from '@angular/material/chips';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { NgSelectModule } from '@ng-select/ng-select';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
@@ -37,6 +40,9 @@ import { RelationshipDto, EntityType, Relationship } from '../../../client/model
     MatNativeDateModule,
     MatSliderModule,
     MatAutocompleteModule,
+    MatSnackBarModule,
+    MatChipsModule,
+    MatTooltipModule,
     NgSelectModule
   ],
   templateUrl: './relationship-editor.component.html',
@@ -56,6 +62,20 @@ export class RelationshipEditorComponent implements OnInit {
   endDate: Date | null = null;
   certainty = 100;
   notes = '';
+
+  // UI state
+  showValidation = signal(false);
+  successMessage = signal<string | null>(null);
+  errorMessage = signal<string | null>(null);
+
+  // Quick type buttons for common relationships
+  quickTypes = [
+    { value: 'Ehepartner', icon: 'favorite', label: 'Ehepartner' },
+    { value: 'Elternteil', icon: 'family_restroom', label: 'Elternteil' },
+    { value: 'Kind', icon: 'child_care', label: 'Kind' },
+    { value: 'Geschwister', icon: 'people', label: 'Geschwister' },
+    { value: 'Freund', icon: 'person', label: 'Freund' },
+  ];
 
   // Person search
   peopleSearch$ = signal<any[]>([]);
@@ -136,8 +156,23 @@ export class RelationshipEditorComponent implements OnInit {
     private router: Router,
     private relationshipService: RelationshipService,
     private personService: PersonService,
-    private searchService: SearchService
+    private searchService: SearchService,
+    private snackBar: MatSnackBar
   ) {}
+
+  // Keyboard shortcuts
+  @HostListener('document:keydown', ['$event'])
+  handleKeyboardEvent(event: KeyboardEvent) {
+    // Ctrl+S to save
+    if (event.ctrlKey && event.key === 's') {
+      event.preventDefault();
+      this.save();
+    }
+    // Escape to cancel
+    if (event.key === 'Escape') {
+      this.cancel();
+    }
+  }
 
   ngOnInit(): void {
     this.relationshipId = this.route.snapshot.paramMap.get('id');
@@ -252,9 +287,42 @@ export class RelationshipEditorComponent implements OnInit {
     this.notes = rel.notes || '';
   }
 
+  // Swap from and to persons
+  swapPersons(): void {
+    const tempId = this.fromPersonId;
+    const tempResults = this.fromPersonResults$();
+    
+    this.fromPersonId = this.toPersonId;
+    this.fromPersonResults$.set(this.toPersonResults$());
+    
+    this.toPersonId = tempId;
+    this.toPersonResults$.set(tempResults);
+    
+    this.snackBar.open('Personen getauscht', '', { duration: 1500 });
+  }
+
+  // Set quick relationship type
+  setQuickType(type: string): void {
+    this.relationshipType = type;
+  }
+
+  // Clear error/success messages
+  clearMessages(): void {
+    this.errorMessage.set(null);
+    this.successMessage.set(null);
+  }
+
+  // Validate form
+  isFormValid(): boolean {
+    return !!(this.fromPersonId && this.toPersonId && this.relationshipType);
+  }
+
   save(): void {
-    if (!this.fromPersonId || !this.toPersonId || !this.relationshipType) {
-      alert('Bitte wählen Sie beide Personen und einen Beziehungstyp aus.');
+    this.showValidation.set(true);
+    this.clearMessages();
+
+    if (!this.isFormValid()) {
+      this.errorMessage.set('Bitte füllen Sie alle Pflichtfelder aus.');
       return;
     }
 
@@ -329,18 +397,25 @@ export class RelationshipEditorComponent implements OnInit {
         request.subscribe({
           next: () => {
             this.saving.set(false);
+            this.snackBar.open(
+              this.relationshipId && this.relationshipId !== 'new' 
+                ? 'Beziehung aktualisiert' 
+                : 'Beziehung erstellt',
+              'OK',
+              { duration: 3000 }
+            );
             this.router.navigate(['/relationships']);
           },
           error: (err: any) => {
             console.error('Failed to save relationship', err);
-            alert('Fehler beim Speichern der Beziehung');
+            this.errorMessage.set('Fehler beim Speichern der Beziehung');
             this.saving.set(false);
           }
         });
       })
       .catch((err) => {
         console.error('Failed to create person', err);
-        alert('Fehler beim Erstellen der Person');
+        this.errorMessage.set('Fehler beim Erstellen der Person');
         this.saving.set(false);
       });
   }
@@ -349,20 +424,29 @@ export class RelationshipEditorComponent implements OnInit {
     this.router.navigate(['/relationships']);
   }
 
+  // Confirmation dialog state
+  showDeleteConfirm = signal(false);
+
+  confirmDelete(): void {
+    this.showDeleteConfirm.set(true);
+  }
+
+  cancelDelete(): void {
+    this.showDeleteConfirm.set(false);
+  }
+
   deleteRelationship(): void {
     if (!this.relationshipId || this.relationshipId === 'new') return;
-    
-    if (!confirm('Sind Sie sicher, dass Sie diese Beziehung löschen möchten?')) {
-      return;
-    }
 
     this.relationshipService.deleteRelationship(this.relationshipId).subscribe({
       next: () => {
+        this.snackBar.open('Beziehung gelöscht', '', { duration: 2000 });
         this.router.navigate(['/relationships']);
       },
       error: (err) => {
         console.error('Failed to delete relationship', err);
-        alert('Fehler beim Löschen der Beziehung');
+        this.errorMessage.set('Fehler beim Löschen der Beziehung');
+        this.showDeleteConfirm.set(false);
       }
     });
   }
