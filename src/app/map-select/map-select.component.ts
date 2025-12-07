@@ -1,92 +1,159 @@
-import { Component, OnInit, Inject, PLATFORM_ID, Output, EventEmitter } from '@angular/core';
+import { Component, Output, EventEmitter, signal, Input } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 /**
- * This component only renders in the browser and initializes a map with OpenStreetMap tiles.
+ * Map component for selecting a location. Click/tap to place a marker,
+ * then confirm selection. Works on desktop and mobile.
  */
 @Component({
     selector: 'app-map-select',
-    imports: [MatButtonModule],
+    imports: [CommonModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule],
     templateUrl: './map-select.component.html',
     styleUrl: './map-select.component.scss'
 })
 export class MapSelectComponent {
   private map: any | undefined;
+  private currentMarker: any = null;
+  private L: any = null;
+
+  @Input() height = '400px';
   @Output() locationSelected = new EventEmitter<{ lat: number, lng: number, address?: string }>();
+  @Output() cancelled = new EventEmitter<void>();
+
+  // UI state
+  selectedLocation = signal<{ lat: number, lng: number, address?: string } | null>(null);
+  isLoadingAddress = signal(false);
+  isFullscreen = signal(false);
 
   ngAfterViewInit(): void {
-    // init map only in browser runtime; leafet is loaded dynamically to avoid SSR errors
     this.initMap();
   }
 
   private initMap(): void {
-    // Dynamically import leaflet only at runtime (avoid SSR importing window-bound libs)
     (async () => {
       try {
-        const L = await import('leaflet');
-        // Initialize the map and set its view to center of Germany
-        let mapCenter = JSON.parse(localStorage.getItem('mapCenter') || 'null') ?? [49.1124747, 12.6696695];
-        let mapZoom = JSON.parse(localStorage.getItem('mapZoom') || 'null') ?? 9;
-        this.map = (L as any).map('map').setView(mapCenter, mapZoom);
+        this.L = await import('leaflet');
+        const L = this.L;
+        
+        // Restore saved position or default to Germany
+        const mapCenter = JSON.parse(localStorage.getItem('mapCenter') || 'null') ?? [49.1124747, 12.6696695];
+        const mapZoom = JSON.parse(localStorage.getItem('mapZoom') || 'null') ?? 9;
+        this.map = L.map('map').setView(mapCenter, mapZoom);
 
-        // Set up the tile layer from OpenStreetMap
-        (L as any).tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19,
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         }).addTo(this.map);
 
-    // add option to select area
-  this.map.on('click', (e: any) => {
-      let selectButton = document.createElement('button');
-      // add material design classes
-      selectButton.classList.add('mdc-button', 'mat-mdc-raised-button');
-      selectButton.innerHTML = '<br>Auswählen';
-      selectButton.onclick = () => {
-        console.log('Selected address:', e.latlng);
-        alert('Auswählen erfolgreich');
-      };
-      const marker = (L as any).marker(e.latlng, {
-        icon: (L as any).icon({
-          ...((L as any).Icon.Default.prototype.options || {}),
-          iconUrl: 'assets/marker-icon.png',
-          iconRetinaUrl: 'assets/marker-icon-2x.png',
-          shadowUrl: 'assets/marker-shadow.png'
-        })
-      })
-        .addTo(this.map!)
-        .bindPopup(selectButton, {
-          minWidth: 100
-        })
-        .openPopup();
-      // get address at click
-      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${e.latlng.lat}&lon=${e.latlng.lng}&zoom=18&addressdetails=1`)
-        .then((response) => response.json())
-        .then((data) => {
-          let addr = data.address.road + ' ' + (data.address?.house_number ?? '');
-          selectButton.innerHTML = addr + ' <br>Auswählen';
-        });
-  marker.on('popupclose', () => {
-        marker.remove();
-      });
-      // Emit the selected location immediately; geocoded address may arrive later
-      try {
-        this.locationSelected.emit({ lat: e.latlng.lat, lng: e.latlng.lng });
-      } catch (err) {
-        console.warn('Failed emitting locationSelected', err);
-      }
-    });
+        // Click handler
+        this.map.on('click', (e: any) => this.handleMapClick(e));
 
+        // Persist map position
         this.map.on('moveend', () => {
-          console.log(this.map!.getCenter());
           localStorage.setItem('mapCenter', JSON.stringify(this.map!.getCenter()));
         });
         this.map.on('zoomend', () => {
-          console.log(this.map!.getZoom());
           localStorage.setItem('mapZoom', JSON.stringify(this.map!.getZoom()));
         });
       } catch (err) {
-        console.warn('Leaflet failed to load in browser environment', err);
+        console.warn('Leaflet failed to load', err);
       }
     })();
+  }
+
+  private handleMapClick(e: any): void {
+    const L = this.L;
+    
+    // Remove previous marker
+    if (this.currentMarker) {
+      this.currentMarker.remove();
+    }
+
+    // Create new marker
+    this.currentMarker = L.marker(e.latlng, {
+      icon: L.icon({
+        ...(L.Icon.Default.prototype.options || {}),
+        iconUrl: 'assets/marker-icon.png',
+        iconRetinaUrl: 'assets/marker-icon-2x.png',
+        shadowUrl: 'assets/marker-shadow.png'
+      })
+    }).addTo(this.map!);
+
+    // Set initial state
+    this.selectedLocation.set({ lat: e.latlng.lat, lng: e.latlng.lng });
+    this.isLoadingAddress.set(true);
+
+    // Fetch address
+    this.fetchAddress(e.latlng.lat, e.latlng.lng);
+  }
+
+  private fetchAddress(lat: number, lng: number): void {
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`)
+      .then(res => res.json())
+      .then(data => {
+        const addr = data.address;
+        let addressStr = '';
+        if (addr.road) {
+          addressStr = addr.road + (addr.house_number ? ' ' + addr.house_number : '');
+        }
+        if (addr.city || addr.town || addr.village) {
+          addressStr += addressStr ? ', ' : '';
+          addressStr += addr.city || addr.town || addr.village;
+        }
+        this.selectedLocation.update(loc => loc ? { ...loc, address: addressStr || data.display_name } : null);
+      })
+      .catch(() => {
+        this.selectedLocation.update(loc => loc ? { ...loc, address: 'Adresse nicht gefunden' } : null);
+      })
+      .finally(() => {
+        this.isLoadingAddress.set(false);
+      });
+  }
+
+  confirmSelection(): void {
+    const loc = this.selectedLocation();
+    if (loc) {
+      this.locationSelected.emit(loc);
+      this.clearSelection();
+    }
+  }
+
+  clearSelection(): void {
+    if (this.currentMarker) {
+      this.currentMarker.remove();
+      this.currentMarker = null;
+    }
+    this.selectedLocation.set(null);
+  }
+
+  cancel(): void {
+    this.clearSelection();
+    this.cancelled.emit();
+  }
+
+  toggleFullscreen(): void {
+    this.isFullscreen.update(v => !v);
+    // Invalidate map size after transition
+    setTimeout(() => {
+      this.map?.invalidateSize();
+    }, 300);
+  }
+
+  useCurrentLocation(): void {
+    if (!navigator.geolocation) return;
+    
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        this.map?.setView([latitude, longitude], 15);
+        // Simulate a click at current location
+        this.handleMapClick({ latlng: { lat: latitude, lng: longitude } });
+      },
+      (err) => console.warn('Geolocation error:', err),
+      { enableHighAccuracy: true }
+    );
   }
 }

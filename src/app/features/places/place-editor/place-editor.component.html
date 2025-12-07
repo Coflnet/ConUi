@@ -1,19 +1,104 @@
 <div class="place-editor">
-  <h1>Place Editor</h1>
-  <mat-form-field class="full-width">
-    <mat-label>Name</mat-label>
-    <input matInput [(ngModel)]="name" (blur)="saveName()" />
-  </mat-form-field>
-
-  <div class="map-area">
-    <app-map-select (locationSelected)="onMapLocationSelected($event)"></app-map-select>
+  <!-- Header -->
+  <div class="header">
+    <h1>
+      <mat-icon>place</mat-icon>
+      {{ place ? 'Ort bearbeiten' : 'Neuen Ort erstellen' }}
+    </h1>
   </div>
 
-  <div class="fields">
-    <!-- place fields could be listed here -->
-    <p *ngIf="!place">Create a new place by selecting a point on the map.</p>
-    <div *ngIf="place">
-      <app-place-field [field]="{ placeId: place?.id, key: 'Beschreibung', value: '' }" (saved)="onPlaceFieldSaved($event)"></app-place-field>
+  <!-- Existing place: show name editor -->
+  @if (place) {
+    <mat-card class="name-card">
+      <mat-card-content>
+        <mat-form-field class="full-width">
+          <mat-label>Name</mat-label>
+          <input matInput [(ngModel)]="name" (blur)="saveName()" placeholder="z.B. Marktplatz, Rathaus...">
+          <mat-icon matSuffix>edit</mat-icon>
+        </mat-form-field>
+        
+        @if (place.latitude && place.longitude) {
+          <div class="coords-display">
+            <mat-icon>location_on</mat-icon>
+            <span>{{ place.latitude.toFixed(5) }}, {{ place.longitude.toFixed(5) }}</span>
+          </div>
+        }
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="fields-card">
+      <mat-card-header>
+        <mat-card-title>Details</mat-card-title>
+      </mat-card-header>
+      <mat-card-content>
+        <app-place-field 
+          [field]="{ placeId: place.id, key: 'Beschreibung', value: '' }" 
+          (saved)="onPlaceFieldSaved($event)">
+        </app-place-field>
+      </mat-card-content>
+    </mat-card>
+  }
+
+  <!-- New place: show map selection -->
+  @if (!place) {
+    <!-- Name input for new place -->
+    <mat-card class="name-card">
+      <mat-card-content>
+        <mat-form-field class="full-width">
+          <mat-label>Name des Ortes</mat-label>
+          <input matInput [(ngModel)]="name" placeholder="z.B. Marktplatz, Rathaus...">
+          <mat-hint>Optional – wird automatisch von der Adresse übernommen</mat-hint>
+        </mat-form-field>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Map area -->
+    <div class="map-area" [class.has-selection]="pendingLocation()">
+      @if (showMapHint()) {
+        <div class="map-hint">
+          <mat-icon>touch_app</mat-icon>
+          <span>Tippen Sie auf die Karte, um den Ort zu markieren</span>
+        </div>
+      }
+      <app-map-select 
+        (locationSelected)="onMapLocationSelected($event)"
+        (cancelled)="cancelPending()">
+      </app-map-select>
     </div>
-  </div>
+
+    <!-- Confirmation panel when location is selected -->
+    @if (pendingLocation()) {
+      <mat-card class="confirm-card">
+        <mat-card-content>
+          <div class="confirm-content">
+            <div class="location-preview">
+              <mat-icon class="pin-icon">place</mat-icon>
+              <div class="location-details">
+                <span class="location-name">{{ name || pendingLocation()?.address || 'Neuer Ort' }}</span>
+                <span class="location-coords">
+                  {{ pendingLocation()?.lat?.toFixed(5) }}, {{ pendingLocation()?.lng?.toFixed(5) }}
+                </span>
+              </div>
+            </div>
+            <div class="confirm-actions">
+              <button mat-button (click)="cancelPending()" [disabled]="isCreating()">
+                <mat-icon>close</mat-icon>
+                Abbrechen
+              </button>
+              <button mat-raised-button color="primary" (click)="confirmAndCreate()" [disabled]="isCreating()">
+                <ng-container *ngIf="isCreating(); else notCreating">
+                  <mat-icon class="spin">sync</mat-icon>
+                  Erstelle...
+                </ng-container>
+                <ng-template #notCreating>
+                  <mat-icon>check</mat-icon>
+                  Ort erstellen
+                </ng-template>
+              </button>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    }
+  }
 </div>

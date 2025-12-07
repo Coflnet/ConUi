@@ -1,4 +1,48 @@
-<div>Position auswählen
-<button mat-raised-button  color="warn">Abrechen</button>
+<div class="map-select-container" [class.fullscreen]="isFullscreen()">
+  <!-- Header toolbar -->
+  <div class="map-toolbar">
+    <span class="instructions">
+      <mat-icon>touch_app</mat-icon>
+      <span class="instruction-text">Tippen Sie auf die Karte, um einen Ort auszuwählen</span>
+    </span>
+    <div class="toolbar-actions">
+      <button mat-icon-button (click)="useCurrentLocation()" title="Mein Standort">
+        <mat-icon>my_location</mat-icon>
+      </button>
+      <button mat-icon-button (click)="toggleFullscreen()" title="Vollbild">
+        <mat-icon>{{ isFullscreen() ? 'fullscreen_exit' : 'fullscreen' }}</mat-icon>
+      </button>
+    </div>
+  </div>
+
+  <!-- Map container -->
+  <div id="map" class="map"></div>
+
+  <!-- Selection panel (appears when location selected) -->
+  @if (selectedLocation()) {
+    <div class="selection-panel">
+      <div class="selection-info">
+        <mat-icon class="location-icon">place</mat-icon>
+        <div class="address-container">
+          @if (isLoadingAddress()) {
+            <mat-spinner diameter="20"></mat-spinner>
+            <span class="loading-text">Adresse wird geladen...</span>
+          } @else {
+            <span class="address">{{ selectedLocation()?.address || 'Adresse nicht verfügbar' }}</span>
+            <span class="coords">{{ selectedLocation()?.lat?.toFixed(5) }}, {{ selectedLocation()?.lng?.toFixed(5) }}</span>
+          }
+        </div>
+      </div>
+      <div class="selection-actions">
+        <button mat-button (click)="clearSelection()">
+          <mat-icon>close</mat-icon>
+          Abbrechen
+        </button>
+        <button mat-raised-button color="primary" (click)="confirmSelection()" [disabled]="isLoadingAddress()">
+          <mat-icon>check</mat-icon>
+          Ort erstellen
+        </button>
+      </div>
+    </div>
+  }
 </div>
-<div id="map" style="height: calc(100% - 150px); width: 100%;"></div>

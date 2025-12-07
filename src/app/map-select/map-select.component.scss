@@ -1,0 +1,179 @@
+.map-select-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 300px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f5f5f5;
+  position: relative;
+
+  &.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    border-radius: 0;
+    min-height: 100vh;
+  }
+}
+
+.map-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.95);
+  border-bottom: 1px solid #e0e0e0;
+  z-index: 10;
+
+  .instructions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #666;
+    font-size: 14px;
+
+    mat-icon {
+      color: #1976d2;
+    }
+  }
+
+  .toolbar-actions {
+    display: flex;
+    gap: 4px;
+  }
+}
+
+.map {
+  flex: 1;
+  width: 100%;
+  min-height: 250px;
+  cursor: crosshair;
+}
+
+.selection-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  padding: 16px;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: 16px 16px 0 0;
+  z-index: 20;
+  animation: slideUp 0.2s ease-out;
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+}
+
+.selection-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+
+  .location-icon {
+    font-size: 32px;
+    width: 32px;
+    height: 32px;
+    color: #e53935;
+    flex-shrink: 0;
+  }
+
+  .address-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 40px;
+
+    .address {
+      font-size: 16px;
+      font-weight: 500;
+      color: #333;
+    }
+
+    .coords {
+      font-size: 12px;
+      color: #888;
+      font-family: monospace;
+    }
+
+    .loading-text {
+      font-size: 14px;
+      color: #666;
+      margin-left: 8px;
+    }
+
+    mat-spinner {
+      display: inline-block;
+    }
+  }
+}
+
+.selection-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+
+  button {
+    min-width: 120px;
+
+    mat-icon {
+      margin-right: 4px;
+    }
+  }
+}
+
+// Mobile optimizations
+@media (max-width: 600px) {
+  .map-toolbar {
+    padding: 6px 8px;
+
+    .instruction-text {
+      display: none;
+    }
+
+    .instructions mat-icon {
+      font-size: 20px;
+    }
+  }
+
+  .selection-panel {
+    padding: 12px;
+  }
+
+  .selection-actions {
+    flex-direction: column-reverse;
+
+    button {
+      width: 100%;
+      min-height: 48px; // Better touch target
+    }
+  }
+
+  .selection-info {
+    .address-container .address {
+      font-size: 15px;
+    }
+  }
+}
+
+// Touch-friendly map interactions
+@media (hover: none) and (pointer: coarse) {
+  .map {
+    // Larger tap targets on touch devices
+    cursor: pointer;
+  }
+}
