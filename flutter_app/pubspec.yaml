@@ -1,0 +1,43 @@
+name: relationship_manager
+description: A relationship and contact management app with cross-device sync.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  sqflite: ^2.3.0
+  sqflite_common_ffi: ^2.3.0
+  sqflite_common_ffi_web: ^1.1.1
+  path_provider: ^2.1.1
+  uuid: ^4.2.2
+  encrypt: ^5.0.3
+  crypto: ^3.0.3
+  http: ^1.1.0
+  shared_preferences: ^2.2.2
+  provider: ^6.1.1
+  intl: ^0.19.0
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.0
+  contacts_service: ^0.6.3
+  permission_handler: ^11.1.0
+  file_picker: ^6.1.1
+  image_picker: ^1.0.4
+  audioplayers: ^5.2.1
+  path: ^1.8.3
+  mime: ^1.0.4
+  collection: ^1.18.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/

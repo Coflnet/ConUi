@@ -1,0 +1,142 @@
+version: '3.8'
+
+services:
+  # ScyllaDB for sync metadata storage
+  scylladb:
+    image: scylladb/scylla:5.4
+    container_name: relationship-scylla
+    ports:
+      - "9042:9042"
+      - "9160:9160"
+    environment:
+      - SCYLLA_SEEDS=scylladb
+    volumes:
+      - scylla_data:/var/lib/scylla
+    command: --smp 1 --memory 512M --overprovisioned 1 --api-address 0.0.0.0
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe cluster'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # MinIO for S3-compatible blob storage
+  minio:
+    image: minio/minio:latest
+    container_name: relationship-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin123
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Initialize MinIO bucket
+  minio-init:
+    image: minio/mc:latest
+    container_name: relationship-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 minioadmin minioadmin123;
+      mc mb myminio/relationship-blobs --ignore-existing;
+      mc anonymous set none myminio/relationship-blobs;
+      echo 'Bucket created successfully';
+      "
+
+  # Initialize ScyllaDB keyspace and tables
+  scylla-init:
+    image: scylladb/scylla:5.4
+    container_name: relationship-scylla-init
+    depends_on:
+      scylladb:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      sleep 10;
+      cqlsh scylladb -e \"
+        CREATE KEYSPACE IF NOT EXISTS relationship_manager
+        WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+        
+        USE relationship_manager;
+        
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          email TEXT,
+          encryption_key_salt TEXT,
+          created_at TIMESTAMP,
+          last_login TIMESTAMP
+        );
+        
+        CREATE INDEX IF NOT EXISTS users_email_idx ON users (email);
+        
+        CREATE TABLE IF NOT EXISTS sync_entries (
+          user_id TEXT,
+          blob_type TEXT,
+          blob_id TEXT,
+          version BIGINT,
+          checksum TEXT,
+          size BIGINT,
+          updated_at TIMESTAMP,
+          PRIMARY KEY ((user_id), blob_type, blob_id)
+        );
+        
+        CREATE TABLE IF NOT EXISTS blob_versions (
+          user_id TEXT,
+          blob_type TEXT,
+          blob_id TEXT,
+          version BIGINT,
+          checksum TEXT,
+          size BIGINT,
+          created_at TIMESTAMP,
+          PRIMARY KEY ((user_id, blob_type, blob_id), version)
+        ) WITH CLUSTERING ORDER BY (version DESC);
+      \";
+      echo 'ScyllaDB initialized successfully';
+      "
+
+  # ASP.NET Backend API
+  backend:
+    build:
+      context: ./backend/RelationshipManager.Api
+      dockerfile: Dockerfile
+    container_name: relationship-backend
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - Cassandra__ContactPoints__0=scylladb
+      - Cassandra__Port=9042
+      - Cassandra__Keyspace=relationship_manager
+      - Cassandra__Username=cassandra
+      - Cassandra__Password=cassandra
+      - S3__ServiceUrl=http://minio:9000
+      - S3__AccessKey=minioadmin
+      - S3__SecretKey=minioadmin123
+      - S3__BucketName=relationship-blobs
+      - S3__UseHttp=true
+      - Jwt__Issuer=RelationshipManager
+      - Jwt__Secret=DevSecretKeyThatIsAtLeast32CharactersLong!
+    depends_on:
+      scylla-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+
+volumes:
+  scylla_data:
+  minio_data:
+
+networks:
+  default:
+    name: relationship-network
