@@ -10,11 +10,38 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:relationship_manager/backup/backup_progress.dart';
 import 'package:relationship_manager/backup/backup_restorer.dart';
 import 'package:relationship_manager/backup/backup_source.dart';
 import 'package:relationship_manager/backup/backup_writer.dart';
+import 'package:relationship_manager/services/wav.dart';
 
 import 'fakes.dart';
+
+/// Writes a generated WAV file straight to disk, [chunkSize] bytes at a
+/// time, so the FIXTURE itself never holds the whole recording in memory
+/// either - the point of the test below is to measure BackupWriter's
+/// memory use, and that signal would be worthless if setting up its input
+/// already required a big in-memory buffer.
+Future<void> _writeGeneratedWavFile(String path, int pcmLength,
+    {int seed = 0, int chunkSize = 1024 * 1024}) async {
+  final raf = await File(path).open(mode: FileMode.write);
+  try {
+    await raf.writeFrom(WavHeader.build(dataLength: pcmLength));
+    var written = 0;
+    while (written < pcmLength) {
+      final take = (pcmLength - written) < chunkSize ? (pcmLength - written) : chunkSize;
+      final chunk = Uint8List(take);
+      for (var i = 0; i < take; i++) {
+        chunk[i] = (seed + written + i) % 256;
+      }
+      await raf.writeFrom(chunk);
+      written += take;
+    }
+  } finally {
+    await raf.close();
+  }
+}
 
 void main() {
   test('a 50 MB recording backs up and restores byte for byte', () async {
@@ -116,5 +143,78 @@ void main() {
           '~${(secondHalfPerRecording / 1024).round()} KB (samples: $rssSamples)');
     },
     timeout: const Timeout(Duration(minutes: 2)),
+  );
+
+  test(
+    'peak memory while writing a SINGLE 200 MB recording stays far below its '
+    'size (read and hashed straight off disk in chunks, never held whole in '
+    'memory)',
+    () async {
+      if (!Platform.isLinux && !Platform.isMacOS && !Platform.isWindows) {
+        return; // ProcessInfo.currentRss needs a native OS process.
+      }
+
+      const pcmBytes = 200 * 1024 * 1024; // ~2 hours of mono 16-bit/16kHz PCM
+      final tempDir =
+          Directory.systemTemp.createTempSync('backup_single_recording_memory_test');
+      addTearDown(() => tempDir.deleteSync(recursive: true));
+      final recordingPath = '${tempDir.path}/rec.wav';
+      await _writeGeneratedWavFile(recordingPath, pcmBytes, seed: 42);
+
+      // File-path-backed (not recordingsOnDevice), so BackupWriter takes
+      // its file-streaming path (see BackupDataSource.recordingFilePath)
+      // instead of the in-memory fallback - see FakeBackupDataSource's doc
+      // comment for why that distinction matters for this measurement.
+      final source = FakeBackupDataSource(recordingFilePaths: {'big': recordingPath});
+      final output = OutputFileStream('${tempDir.path}/out.zip');
+
+      // Sampled via onProgress at current=0 (right before this recording is
+      // touched at all) and current=1 (right after both the hashing pass
+      // and the zip encoder's own write pass have finished for it) - the
+      // same "sample at a controlled checkpoint" approach as the test
+      // above, just with one very large recording instead of many small
+      // ones, since a single recording's progress only ticks twice and
+      // there is no per-chunk hook to sample in between (see BackupWriter -
+      // adding one purely to make this measurement easier felt like the
+      // tail wagging the dog). RSS's high-water-mark nature (see the test
+      // above's comment) means the "after" sample still reflects the peak
+      // reached during processing even without in-between samples.
+      int? rssBeforeRecording;
+      int? rssAfterRecording;
+      await BackupWriter().write(
+        source: source,
+        output: output,
+        onProgress: (p) {
+          if (p.phase != BackupPhase.writingRecordings) return;
+          if (p.current == 0) rssBeforeRecording = ProcessInfo.currentRss;
+          if (p.current == 1) rssAfterRecording = ProcessInfo.currentRss;
+        },
+      );
+      await output.close();
+
+      expect(rssBeforeRecording, isNotNull);
+      expect(rssAfterRecording, isNotNull);
+
+      final growthBytes = rssAfterRecording! - rssBeforeRecording!;
+      // Generous on purpose: real per-chunk overhead is a low single-digit
+      // number of MB. This only needs to rule out "the whole 200 MB
+      // recording ended up resident at some point", which a quarter of its
+      // size comfortably does.
+      expect(
+        growthBytes,
+        lessThan(pcmBytes ~/ 4),
+        reason: 'RSS grew by ${(growthBytes / (1024 * 1024)).toStringAsFixed(1)} MB '
+            'while writing a single ${(pcmBytes / (1024 * 1024)).toStringAsFixed(0)} '
+            'MB recording (before: $rssBeforeRecording, after: $rssAfterRecording) - '
+            'expected growth to stay a small fraction of the recording size, not '
+            'scale with it',
+      );
+      // ignore: avoid_print
+      print('Single 200 MB recording memory check: before '
+          '${(rssBeforeRecording! / (1024 * 1024)).toStringAsFixed(1)} MB, after '
+          '${(rssAfterRecording! / (1024 * 1024)).toStringAsFixed(1)} MB, growth '
+          '${(growthBytes / (1024 * 1024)).toStringAsFixed(1)} MB');
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
   );
 }

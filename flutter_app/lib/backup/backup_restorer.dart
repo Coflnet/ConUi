@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
@@ -10,6 +11,7 @@ import 'backup_manifest.dart';
 import 'backup_progress.dart';
 import 'backup_restore_result.dart';
 import 'backup_source.dart';
+import 'backup_stream_hash.dart';
 
 /// Read-only parse of an archive: enough to show the user what's inside
 /// before they confirm a restore (date, counts, recordings, missing
@@ -83,8 +85,7 @@ class BackupRestorer {
             'expected ${entry.sizeBytes}.');
         continue;
       }
-      final bytes = file.readBytes();
-      final actualSha256 = sha256.convert(bytes ?? const []).toString();
+      final actualSha256 = _hashRecordingEntry(file).sha256Hex;
       if (actualSha256 != entry.sha256Hex) {
         problems.add('Recording ${entry.id} failed its checksum check.');
       }
@@ -199,15 +200,20 @@ class BackupRestorer {
           id: entry.id, outcome: RecordingOutcome.checksumMismatch);
     }
 
-    final bytes = file.readBytes();
-    final actualSha256 = sha256.convert(bytes ?? const []).toString();
-    if (bytes == null || actualSha256 != entry.sha256Hex) {
+    // Hashes (and, on success, re-reads) this entry a chunk at a time
+    // rather than materializing it whole - see _hashRecordingEntry's doc
+    // comment - so restoring a multi-hundred-MB recording never holds more
+    // than one chunk of it in memory, matching BackupWriter's own
+    // guarantee on the way in (see the peak-memory regression tests in
+    // test/backup/large_recording_test.dart).
+    final hashed = _hashRecordingEntry(file);
+    if (hashed.sha256Hex != entry.sha256Hex) {
       return RecordingRestoreResult(
           id: entry.id, outcome: RecordingOutcome.checksumMismatch);
     }
 
     final existingChecksum = await sink.existingRecordingChecksum(entry.id);
-    if (existingChecksum == actualSha256) {
+    if (existingChecksum == hashed.sha256Hex) {
       return RecordingRestoreResult(
           id: entry.id, outcome: RecordingOutcome.alreadyPresent);
     }
@@ -216,8 +222,41 @@ class BackupRestorer {
           id: entry.id, outcome: RecordingOutcome.conflictKept);
     }
 
-    await sink.storeVerifiedRecording(entry.id, bytes, sha256Hex: actualSha256);
+    await sink.storeVerifiedRecordingStream(
+      entry.id,
+      chunksOfInputStream(hashed.stream),
+      sha256Hex: hashed.sha256Hex,
+    );
     return RecordingRestoreResult(id: entry.id, outcome: RecordingOutcome.restored);
+  }
+
+  /// The SHA-256 of one recording entry's bytes, computed a chunk at a time
+  /// wherever possible instead of fully decompressing/materializing the
+  /// entry first (see [ArchiveFile.readBytes]): recordings are always
+  /// written in "store" (uncompressed) mode by BackupWriter, so for an
+  /// honest archive the entry's raw content IS its final bytes, and reading
+  /// it via `getStream(decompress: false)` streams straight from the
+  /// picked backup file's own InputStream rather than buffering. Also
+  /// returns that same [InputStream], rewound to the start, so a caller
+  /// that goes on to restore this recording (see [_restoreOneRecording])
+  /// doesn't need a second full read to get the bytes back.
+  ///
+  /// Falls back to the old (fully-buffering) path for anything that isn't
+  /// plain "store" mode - which nothing this app's own BackupWriter ever
+  /// produces, but a foreign or corrupted archive might claim; the
+  /// fallback is safe either way, since bytes that don't actually match
+  /// [BackupRecordingEntry.sha256Hex] are rejected regardless of how they
+  /// were read.
+  _HashedRecordingEntry _hashRecordingEntry(ArchiveFile file) {
+    final rawContent = file.rawContent;
+    if (file.compression == CompressionType.none && rawContent != null) {
+      final stream = rawContent.getStream(decompress: false);
+      return _HashedRecordingEntry(
+          sha256Hex: sha256OfInputStream(stream), stream: stream);
+    }
+    final bytes = file.readBytes() ?? Uint8List(0);
+    return _HashedRecordingEntry(
+        sha256Hex: sha256.convert(bytes).toString(), stream: InputMemoryStream(bytes));
   }
 
   Map<String, dynamic> _readDataJson(Archive archive) {
@@ -312,4 +351,13 @@ class _OpenedArchive {
   final Archive archive;
   final BackupManifest manifest;
   const _OpenedArchive({required this.archive, required this.manifest});
+}
+
+/// Result of [BackupRestorer._hashRecordingEntry]: the recording's actual
+/// SHA-256, plus an [InputStream] rewound to the start ready to be read
+/// again for the bytes themselves.
+class _HashedRecordingEntry {
+  final String sha256Hex;
+  final InputStream stream;
+  const _HashedRecordingEntry({required this.sha256Hex, required this.stream});
 }

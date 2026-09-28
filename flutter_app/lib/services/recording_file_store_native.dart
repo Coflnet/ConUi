@@ -162,6 +162,12 @@ class NativeRecordingFileStore implements RecordingFileStore {
   }
 
   @override
+  Future<String?> filePathIfAvailable(String id) async {
+    final file = await _resolveExisting(id);
+    return file?.path;
+  }
+
+  @override
   Future<List<String>> listIds() async {
     final dir = await _recordingsDir();
     if (!await dir.exists()) return [];

@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'backup_entity.dart';
 
 /// Everything [BackupWriter] needs to read from local storage. Implemented
@@ -25,10 +23,24 @@ abstract class BackupDataSource {
   /// contradict the whole point of this feature).
   Future<List<String>> recordingIdsOnDevice();
 
-  /// Full bytes of one recording (WAV header included), for [id] in
-  /// [recordingIdsOnDevice]. Implementations should not hold more than one
-  /// recording's bytes at a time - callers only ever have one in flight.
-  Future<Uint8List> readRecordingBytes(String id);
+  /// A filesystem path to recording [id]'s bytes, when the current platform
+  /// keeps recordings as real files (native/desktop - see
+  /// RecordingFileStore.filePathIfAvailable). When this returns non-null,
+  /// BackupWriter reads and hashes the recording directly off disk in
+  /// chunks (via package:archive's InputFileStream), never holding more
+  /// than one chunk in memory regardless of how large the recording is -
+  /// see the peak-memory regression tests in
+  /// test/backup/large_recording_test.dart. Returns null on platforms with
+  /// no such file (web, where recordings live in IndexedDB) - callers fall
+  /// back to [openRecordingStream] there, which for now still has to
+  /// assemble the whole recording in memory first (an existing limitation
+  /// of the web RecordingFileStore this backup feature doesn't change - see
+  /// the final report).
+  Future<String?> recordingFilePath(String id);
+
+  /// [id]'s bytes (WAV header included) as a stream, for platforms where
+  /// [recordingFilePath] returned null.
+  Stream<List<int>> openRecordingStream(String id);
 }
 
 /// How one entity record was handled while applying a restore.
@@ -85,11 +97,12 @@ class RecordingRestoreResult {
 /// fakes.
 ///
 /// Recordings and entities are deliberately two separate write paths (see
-/// [storeVerifiedRecording] vs [applyEntityRestore]) so the restorer can
-/// process one recording's bytes at a time - never holding more than one in
-/// memory - while still applying every entity write as a single atomic
-/// transaction, and while guaranteeing every recording a restored story
-/// refers to is safely on disk before that story's data is committed.
+/// [storeVerifiedRecordingStream] vs [applyEntityRestore]) so the restorer
+/// can process one recording's bytes at a time - never holding more than
+/// one in memory - while still applying every entity write as a single
+/// atomic transaction, and while guaranteeing every recording a restored
+/// story refers to is safely on disk before that story's data is
+/// committed.
 abstract class BackupDataSink {
   /// `updatedAt` of the existing local row for [table]/[id], or null if no
   /// such row exists yet. Used to decide [MergeOutcome].
@@ -101,11 +114,15 @@ abstract class BackupDataSink {
 
   /// Writes one recording's bytes (WAV header included) that the restorer
   /// has ALREADY verified against the manifest checksum and confirmed has
-  /// no conflicting local copy. Must persist the bytes in the
+  /// no conflicting local copy - streamed in [wavBytes] chunk by chunk
+  /// (never the whole recording resident in memory at once; see
+  /// BackupRestorer, which computes the SHA-256 this same way, off the same
+  /// archive entry, before deciding whether to call this at all) rather
+  /// than as one Uint8List. Must persist the bytes in the
   /// RecordingFileStore and update local bookkeeping. Called once per
   /// restored recording, sequentially, strictly before [applyEntityRestore]
   /// is called for the same restore.
-  Future<void> storeVerifiedRecording(String id, Uint8List wavBytes,
+  Future<void> storeVerifiedRecordingStream(String id, Stream<List<int>> wavBytes,
       {required String sha256Hex});
 
   /// Applies every entity write for one restore (only records this restore

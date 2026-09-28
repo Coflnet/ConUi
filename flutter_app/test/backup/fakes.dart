@@ -62,21 +62,34 @@ BackupEntityRecord makeRecord(
 class FakeBackupDataSource implements BackupDataSource {
   final Map<String, List<BackupEntityRecord>> tables;
   final Map<String, Uint8List> recordingsOnDevice;
+
+  /// Recordings backed by a REAL file on disk instead of an in-memory
+  /// Uint8List - id -> path. Exercises BackupWriter's file-streaming path
+  /// (see [BackupDataSource.recordingFilePath]) exactly the way
+  /// DatabaseBackupAdapter/NativeRecordingFileStore do, which is what the
+  /// peak-memory regression tests in test/backup/large_recording_test.dart
+  /// need: a recording backed by [recordingsOnDevice] is already fully in
+  /// memory before the writer even sees it, which would make a memory
+  /// measurement meaningless.
+  final Map<String, String> recordingFilePaths;
+
   final String appVersionValue;
   final int schemaVersionValue;
 
-  /// Every id ever requested via [readRecordingBytes], in call order - lets
-  /// memory tests assert recordings are read one at a time rather than all
-  /// up front.
+  /// Every id ever asked about via [recordingFilePath]/[openRecordingStream],
+  /// in call order - lets tests assert recordings are read one at a time
+  /// rather than all up front.
   final List<String> readRequests = [];
 
   FakeBackupDataSource({
     Map<String, List<BackupEntityRecord>>? tables,
     Map<String, Uint8List>? recordingsOnDevice,
+    Map<String, String>? recordingFilePaths,
     this.appVersionValue = '1.0.0+1',
     this.schemaVersionValue = 2,
   })  : tables = tables ?? {},
-        recordingsOnDevice = recordingsOnDevice ?? {};
+        recordingsOnDevice = recordingsOnDevice ?? {},
+        recordingFilePaths = recordingFilePaths ?? {};
 
   @override
   Future<String> appVersion() async => appVersionValue;
@@ -92,14 +105,20 @@ class FakeBackupDataSource implements BackupDataSource {
   }
 
   @override
-  Future<List<String>> recordingIdsOnDevice() async => recordingsOnDevice.keys.toList();
+  Future<List<String>> recordingIdsOnDevice() async =>
+      {...recordingsOnDevice.keys, ...recordingFilePaths.keys}.toList();
 
   @override
-  Future<Uint8List> readRecordingBytes(String id) async {
+  Future<String?> recordingFilePath(String id) async {
     readRequests.add(id);
+    return recordingFilePaths[id];
+  }
+
+  @override
+  Stream<List<int>> openRecordingStream(String id) {
     final bytes = recordingsOnDevice[id];
     if (bytes == null) throw StateError('FakeBackupDataSource: no recording "$id"');
-    return bytes;
+    return Stream.value(bytes);
   }
 }
 
@@ -151,11 +170,15 @@ class FakeBackupDataSink implements BackupDataSink {
   Future<String?> existingRecordingChecksum(String id) async => recordingChecksums[id];
 
   @override
-  Future<void> storeVerifiedRecording(String id, Uint8List wavBytes,
+  Future<void> storeVerifiedRecordingStream(String id, Stream<List<int>> wavBytes,
       {required String sha256Hex}) async {
     storeVerifiedRecordingCalls++;
     callOrder.add('recording:$id');
-    recordings[id] = wavBytes;
+    final builder = BytesBuilder(copy: false);
+    await for (final chunk in wavBytes) {
+      builder.add(chunk);
+    }
+    recordings[id] = builder.takeBytes();
     recordingChecksums[id] = sha256Hex;
   }
 

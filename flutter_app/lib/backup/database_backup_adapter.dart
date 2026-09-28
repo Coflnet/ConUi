@@ -59,7 +59,10 @@ class DatabaseBackupAdapter implements BackupDataSource, BackupDataSink {
   Future<List<String>> recordingIdsOnDevice() => recordingStore.listIds();
 
   @override
-  Future<Uint8List> readRecordingBytes(String id) => recordingStore.readBytes(id);
+  Future<String?> recordingFilePath(String id) => recordingStore.filePathIfAvailable(id);
+
+  @override
+  Stream<List<int>> openRecordingStream(String id) => recordingStore.openReadStream(id);
 
   @override
   Future<DateTime?> existingUpdatedAt(String table, String id) async {
@@ -86,13 +89,33 @@ class DatabaseBackupAdapter implements BackupDataSource, BackupDataSink {
   }
 
   @override
-  Future<void> storeVerifiedRecording(String id, Uint8List wavBytes,
+  Future<void> storeVerifiedRecordingStream(String id, Stream<List<int>> wavBytes,
       {required String sha256Hex}) async {
-    final pcm = wavBytes.length > wavHeaderLength
-        ? wavBytes.sublist(wavHeaderLength)
-        : Uint8List(0);
     await recordingStore.beginRecording(id);
-    await recordingStore.appendChunk(id, pcm);
+    // wavBytes carries the WAV header (see RecordingFileStore's doc
+    // comment: appendChunk only ever takes raw PCM), so the first
+    // wavHeaderLength bytes - however they happen to be split across
+    // chunks - are dropped here rather than requiring the caller to hand
+    // over a chunking that respects the header boundary.
+    var headerBytesSkipped = 0;
+    await for (final chunk in wavBytes) {
+      if (headerBytesSkipped < wavHeaderLength) {
+        final headerBytesRemaining = wavHeaderLength - headerBytesSkipped;
+        if (chunk.length <= headerBytesRemaining) {
+          headerBytesSkipped += chunk.length;
+          continue;
+        }
+        final pcmPart = chunk.sublist(headerBytesRemaining);
+        headerBytesSkipped = wavHeaderLength;
+        if (pcmPart.isNotEmpty) {
+          await recordingStore.appendChunk(
+              id, pcmPart is Uint8List ? pcmPart : Uint8List.fromList(pcmPart));
+        }
+      } else {
+        await recordingStore.appendChunk(
+            id, chunk is Uint8List ? chunk : Uint8List.fromList(chunk));
+      }
+    }
     final result = await recordingStore.finalizeRecording(id);
 
     await databaseService.saveLocalRecording(LocalRecordingState(
