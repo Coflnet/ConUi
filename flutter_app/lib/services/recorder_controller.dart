@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../models/models.dart';
 import 'audio_capture.dart';
 import 'database_service.dart';
+import 'page_lifecycle_hooks.dart';
 import 'recording_file_store.dart';
 import 'segment_cutter.dart';
 import 'transcription_client.dart';
@@ -120,6 +121,8 @@ class RecorderController extends ChangeNotifier {
   final int maxConcurrentRequests;
   final String? language;
   final Duration Function(int attempt) backoff;
+  final PageLifecycleUnsubscribe Function(void Function() onMightBeClosing)
+      _registerPageHideHook;
 
   RecorderController({
     required AudioCapture audioCapture,
@@ -133,11 +136,16 @@ class RecorderController extends ChangeNotifier {
     this.maxConcurrentRequests = 2,
     this.language,
     Duration Function(int attempt)? backoff,
+    // Overridable for tests; defaults to the real platform hook (a no-op
+    // everywhere except web - see page_lifecycle_hooks.dart).
+    PageLifecycleUnsubscribe Function(void Function() onMightBeClosing)?
+        registerPageHideHook,
   })  : _audioCapture = audioCapture,
         _fileStore = fileStore,
         _db = database,
         _transcriptionClient = transcriptionClient,
-        backoff = backoff ?? _defaultBackoff;
+        backoff = backoff ?? _defaultBackoff,
+        _registerPageHideHook = registerPageHideHook ?? onPageMightBeClosing;
 
   static Duration _defaultBackoff(int attempt) {
     final factor = 1 << (attempt - 1).clamp(0, 4); // 1,2,4,8,16
@@ -192,6 +200,7 @@ class RecorderController extends ChangeNotifier {
   StreamSubscription<double>? _amplitudeSubscription;
   Timer? _ticker;
   bool _autoStopping = false;
+  PageLifecycleUnsubscribe? _pageHideUnsubscribe;
 
   final Queue<TranscriptSegment> _pendingQueue = Queue();
   final Set<Future<void>> _activeJobs = {};
@@ -253,6 +262,24 @@ class RecorderController extends ChangeNotifier {
       notifyListeners();
     });
     _ticker = Timer.periodic(const Duration(milliseconds: 200), (_) => _onTick());
+    // On web, catches the tab being hidden/closed while recording so the
+    // recording gets finalized now (state -> complete) rather than left
+    // for RecordingRecoveryService to patch up (state -> recovered) at
+    // the next launch - see _onPageMightBeClosing.
+    _pageHideUnsubscribe = _registerPageHideHook(_onPageMightBeClosing);
+  }
+
+  /// Best effort: a synchronous browser event handler can't await
+  /// anything, and on an actual tab close there's no guarantee this
+  /// finishes either way - but every chunk already durable (everything
+  /// appended so far, see [_handleChunk]) is safe regardless, and this
+  /// gives the rest (the trailing partial segment, the row's state, the
+  /// WAV header) a real chance to be finalized properly before the page
+  /// actually unloads, instead of relying solely on next-launch recovery.
+  void _onPageMightBeClosing() {
+    if (_state == RecorderState.recording) {
+      unawaited(stop());
+    }
   }
 
   void _onTick() {
@@ -383,6 +410,8 @@ class RecorderController extends ChangeNotifier {
     _state = RecorderState.finishing;
     notifyListeners();
 
+    _pageHideUnsubscribe?.call();
+    _pageHideUnsubscribe = null;
     _ticker?.cancel();
     _ticker = null;
     await _chunkSubscription?.cancel();
@@ -506,6 +535,7 @@ class RecorderController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _pageHideUnsubscribe?.call();
     _ticker?.cancel();
     _chunkSubscription?.cancel();
     _amplitudeSubscription?.cancel();

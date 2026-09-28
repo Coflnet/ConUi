@@ -9,6 +9,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/services/audio_capture.dart';
 import 'package:relationship_manager/services/recorder_controller.dart';
 import 'package:relationship_manager/services/recording_file_store_native.dart';
@@ -359,5 +360,89 @@ void main() {
 
     expect(result.transcript, 'later11 later22');
     expect(result.failedSegments, isEmpty);
+  });
+
+  group('page-hide flush (web tab hidden/closed while recording)', () {
+    // Regression test: RecorderController used to have no way of knowing
+    // the browser tab might be closing, so a recording interrupted that
+    // way was left in RecordingLifecycleState.recording for the next
+    // launch's RecordingRecoveryService to patch up (best case) - the
+    // reported symptom was that closing the tab a few seconds into a
+    // recording sometimes left nothing recoverable at all. It now
+    // registers a page-hide hook (a no-op on native/tests unless
+    // injected, see page_lifecycle_hooks.dart) that finalizes the
+    // recording immediately, the same way a normal stop() would.
+    test('finalizes the recording instead of leaving it for next-launch recovery',
+        () async {
+      void Function()? capturedHook;
+      var unsubscribeCalled = false;
+      final controller = RecorderController(
+        audioCapture: capture,
+        fileStore: store,
+        database: db,
+        transcriptionClient: echoClient(),
+        segmentDuration: _segmentDuration,
+        backoff: (_) => Duration.zero,
+        registerPageHideHook: (onMightBeClosing) {
+          capturedHook = onMightBeClosing;
+          return () => unsubscribeCalled = true;
+        },
+      );
+
+      await controller.start();
+      expect(capturedHook, isNotNull,
+          reason: 'must register a page-hide hook while recording starts');
+
+      // A chunk arrives and is durably appended (matching what real
+      // browsers do: chunks land roughly every 100ms, so by the time any
+      // hide/close event fires at least one has almost always already
+      // been written) before the tab is hidden/closed.
+      capture.emitChunk(_pcmChunk(77, _bytesPerSegment ~/ 2));
+      await Future<void>.delayed(Duration.zero);
+
+      final idle = Completer<void>();
+      controller.addListener(() {
+        if (controller.state == RecorderState.idle && !idle.isCompleted) {
+          idle.complete();
+        }
+      });
+
+      capturedHook!();
+      await idle.future.timeout(const Duration(seconds: 5));
+
+      expect(controller.state, RecorderState.idle);
+      expect(controller.lastStopResult, isNotNull,
+          reason: 'the recording must be fully finalized, not left dangling');
+      expect(controller.lastStopResult!.attachedFile.size, greaterThan(wavHeaderLength));
+      expect(unsubscribeCalled, isTrue,
+          reason: 'must stop listening once the recording is no longer in progress');
+
+      final recording = await db.getLocalRecording(controller.lastStopResult!.attachedFile.id);
+      expect(recording?.state, RecordingLifecycleState.complete);
+    });
+
+    test('does nothing when not currently recording', () async {
+      void Function()? capturedHook;
+      final controller = RecorderController(
+        audioCapture: capture,
+        fileStore: store,
+        database: db,
+        transcriptionClient: echoClient(),
+        segmentDuration: _segmentDuration,
+        backoff: (_) => Duration.zero,
+        registerPageHideHook: (onMightBeClosing) {
+          capturedHook = onMightBeClosing;
+          return () {};
+        },
+      );
+
+      await controller.start();
+      await controller.stop();
+      expect(controller.state, RecorderState.idle);
+
+      // Firing the (already unsubscribed, but simulate a late/duplicate
+      // event anyway) hook once idle must not throw or call stop() again.
+      expect(() => capturedHook?.call(), returnsNormally);
+    });
   });
 }
