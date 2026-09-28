@@ -1,4 +1,62 @@
-.angular
+# Build context for the root Dockerfile (Flutter web + ASP.NET Core backend).
+# Keep everything both builds and the test stage need; drop anything that is
+# regenerated, IDE-local, or otherwise never read by `docker build`.
+
+# Version control
 .git
-node_modules
-dist
+.gitignore
+
+# IDEs / editors
+.vscode/
+.idea/
+*.iml
+*.swp
+.DS_Store
+
+# .NET build outputs (restored/built fresh inside the image)
+**/bin/
+**/obj/
+
+# Flutter/Dart build outputs and tool caches (rebuilt fresh inside the image)
+flutter_app/build/
+flutter_app/.dart_tool/
+flutter_app/.flutter-plugins-dependencies
+flutter_app/.pub-cache/
+flutter_app/.pub/
+flutter_app/coverage/
+
+# Android build directories (not needed for `flutter build web` / `flutter test`)
+flutter_app/android/.gradle/
+flutter_app/android/build/
+flutter_app/android/app/build/
+flutter_app/android/app/debug/
+flutter_app/android/app/profile/
+flutter_app/android/app/release/
+flutter_app/android/local.properties
+
+# iOS build directories (same reasoning, kept for completeness even though this
+# project targets web/Android)
+flutter_app/ios/Pods/
+flutter_app/ios/.symlinks/
+flutter_app/ios/Flutter/.last_build_id
+
+# Local databases (dev-time Cassandra/S3 have none baked into the repo, but keep
+# this defensive for any local sqlite/duckdb files that show up during development)
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+npm-debug.log
+yarn-error.log
+
+# Leftover Angular-era / Node artifacts (no longer part of this project)
+node_modules/
+/dist
+/out-tsc
+
+# CI/CD and docs are not read by `docker build`
+.github/
