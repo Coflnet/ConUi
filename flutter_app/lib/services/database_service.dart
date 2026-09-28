@@ -4,6 +4,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:sqflite_common/sqflite.dart' as sqflite_common;
 import '../models/models.dart';
+import 'db_migrations.dart';
 
 class DatabaseService extends ChangeNotifier {
   /// Optional overrides for tests: an explicit [DatabaseFactory] (e.g. the
@@ -62,124 +63,31 @@ class DatabaseService extends ChangeNotifier {
     return await _factory!.openDatabase(
       _path,
       options: sqflite_common.OpenDatabaseOptions(
-        version: 1,
+        version: latestDbVersion,
         onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
       ),
     );
   }
 
+  // A fresh install starts at an empty database, so every migration runs in
+  // order to build the schema up from nothing.
   Future<void> _onCreate(sqflite_common.Database db, int version) async {
-    // Persons table
-    await db.execute('''
-      CREATE TABLE persons (
-        id TEXT PRIMARY KEY,
-        data TEXT NOT NULL,
-        version INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        is_deleted INTEGER DEFAULT 0
-      )
-    ''');
+    for (final migration in dbMigrations) {
+      await migration.up(db);
+    }
+  }
 
-    // Connections table
-    await db.execute('''
-      CREATE TABLE connections (
-        id TEXT PRIMARY KEY,
-        person1_id TEXT NOT NULL,
-        person2_id TEXT NOT NULL,
-        relationship_type TEXT NOT NULL,
-        origin_event_id TEXT,
-        data TEXT NOT NULL,
-        version INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        is_deleted INTEGER DEFAULT 0,
-        FOREIGN KEY (person1_id) REFERENCES persons(id),
-        FOREIGN KEY (person2_id) REFERENCES persons(id),
-        FOREIGN KEY (origin_event_id) REFERENCES events(id)
-      )
-    ''');
-
-    // Places table
-    await db.execute('''
-      CREATE TABLE places (
-        id TEXT PRIMARY KEY,
-        data TEXT NOT NULL,
-        version INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        is_deleted INTEGER DEFAULT 0
-      )
-    ''');
-
-    // Events table
-    await db.execute('''
-      CREATE TABLE events (
-        id TEXT PRIMARY KEY,
-        month_key TEXT NOT NULL,
-        data TEXT NOT NULL,
-        version INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        is_deleted INTEGER DEFAULT 0
-      )
-    ''');
-
-    // Objects table
-    await db.execute('''
-      CREATE TABLE objects (
-        id TEXT PRIMARY KEY,
-        data TEXT NOT NULL,
-        version INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        is_deleted INTEGER DEFAULT 0
-      )
-    ''');
-
-    // Files table
-    await db.execute('''
-      CREATE TABLE files (
-        id TEXT PRIMARY KEY,
-        entity_type TEXT NOT NULL,
-        entity_id TEXT NOT NULL,
-        file_name TEXT NOT NULL,
-        file_path TEXT NOT NULL,
-        mime_type TEXT NOT NULL,
-        size INTEGER NOT NULL,
-        version INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL
-      )
-    ''');
-
-    // Pending changes for offline sync
-    await db.execute('''
-      CREATE TABLE pending_changes (
-        id TEXT PRIMARY KEY,
-        entity_type TEXT NOT NULL,
-        entity_id TEXT NOT NULL,
-        operation TEXT NOT NULL,
-        data TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        synced INTEGER DEFAULT 0
-      )
-    ''');
-
-    // Sync index
-    await db.execute('''
-      CREATE TABLE sync_index (
-        id INTEGER PRIMARY KEY,
-        data TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    ''');
-
-    // Create indexes
-    await db.execute('CREATE INDEX idx_events_month ON events(month_key)');
-    await db.execute(
-        'CREATE INDEX idx_files_entity ON files(entity_type, entity_id)');
-    await db
-        .execute('CREATE INDEX idx_pending_synced ON pending_changes(synced)');
+  // An upgraded install already has everything up to oldVersion; only run
+  // the migrations after that, in order, so it ends up with the exact same
+  // schema a fresh install would get.
+  Future<void> _onUpgrade(
+      sqflite_common.Database db, int oldVersion, int newVersion) async {
+    for (final migration in dbMigrations) {
+      if (migration.version > oldVersion && migration.version <= newVersion) {
+        await migration.up(db);
+      }
+    }
   }
 
   // ==================== PERSONS ====================
