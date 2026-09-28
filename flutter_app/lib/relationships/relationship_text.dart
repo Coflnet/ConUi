@@ -1,4 +1,5 @@
 import 'family_graph.dart';
+import 'graph_layout.dart';
 import 'relationship_type.dart';
 
 /// English display text for the relationship logic in this package. Deliberately the
@@ -76,6 +77,17 @@ class RelationshipText {
     return raw[0].toUpperCase() + raw.substring(1);
   }
 
+  /// "&lt;Label&gt; of &lt;otherName&gt;" (e.g. "Parent of Bert") for a connection-list entry: the
+  /// queried person's own role ([type]), applied to the other person named in the
+  /// entry. See `FamilyGraph.groupedNeighbors`/`PersonRelationshipView` for how the
+  /// role and the neighbour it is paired with here are derived.
+  static String roleOfLabel(RelationshipType type, String otherName) =>
+      '${label(type)} of $otherName';
+
+  /// [roleOfLabel] for a possibly-unknown/legacy raw type string.
+  static String roleOfLabelForRaw(String raw, String otherName) =>
+      '${labelForRaw(raw)} of $otherName';
+
   /// Full sentence describing a connection, in the app's one reading rule: "person1 is
   /// the &lt;type&gt; of person2.", e.g. `sentence('Anna', 'Bert', RelationshipType.parent)`
   /// -> "Anna is the parent of Bert." Used as the add/edit-connection dialog's live
@@ -122,6 +134,27 @@ class RelationshipText {
         return 'Other family';
       case RelationshipGroup.friendsAndOthers:
         return 'Friends & others';
+    }
+  }
+
+  /// One sentence describing a graph edge, for the accessible text-alternative list on
+  /// the relationship graph screen - the picture is never the only way to know how two
+  /// people are connected. [sourceName]/[targetName] follow
+  /// [GraphLayoutEdge.sourceId]/[GraphLayoutEdge.targetId] (for a parent-child edge,
+  /// source is always the generationally-earlier person).
+  static String graphEdgeSentence(
+      String sourceName, String targetName, GraphEdgeKind kind, bool isDerived) {
+    switch (kind) {
+      case GraphEdgeKind.parentChild:
+        return '$sourceName is the parent of $targetName.';
+      case GraphEdgeKind.partner:
+        return '$sourceName and $targetName are partners.';
+      case GraphEdgeKind.sibling:
+        return isDerived
+            ? '$sourceName and $targetName are siblings (derived from shared parents).'
+            : '$sourceName and $targetName are siblings.';
+      case GraphEdgeKind.other:
+        return '$sourceName is connected to $targetName.';
     }
   }
 }
