@@ -20,9 +20,29 @@ class DeviceLocation {
 /// stalls on a permission dialog the user dismisses.
 abstract class LocationService {
   Future<DeviceLocation?> getCurrentLocation();
+
+  /// True if location permission has already been granted, without ever
+  /// asking for it. Used for something passive (the map's very first
+  /// view, before the user has done anything) that should use the
+  /// device's location when it's already allowed, but must never itself
+  /// pop an unprompted permission dialog - see [getCurrentLocation]'s doc
+  /// comment for why only an explicit user action gets to do that.
+  Future<bool> hasPermission();
 }
 
 class GeolocatorLocationService implements LocationService {
+  @override
+  Future<bool> hasPermission() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return false;
+      final permission = await Geolocator.checkPermission();
+      return permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse;
+    } catch (_) {
+      return false;
+    }
+  }
+
   @override
   Future<DeviceLocation?> getCurrentLocation() async {
     try {

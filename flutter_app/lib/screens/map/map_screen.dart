@@ -45,18 +45,27 @@ class MapScreenState extends State<MapScreen> {
   static const _mapLngKey = 'places_map_lng';
   static const _mapZoomKey = 'places_map_zoom';
 
+  // Central Europe: the fallback view when there's no remembered position,
+  // no existing place to fit to (see _maybeFitToPlaces, which takes over
+  // as soon as any place loads) and no device location to use instead.
+  static const _defaultCenter = LatLng(50, 10);
+  static const _defaultZoom = 5.0;
+  // Close enough to actually be useful once centered on the device, not
+  // just a marginally-less-wide overview.
+  static const _deviceLocationZoom = 12.0;
+
   final MapController _mapController = MapController();
   late final LocationService _locationService =
       widget.locationService ?? GeolocatorLocationService();
   late final RecordingFileStore _recordingFileStore = createRecordingFileStore();
 
-  LatLng _center = const LatLng(48.8566, 2.3522); // Paris, until places load.
-  double _zoom = 10;
+  LatLng _center = _defaultCenter;
+  double _zoom = _defaultZoom;
   bool _positionInitialized = false;
   bool _fittedToPlacesOnce = false;
 
   ValueNotifier<LatLng>? _pendingPin;
-  double _currentZoom = 10;
+  double _currentZoom = _defaultZoom;
 
   /// Mirrors the map's current camera center, updated only from
   /// [onPositionChanged] (i.e. once the map has actually attached).
@@ -65,7 +74,7 @@ class MapScreenState extends State<MapScreen> {
   /// position - must use this instead of reading the controller directly.
   /// Starts equal to [_center]'s own default and is corrected as soon as
   /// [_loadMapPosition] resolves.
-  LatLng _lastKnownCenter = const LatLng(48.8566, 2.3522);
+  LatLng _lastKnownCenter = _defaultCenter;
 
   @override
   void initState() {
@@ -77,12 +86,38 @@ class MapScreenState extends State<MapScreen> {
   Future<void> _loadMapPosition() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
+
+    final lat = prefs.getDouble(_mapLatKey);
+    final lng = prefs.getDouble(_mapLngKey);
+    if (lat != null && lng != null) {
+      setState(() {
+        _center = LatLng(lat, lng);
+        _lastKnownCenter = _center;
+        _zoom = prefs.getDouble(_mapZoomKey) ?? _zoom;
+        _currentZoom = _zoom;
+        _positionInitialized = true;
+      });
+      return;
+    }
+
+    // No remembered position yet (first launch, or a fresh install):
+    // center on the device's own location if it's already allowed -
+    // never asking for permission here, so this never pops an unprompted
+    // dialog (see LocationService.hasPermission's doc comment) - falling
+    // back to a central-Europe overview otherwise. _maybeFitToPlaces()
+    // still takes over as soon as any place loads, so this only actually
+    // matters for a brand new user with nothing to fit to yet.
+    DeviceLocation? location;
+    if (await _locationService.hasPermission()) {
+      location = await _locationService.getCurrentLocation();
+    }
+    if (!mounted) return;
     setState(() {
-      final lat = prefs.getDouble(_mapLatKey);
-      final lng = prefs.getDouble(_mapLngKey);
-      if (lat != null && lng != null) _center = LatLng(lat, lng);
+      if (location != null) {
+        _center = LatLng(location.latitude, location.longitude);
+        _zoom = _deviceLocationZoom;
+      }
       _lastKnownCenter = _center;
-      _zoom = prefs.getDouble(_mapZoomKey) ?? _zoom;
       _currentZoom = _zoom;
       _positionInitialized = true;
     });

@@ -525,7 +525,10 @@ class _AddEventScreenState extends State<AddEventScreen> {
   Future<void> _pickPlaceOnMap(DatabaseService db, List<Place> places) async {
     final initialPlace = places.firstWhere(
       (p) => p.id == _placeId,
-      orElse: () => Place(name: '', latitude: 48.8566, longitude: 2.3522),
+      // Central Europe: same fallback as the map's own default view (see
+      // MapScreenState._defaultCenter) for when there's nothing more
+      // specific to center on.
+      orElse: () => Place(name: '', latitude: 50, longitude: 10),
     );
     final position = await Navigator.push<LatLng>(
       context,
