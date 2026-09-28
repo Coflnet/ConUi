@@ -118,7 +118,55 @@ Every key below can be set via `appsettings*.json` or the matching environment v
 | `Transcription:MaxConcurrentPerUser` | Max transcription segments one user can have in flight at once (`429` beyond it). | `2` |
 | `Transcription:MaxSegmentBytes` | Max size of one audio segment, enforced while the body is being streamed in (`413` beyond it). | `5242880` (5 MB) |
 
-## Live Transcription
+## Container image and deployment
+
+Production runs a single container image, built from the root `Dockerfile`, that contains both
+the compiled Flutter web app and the backend: the backend serves the web app from `wwwroot` and
+answers `/api`/`/health` itself, all on one port. (`backend/RelationshipManager.Api/Dockerfile` is
+a separate, backend-only image used by `docker-compose.yml` for local development - it is not
+what ships to production.)
+
+### Stages
+
+1. `flutter-base` / `web` - installs the exact pinned Flutter SDK (see the version pin in the
+   Dockerfile) and runs `flutter build web --release`. No API base URL is passed at build time:
+   the web app is served from the same origin as the API in production, so it should fall back to
+   relative (same-origin) requests when none is configured.
+2. `build` - `dotnet restore` and `dotnet publish -c Release` of `backend/RelationshipManager.Api`.
+3. `test` - runs `dotnet test` for `backend/RelationshipManager.sln` and `flutter test` for the
+   app. Pull requests build this stage (see `.github/workflows/ci.yml`); it is not part of the
+   final image, so a normal build never pays its cost.
+4. Final stage - an ASP.NET Core 8 runtime image with the published backend and the web build
+   copied into `/app/wwwroot`, running as a non-root user on port 8000.
+
+### Building and running it locally the way production does
+
+```bash
+docker build -t relationship-manager:local .
+
+docker run --rm --name relationship-manager \
+  --read-only --cap-drop ALL --security-opt no-new-privileges \
+  --user 1654:1654 --tmpfs /tmp \
+  -p 127.0.0.1:8000:8000 \
+  -e ASPNETCORE_ENVIRONMENT=Production \
+  -e Jwt__Secret=<a real secret, at least 32 characters> \
+  -e Jwt__Issuer=https://con.coflnet.com \
+  relationship-manager:local
+```
+
+This starts the API-only first production stage (no Cassandra/S3/transcription configured):
+`/health` answers 200 immediately; `/health/ready` answers 503 until Cassandra is reachable and
+configured (`CASSANDRA:HOSTS`, `CASSANDRA:KEYSPACE`, ...; see the Configuration table above); S3
+and transcription stay optional (their endpoints answer 503 until configured). The image runs
+correctly fully read-only, as a non-root user, with all capabilities dropped - no writable paths
+were required for this baseline configuration in testing, though `/tmp` is still mounted above as
+a defensive `emptyDir`-equivalent (loading a Cassandra client `.pfx` certificate, once configured,
+can need a writable temp directory on Linux).
+
+`jwt:secret` is the one setting the app refuses to start without outside Development: it must be
+at least 32 characters and not the development placeholder.
+
+
 
 While a user records a story, the client sends short audio segments (~6s, WAV PCM 16kHz mono is the primary case; `webm`/`ogg`/`mp4`/`mpeg` are also accepted) and the backend streams each one straight through to a speech-to-text upstream and returns the text - it is a pass-through, not a store.
 
