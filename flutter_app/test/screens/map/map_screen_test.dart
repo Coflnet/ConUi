@@ -15,6 +15,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/screens/map/map_screen.dart';
 import 'package:relationship_manager/services/database_service.dart';
 import 'package:relationship_manager/services/location_service.dart';
@@ -51,6 +52,8 @@ void main() {
       ChangeNotifierProvider<DatabaseService>.value(
         value: db,
         child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: MapScreen(locationService: _FakeLocationService()),
         ),
       ),
@@ -75,7 +78,11 @@ void main() {
       await tester.pumpWidget(
         ChangeNotifierProvider<DatabaseService>.value(
           value: db,
-          child: MaterialApp(home: MapScreen(locationService: location)),
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: MapScreen(locationService: location),
+          ),
         ),
       );
       for (var i = 0; i < 4; i++) {

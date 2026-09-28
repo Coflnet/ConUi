@@ -2,16 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../l10n/gen/app_localizations.dart';
 import 'map_tile_layer.dart';
-
-/// User-facing text for [LocationPickerScreen], kept in one place per the
-/// project's convention so a later localisation pass doesn't have to hunt
-/// through the widget tree for strings.
-class _Strings {
-  static const title = 'Choose a location';
-  static const instructions = 'Move the map so the pin marks the spot';
-  static const use = 'Use this location';
-}
 
 /// One reusable full-screen map for picking (or adjusting) a single
 /// position: a pin fixed at the centre of the screen, moved by panning the
@@ -43,15 +35,16 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text(_Strings.title)),
+      appBar: AppBar(title: Text(l10n.locationPickerTitle)),
       body: Column(
         children: [
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: const Text(_Strings.instructions, textAlign: TextAlign.center),
+            child: Text(l10n.locationPickerInstructions, textAlign: TextAlign.center),
           ),
           Expanded(
             child: Stack(
@@ -83,7 +76,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.pop(context, _position),
         icon: const Icon(Icons.check),
-        label: const Text(_Strings.use),
+        label: Text(l10n.locationPickerUse),
       ),
     );
   }

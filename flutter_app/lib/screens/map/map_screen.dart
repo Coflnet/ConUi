@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../services/database_service.dart';
 import '../../services/location_service.dart';
@@ -15,11 +16,6 @@ import '../quick_add/quick_add_sheet.dart';
 import 'draggable_pin_marker.dart';
 import 'map_tile_layer.dart';
 import 'place_clustering.dart';
-
-class _Strings {
-  static const addStory = 'Add story';
-  static const chooseAPlace = 'Choose a place';
-}
 
 /// The app's home tab and main entry point: a map of every place with a
 /// story, always one tap away from adding a new one. See the project brief
@@ -178,13 +174,14 @@ class MapScreenState extends State<MapScreen> {
       if (mounted) setState(() {});
       return;
     }
+    final l10n = AppLocalizations.of(context);
     final chosen = await showModalBottomSheet<Place>(
       context: context,
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const ListTile(title: Text(_Strings.chooseAPlace)),
+            ListTile(title: Text(l10n.mapChooseAPlace)),
             const Divider(height: 1),
             ...group.places.map((place) => ListTile(
                   leading: const Icon(Icons.place),
@@ -276,7 +273,7 @@ class MapScreenState extends State<MapScreen> {
                   child: FloatingActionButton.extended(
                     onPressed: _addStoryButtonPressed,
                     icon: const Icon(Icons.add_location_alt),
-                    label: const Text(_Strings.addStory),
+                    label: Text(AppLocalizations.of(context).mapAddStory),
                   ),
                 ),
               ],
@@ -295,11 +292,12 @@ class _PlaceMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final label = group.isCluster ? '${group.places.length}' : null;
     return Semantics(
       label: group.isCluster
-          ? '${group.places.length} places, ${group.storyCount} stories'
-          : '${group.places.single.name}, ${group.storyCount} stories',
+          ? l10n.mapClusterStoryCountSemantics(group.places.length, group.storyCount)
+          : l10n.mapPlaceStoryCountSemantics(group.places.single.name, group.storyCount),
       button: true,
       child: Stack(
         clipBehavior: Clip.none,

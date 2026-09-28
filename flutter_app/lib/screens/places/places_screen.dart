@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../services/database_service.dart';
 import 'place_sheet.dart';
@@ -27,13 +28,14 @@ class _PlacesScreenState extends State<PlacesScreen> {
               return const Center(child: CircularProgressIndicator());
             }
 
+            final l10n = AppLocalizations.of(context);
             final places = snapshot.data ?? [];
             return Scaffold(
-              body: places.isEmpty ? _buildEmptyState() : _buildListView(places),
+              body: places.isEmpty ? _buildEmptyState(l10n) : _buildListView(places),
               floatingActionButton: FloatingActionButton.extended(
                 onPressed: () => _showAddPlaceDialog(),
                 icon: const Icon(Icons.add),
-                label: const Text('Add Place'),
+                label: Text(l10n.placesAdd),
               ),
             );
           },
@@ -42,16 +44,16 @@ class _PlacesScreenState extends State<PlacesScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(AppLocalizations l10n) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.place_outlined, size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
-          Text('No places yet', style: TextStyle(fontSize: 18, color: Colors.grey[600])),
+          Text(l10n.placesEmptyTitle, style: TextStyle(fontSize: 18, color: Colors.grey[600])),
           const SizedBox(height: 8),
-          Text('Add one from the map, or here',
+          Text(l10n.placesEmptySubtitle,
               style: TextStyle(color: Colors.grey[500])),
         ],
       ),
@@ -79,6 +81,7 @@ class _PlacesScreenState extends State<PlacesScreen> {
   }
 
   void _showAddPlaceDialog() {
+    final l10n = AppLocalizations.of(context);
     final nameController = TextEditingController();
     final addressController = TextEditingController();
     final latController = TextEditingController();
@@ -87,31 +90,31 @@ class _PlacesScreenState extends State<PlacesScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Add Place'),
+        title: Text(l10n.placesAdd),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                   controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Name *')),
+                  decoration: InputDecoration(labelText: l10n.placesNameLabel)),
               const SizedBox(height: 8),
               TextField(
                   controller: addressController,
-                  decoration: const InputDecoration(labelText: 'Address')),
+                  decoration: InputDecoration(labelText: l10n.placesAddressLabel)),
               const SizedBox(height: 8),
               Row(
                 children: [
                   Expanded(
                       child: TextField(
                           controller: latController,
-                          decoration: const InputDecoration(labelText: 'Latitude'),
+                          decoration: InputDecoration(labelText: l10n.placesLatitudeLabel),
                           keyboardType: TextInputType.number)),
                   const SizedBox(width: 8),
                   Expanded(
                       child: TextField(
                           controller: lngController,
-                          decoration: const InputDecoration(labelText: 'Longitude'),
+                          decoration: InputDecoration(labelText: l10n.placesLongitudeLabel),
                           keyboardType: TextInputType.number)),
                 ],
               ),
@@ -119,7 +122,7 @@ class _PlacesScreenState extends State<PlacesScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.commonCancel)),
           TextButton(
             onPressed: () async {
               if (nameController.text.trim().isEmpty) return;
@@ -134,7 +137,7 @@ class _PlacesScreenState extends State<PlacesScreen> {
               await db.savePlace(place);
               if (context.mounted) Navigator.pop(context);
             },
-            child: const Text('Add'),
+            child: Text(l10n.commonAdd),
           ),
         ],
       ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/screens/places/place_sheet.dart';
 import 'package:relationship_manager/screens/quick_add/quick_add_sheet.dart';
@@ -25,7 +26,11 @@ Widget _wrap(DatabaseService db, Widget child) {
       ChangeNotifierProvider<AuthService>.value(value: AuthService()),
       ChangeNotifierProvider<AppSettingsService>(create: (_) => AppSettingsService()),
     ],
-    child: MaterialApp(home: Scaffold(body: child)),
+    child: MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(body: child),
+    ),
   );
 }
 

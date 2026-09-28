@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../l10n/gen/app_localizations.dart';
+
 /// A single map marker the user can drag to reposition.
 ///
 /// flutter_map 6 has no built-in draggable marker, so this converts each
@@ -51,7 +53,7 @@ class DraggablePinMarker extends StatelessWidget {
                 behavior: HitTestBehavior.translucent,
                 onPanUpdate: _onPanUpdate,
                 child: Semantics(
-                  label: 'New story location, drag to adjust',
+                  label: AppLocalizations.of(context).mapDragPinSemanticLabel,
                   child: const Icon(Icons.location_pin, size: 48, color: Colors.red),
                 ),
               ),

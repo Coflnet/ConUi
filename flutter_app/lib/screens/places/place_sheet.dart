@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
+import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../services/database_service.dart';
 import '../../services/recording_file_store.dart';
@@ -13,14 +14,6 @@ import '../map/location_picker_screen.dart';
 import '../map/map_tile_layer.dart';
 import '../persons/person_detail_screen.dart';
 import '../quick_add/quick_add_sheet.dart';
-
-class _Strings {
-  static const editName = 'Edit name';
-  static const adjustPosition = 'Tap the map to adjust the position';
-  static const storiesHeading = 'Stories here';
-  static const noStories = 'No stories here yet.';
-  static const addStoryHere = 'Add story here';
-}
 
 /// The place sheet: a place's editable name, its position on a small map
 /// (tap to adjust via the shared [LocationPickerScreen]), every story that
@@ -99,9 +92,11 @@ class PlaceSheetState extends State<PlaceSheet> {
               return const SizedBox(
                   height: 200, child: Center(child: CircularProgressIndicator()));
             }
+            final l10n = AppLocalizations.of(context);
             final place = snapshot.data![0] as Place?;
             if (place == null) {
-              return const SizedBox(height: 120, child: Center(child: Text('Place not found')));
+              return SizedBox(
+                  height: 120, child: Center(child: Text(l10n.placeSheetNotFound)));
             }
             final allEvents = snapshot.data![1] as List<Event>;
             final allPersons = snapshot.data![2] as List<Person>;
@@ -130,7 +125,7 @@ class PlaceSheetState extends State<PlaceSheet> {
                         border: InputBorder.none,
                         suffixIcon: IconButton(
                           icon: const Icon(Icons.check),
-                          tooltip: _Strings.editName,
+                          tooltip: l10n.placeSheetEditName,
                           onPressed: () => _renamePlace(db, place, _nameController.text),
                         ),
                       ),
@@ -177,7 +172,7 @@ class PlaceSheetState extends State<PlaceSheet> {
                                 color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: Text(_Strings.adjustPosition,
+                              child: Text(l10n.placeSheetAdjustPosition,
                                   style: Theme.of(context).textTheme.bodySmall),
                             ),
                           ),
@@ -188,12 +183,12 @@ class PlaceSheetState extends State<PlaceSheet> {
                     FilledButton.icon(
                       onPressed: () => _addStoryHere(place),
                       icon: const Icon(Icons.add),
-                      label: const Text(_Strings.addStoryHere),
+                      label: Text(l10n.placeSheetAddStoryHere),
                     ),
                     const SizedBox(height: 20),
-                    Text(_Strings.storiesHeading, style: Theme.of(context).textTheme.titleMedium),
+                    Text(l10n.placeSheetStoriesHeading, style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 8),
-                    if (stories.isEmpty) const Text(_Strings.noStories),
+                    if (stories.isEmpty) Text(l10n.placeSheetNoStories),
                     ...stories.map((story) => _StoryTile(
                           event: story,
                           persons: allPersons,
@@ -244,7 +239,8 @@ class _StoryTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(event.title, style: Theme.of(context).textTheme.titleSmall),
-                  Text(event.displayDate, style: Theme.of(context).textTheme.bodySmall),
+                  Text(event.displayDate(Localizations.localeOf(context).toString()),
+                      style: Theme.of(context).textTheme.bodySmall),
                   if (event.description != null) ...[
                     const SizedBox(height: 4),
                     Text(event.description!, maxLines: 2, overflow: TextOverflow.ellipsis),
