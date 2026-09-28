@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/screens/events/event_detail_screen.dart';
 import 'package:relationship_manager/services/database_service.dart';
@@ -87,6 +88,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: ChangeNotifierProvider<DatabaseService>.value(
           value: db,
           child: EventDetailScreen(eventId: event.id, recordingFileStore: store),

@@ -1,10 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../services/database_service.dart';
 import 'add_event_screen.dart';
 import 'event_detail_screen.dart';
+
+/// Localized label for a story's [EventType], shared by every screen that
+/// shows or picks one (this list, the add/edit story form, home's search
+/// results).
+String eventTypeLabel(AppLocalizations l10n, EventType type) {
+  switch (type) {
+    case EventType.meeting:
+      return l10n.eventTypeMeeting;
+    case EventType.call:
+      return l10n.eventTypeCall;
+    case EventType.message:
+      return l10n.eventTypeMessage;
+    case EventType.visit:
+      return l10n.eventTypeVisit;
+    case EventType.trip:
+      return l10n.eventTypeTrip;
+    case EventType.celebration:
+      return l10n.eventTypeCelebration;
+    case EventType.work:
+      return l10n.eventTypeWork;
+    case EventType.social:
+      return l10n.eventTypeSocial;
+    case EventType.other:
+      return l10n.eventTypeOther;
+  }
+}
 
 class EventsScreen extends StatefulWidget {
   const EventsScreen({super.key});
@@ -18,6 +45,7 @@ class _EventsScreenState extends State<EventsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final monthKey =
         '${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}';
 
@@ -39,7 +67,7 @@ class _EventsScreenState extends State<EventsScreen> {
                     events.sort((a, b) => b.dateTime.compareTo(a.dateTime));
 
                     if (events.isEmpty) {
-                      return _buildEmptyState();
+                      return _buildEmptyState(l10n);
                     }
 
                     return ListView.builder(
@@ -54,7 +82,7 @@ class _EventsScreenState extends State<EventsScreen> {
                             child: OutlinedButton.icon(
                               onPressed: _addEvent,
                               icon: const Icon(Icons.add),
-                              label: const Text('Add Another Event'),
+                              label: Text(l10n.eventsAddAnother),
                             ),
                           );
                         }
@@ -73,7 +101,7 @@ class _EventsScreenState extends State<EventsScreen> {
           floatingActionButton: FloatingActionButton.extended(
             onPressed: _addEvent,
             icon: const Icon(Icons.add),
-            label: const Text('Add Event'),
+            label: Text(l10n.eventsAdd),
           ),
         );
       },
@@ -98,7 +126,7 @@ class _EventsScreenState extends State<EventsScreen> {
             },
           ),
           Text(
-            DateFormat.yMMMM().format(_selectedMonth),
+            DateFormat.yMMMM(Localizations.localeOf(context).toString()).format(_selectedMonth),
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
@@ -119,7 +147,7 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(AppLocalizations l10n) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -127,14 +155,14 @@ class _EventsScreenState extends State<EventsScreen> {
           Icon(Icons.event_outlined, size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
           Text(
-            'No events this month',
+            l10n.eventsEmptyTitle,
             style: TextStyle(fontSize: 18, color: Colors.grey[600]),
           ),
           const SizedBox(height: 24),
           FilledButton.icon(
             onPressed: _addEvent,
             icon: const Icon(Icons.add),
-            label: const Text('Add Event'),
+            label: Text(l10n.eventsAdd),
           ),
         ],
       ),
@@ -168,6 +196,8 @@ class _EventListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).toString();
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: ListTile(
@@ -177,7 +207,7 @@ class _EventListTile extends StatelessWidget {
         ),
         title: Text(event.title),
         subtitle: Text(
-          '${DateFormat.MMMd().format(event.dateTime)} • ${event.type.name}',
+          '${DateFormat.MMMd(locale).format(event.dateTime)} • ${eventTypeLabel(l10n, event.type)}',
         ),
         trailing: event.participantIds.isNotEmpty
             ? Chip(

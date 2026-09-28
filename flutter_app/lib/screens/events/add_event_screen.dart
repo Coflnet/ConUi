@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
+import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../services/app_settings_service.dart';
-import '../../services/audio_capture.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
 import '../../services/record_package_audio_capture.dart';
@@ -13,6 +13,8 @@ import '../../services/recording_file_store.dart';
 import '../../services/transcription_client.dart';
 import '../map/location_picker_screen.dart';
 import '../map/nearby_place.dart';
+import '../quick_add/quick_add_sheet.dart' show messageForMicFailure, messageForTranscriptionReason;
+import 'events_screen.dart' show eventTypeLabel;
 
 class AddEventScreen extends StatefulWidget {
   final Event? existingEvent; // If provided, we're editing an existing event
@@ -117,11 +119,9 @@ class _AddEventScreenState extends State<AddEventScreen> {
         _descriptionController.text = _descriptionBeforeRecording!;
       }
       if (mounted && result.failedSegments.isNotEmpty) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                '${result.failedSegments.length} part(s) of the recording could not be transcribed live. The audio was kept.'),
-          ),
+          SnackBar(content: Text(l10n.recordingPartsFailedLive(result.failedSegments.length))),
         );
       }
       return;
@@ -199,21 +199,27 @@ class _AddEventScreenState extends State<AddEventScreen> {
     }
 
     if (mounted) {
+      final l10n = AppLocalizations.of(context);
       Navigator.pop(
           context, true); // Return true to indicate save was successful
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(
-                'Event "${event.title}" ${widget.existingEvent != null ? 'updated' : 'created'}')),
+            content: Text(l10n.addEventSavedSnackbar(
+                event.title,
+                widget.existingEvent != null
+                    ? l10n.addEventSavedActionUpdated
+                    : l10n.addEventSavedActionCreated))),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).toString();
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.existingEvent != null ? 'Edit Event' : 'Add Event'),
+        title: Text(widget.existingEvent != null ? l10n.addEventTitleEdit : l10n.addEventTitleNew),
         actions: [
           TextButton(
             onPressed: _isSaving ? null : _save,
@@ -222,7 +228,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Save'),
+                : Text(l10n.commonSave),
           ),
         ],
       ),
@@ -233,34 +239,34 @@ class _AddEventScreenState extends State<AddEventScreen> {
           children: [
             TextFormField(
               controller: _titleController,
-              decoration: const InputDecoration(
-                  labelText: 'Title *', prefixIcon: Icon(Icons.title)),
+              decoration: InputDecoration(
+                  labelText: l10n.addEventTitleFieldLabel, prefixIcon: const Icon(Icons.title)),
               validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Title required' : null,
+                  v == null || v.trim().isEmpty ? l10n.addEventTitleRequired : null,
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<EventType>(
               value: _type,
-              decoration: const InputDecoration(
-                  labelText: 'Type', prefixIcon: Icon(Icons.category)),
+              decoration: InputDecoration(
+                  labelText: l10n.addEventTypeLabel, prefixIcon: const Icon(Icons.category)),
               items: EventType.values
-                  .map((t) => DropdownMenuItem(value: t, child: Text(t.name)))
+                  .map((t) => DropdownMenuItem(value: t, child: Text(eventTypeLabel(l10n, t))))
                   .toList(),
               onChanged: (v) => setState(() => _type = v ?? EventType.other),
             ),
             const SizedBox(height: 16),
             ListTile(
               leading: const Icon(Icons.schedule),
-              title: Text(DateFormat.yMMMd().add_jm().format(_dateTime)),
-              subtitle: const Text('Start time - Tap to change'),
+              title: Text(DateFormat.yMMMd(locale).add_jm().format(_dateTime)),
+              subtitle: Text(l10n.addEventStartTimeSubtitle),
               onTap: _selectDateTime,
             ),
             ListTile(
               leading: const Icon(Icons.schedule_outlined),
               title: Text(_endDateTime != null
-                  ? DateFormat.yMMMd().add_jm().format(_endDateTime!)
-                  : 'No end time'),
-              subtitle: const Text('End time (optional) - Tap to change'),
+                  ? DateFormat.yMMMd(locale).add_jm().format(_endDateTime!)
+                  : l10n.addEventNoEndTime),
+              subtitle: Text(l10n.addEventEndTimeSubtitle),
               trailing: _endDateTime != null
                   ? IconButton(
                       icon: const Icon(Icons.clear),
@@ -269,12 +275,12 @@ class _AddEventScreenState extends State<AddEventScreen> {
               onTap: _selectEndDateTime,
             ),
             const SizedBox(height: 16),
-            _buildRecordingCard(),
+            _buildRecordingCard(l10n),
             const SizedBox(height: 16),
             TextFormField(
               controller: _descriptionController,
-              decoration: const InputDecoration(
-                  labelText: 'Description', prefixIcon: Icon(Icons.note)),
+              decoration: InputDecoration(
+                  labelText: l10n.addEventDescriptionLabel, prefixIcon: const Icon(Icons.note)),
               maxLines: 3,
             ),
             const SizedBox(height: 16),
@@ -282,8 +288,8 @@ class _AddEventScreenState extends State<AddEventScreen> {
               child: ListTile(
                 leading: const Icon(Icons.people),
                 title: Text(_participantIds.isEmpty
-                    ? 'Add participants'
-                    : '${_participantIds.length} participants'),
+                    ? l10n.addEventAddParticipants
+                    : l10n.addEventParticipantsCount(_participantIds.length)),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _selectParticipants(),
               ),
@@ -291,8 +297,9 @@ class _AddEventScreenState extends State<AddEventScreen> {
             Card(
               child: ListTile(
                 leading: const Icon(Icons.place),
-                title: Text(
-                    _placeId == null ? 'Add location' : 'Location selected'),
+                title: Text(_placeId == null
+                    ? l10n.addEventAddLocation
+                    : l10n.addEventLocationSelected),
                 trailing: _placeId != null
                     ? IconButton(
                         icon: const Icon(Icons.clear),
@@ -307,7 +314,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
     );
   }
 
-  Widget _buildRecordingCard() {
+  Widget _buildRecordingCard(AppLocalizations l10n) {
     final state = _recorder.state;
     final isRecording = state == RecorderState.recording;
     final isBusy = state == RecorderState.requestingPermission ||
@@ -348,7 +355,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  _messageForFailure(_recorder.failure!.reason),
+                  messageForMicFailure(l10n, _recorder.failure!.reason),
                   style: const TextStyle(color: Colors.red),
                 ),
               ),
@@ -356,7 +363,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
-                  _messageForTranscriptionReason(_recorder.liveTranscriptionReason),
+                  messageForTranscriptionReason(l10n, _recorder.liveTranscriptionReason),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
@@ -364,7 +371,8 @@ class _AddEventScreenState extends State<AddEventScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
-                  'Recording attached (${_formatElapsed(Duration(milliseconds: _pendingRecording!.durationMs ?? 0))})',
+                  l10n.recordingAttachedWithDuration(_formatElapsed(
+                      Duration(milliseconds: _pendingRecording!.durationMs ?? 0))),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
@@ -382,34 +390,6 @@ class _AddEventScreenState extends State<AddEventScreen> {
     return hours > 0
         ? '${two(hours)}:${two(minutes)}:${two(seconds)}'
         : '${two(minutes)}:${two(seconds)}';
-  }
-
-  String _messageForFailure(AudioCaptureFailureReason reason) {
-    switch (reason) {
-      case AudioCaptureFailureReason.permissionDenied:
-        return 'Microphone permission was denied.';
-      case AudioCaptureFailureReason.noMicrophone:
-        return 'No microphone is available on this device.';
-      case AudioCaptureFailureReason.other:
-        return 'Could not start recording.';
-    }
-  }
-
-  String _messageForTranscriptionReason(LiveTranscriptionReason reason) {
-    switch (reason) {
-      case LiveTranscriptionReason.notStarted:
-        return 'Recording...';
-      case LiveTranscriptionReason.working:
-        return 'Live transcription is working.';
-      case LiveTranscriptionReason.offline:
-        return 'Offline - recording without live transcription.';
-      case LiveTranscriptionReason.notSignedIn:
-        return 'Sign in for live transcription - recording continues without it.';
-      case LiveTranscriptionReason.notConfigured:
-        return 'Live transcription is not available right now.';
-      case LiveTranscriptionReason.failing:
-        return 'Live transcription is having trouble - recording continues.';
-    }
   }
 
   Future<void> _selectEndDateTime() async {
@@ -436,6 +416,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
   }
 
   void _selectParticipants() async {
+    final l10n = AppLocalizations.of(context);
     final db = context.read<DatabaseService>();
     final persons = await db.getPersons();
 
@@ -444,7 +425,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Select Participants'),
+        title: Text(l10n.addEventSelectParticipantsTitle),
         content: SizedBox(
           width: double.maxFinite,
           child: ListView(
@@ -470,7 +451,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Done'))
+              child: Text(l10n.addEventDone))
         ],
       ),
     );
@@ -478,6 +459,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
   }
 
   void _selectPlace() async {
+    final l10n = AppLocalizations.of(context);
     final db = context.read<DatabaseService>();
     final places = await db.getPlaces();
 
@@ -486,7 +468,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Select Place'),
+        title: Text(l10n.addEventSelectPlaceTitle),
         content: SizedBox(
           width: double.maxFinite,
           child: ListView(
@@ -494,7 +476,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
             children: [
               ListTile(
                 leading: const Icon(Icons.map_outlined),
-                title: const Text('Pick on map'),
+                title: Text(l10n.addEventPickOnMap),
                 onTap: () {
                   Navigator.pop(context);
                   _pickPlaceOnMap(db, places);
@@ -515,7 +497,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'))
+              child: Text(l10n.commonCancel))
         ],
       ),
     );
@@ -545,16 +527,17 @@ class _AddEventScreenState extends State<AddEventScreen> {
 
     final nearby = findNearbyPlace(places, position);
     if (nearby != null) {
+      final l10n = AppLocalizations.of(context);
       final useExisting = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Use nearby place?'),
-          content: Text('"${nearby.name}" is right here. Use it instead of creating a new place?'),
+          title: Text(l10n.addEventUseNearbyPlaceTitle),
+          content: Text(l10n.addEventUseNearbyPlaceBody(nearby.name)),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(context, false), child: const Text('New place')),
+                onPressed: () => Navigator.pop(context, false), child: Text(l10n.addEventNewPlace)),
             FilledButton(
-                onPressed: () => Navigator.pop(context, true), child: const Text('Use it')),
+                onPressed: () => Navigator.pop(context, true), child: Text(l10n.addEventUseIt)),
           ],
         ),
       );
