@@ -4,6 +4,7 @@ import '../services/database_service.dart';
 import '../services/sync_service.dart';
 import 'persons/persons_screen.dart';
 import 'events/events_screen.dart';
+import 'map/map_screen.dart';
 import 'places/places_screen.dart';
 import 'objects/objects_screen.dart';
 import 'settings_screen.dart';
@@ -42,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _searchQuery = '';
 
   final List<Widget> _screens = [
+    const MapScreen(),
     const PersonsScreen(),
     const EventsScreen(),
     const PlacesScreen(),
@@ -169,6 +171,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           });
         },
         destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.map_outlined),
+            selectedIcon: Icon(Icons.map),
+            label: 'Map',
+          ),
           NavigationDestination(
             icon: Icon(Icons.people_outline),
             selectedIcon: Icon(Icons.people),
@@ -339,7 +346,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     switch (result.type) {
       case SearchResultType.person:
-        setState(() => _selectedIndex = 0);
+        setState(() => _selectedIndex = 1);
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -347,7 +354,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
         break;
       case SearchResultType.event:
-        setState(() => _selectedIndex = 1);
+        setState(() => _selectedIndex = 2);
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -355,10 +362,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
         break;
       case SearchResultType.object:
-        setState(() => _selectedIndex = 3);
+        setState(() => _selectedIndex = 4);
         break;
       case SearchResultType.place:
-        setState(() => _selectedIndex = 2);
+        setState(() => _selectedIndex = 3);
         break;
     }
   }
@@ -366,12 +373,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _getTitle() {
     switch (_selectedIndex) {
       case 0:
-        return 'People';
+        return 'Map';
       case 1:
-        return 'Events';
+        return 'People';
       case 2:
-        return 'Places';
+        return 'Events';
       case 3:
+        return 'Places';
+      case 4:
         return 'Objects';
       default:
         return 'Relationship Manager';
