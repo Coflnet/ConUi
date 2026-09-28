@@ -6,14 +6,14 @@ A full-stack application designed to track and manage relationships, people, pla
 
 This system is divided into two main components:
 * **Frontend (`flutter_app`)**: A cross-platform Flutter client app representing the user interface. It works offline using a local database and synchronizes data when a network connection is available. Data is encrypted prior to sync.
-* **Backend (`backend/RelationshipManager.Api`)**: An ASP.NET Core 8 Web API that provides authentication, metadata synchronization, and chunked blob storage.
+* **Backend (`backend/RelationshipManager.Api`)**: An ASP.NET Core 8 Web API that provides authentication, metadata synchronization, blob storage, and live speech-to-text transcription for stories being recorded. The backend never needs to read user content - blobs are opaque, already-encrypted bytes to it.
 
 ### Tech Stack
 * **Client:** Flutter / Dart (Local DB: sqflite)
 * **API:** C# / .NET 8 / ASP.NET Core
 * **Databases/Storage:**
   * **ScyllaDB (Cassandra):** High-performance NoSQL database for structured user metadata and sync entries.
-  * **MinIO:** S3-compatible object storage for storing binary blobs and encrypted data chunks.
+  * **MinIO:** S3-compatible object storage for the encrypted blobs (people, events, files) synced from the client. Storage is optional at start-up; the API still starts and answers 503 on the blob endpoints when it isn't reachable or configured.
 * **Infrastructure:** Docker & Docker Compose.
 
 ---
@@ -35,11 +35,12 @@ From the root of the workspace, run:
 docker compose up -d
 ```
 
-*Note: On the first launch, initialization containers (`scylla-init` and `minio-init`) will automatically run to create the required keyspace, tables, and S3 buckets.*
+*Note: On first launch, the API itself creates the Cassandra keyspace (and each table, lazily, the first time it's needed) once ScyllaDB is reachable - there is no separate init container for it. `minio-init` still runs once to create the S3 bucket ahead of the first request.*
 
 **Local Services:**
 * **ASP.NET API:** `http://localhost:5000`
   * Check the **Swagger UI** for testing endpoints at: `http://localhost:5000/swagger`
+  * Liveness: `http://localhost:5000/health` - readiness (checks Cassandra, reports whether S3/transcription are configured): `http://localhost:5000/health/ready`
 * **MinIO Storage Console:** `http://localhost:9001`
   * *Username:* `minioadmin`
   * *Password:* `minioadmin123`
@@ -68,20 +69,76 @@ If you need to make changes to the C# API and wish to debug it using Visual Stud
 
 1. Spin up only the backing services:
    ```bash
-   docker compose up -d scylladb minio scylla-init minio-init
+   docker compose up -d scylladb minio minio-init
    ```
-2. Navigate to `backend/RelationshipManager.Api` or open the root directory in your IDE.
+2. Navigate to `backend/RelationshipManager.Api` or open `backend/RelationshipManager.sln` in your IDE.
 3. Start the project using your debugger or run:
    ```bash
    dotnet run
    ```
-The application will map to configurations in `appsettings.Development.json` which are already set to point to `localhost:9042` (ScyllaDB) and `localhost:9000` (MinIO).
+
+Local defaults (Cassandra at `localhost:9042`, MinIO at `localhost:9000`, `ENABLE_DEV_AUTH` off) come from `appsettings.Development.json`; the base `appsettings.json` only holds values safe to ship in every environment (an obvious JWT secret placeholder, no S3/Cassandra connection info). `POST /api/auth/dev` (mint a token for any user id, no real login) only ever works when `ASPNETCORE_ENVIRONMENT=Development` **and** `ENABLE_DEV_AUTH=true` - set the latter in your shell or launch profile if you need it outside `docker compose` (which already sets it).
+
+### 4. Running the Backend Tests
+
+```bash
+cd backend
+dotnet test RelationshipManager.sln
+```
+
+`RelationshipManager.Api.Tests` (NUnit) needs neither Cassandra nor S3 nor a running Docker stack: Cassandra/S3/Firebase/transcription are all substituted with in-memory fakes, and the app is booted directly (via `RelationshipManagerApp.Build`) on a real loopback Kestrel server for the request-level tests.
+
+## Configuration
+
+Every key below can be set via `appsettings*.json` or the matching environment variable (`__` for nesting, e.g. `CASSANDRA__HOSTS`). Booleans accept `true`/`false`.
+
+| Key | Purpose | Default |
+| --- | --- | --- |
+| `ASPNETCORE_ENVIRONMENT` | `Development` relaxes JWT-secret and CORS checks and enables Swagger; anything else is treated as production-like. | unset (→ Production) |
+| `ASPNETCORE_URLS` | Address(es) Kestrel listens on. | `http://+:8000` in the container |
+| `jwt:issuer` / `jwt:secret` | Signs and validates auth tokens. Outside Development the app **refuses to start** if `jwt:secret` is missing, shorter than 32 characters, or still the shipped placeholder. | placeholder in `appsettings.json` (Development only) |
+| `ENABLE_DEV_AUTH` | Enables `POST /api/auth/dev`. Also requires `ASPNETCORE_ENVIRONMENT=Development`; the endpoint is a 404 otherwise. | `false` |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to a Firebase/Google service account JSON. When set (and the file exists), `POST /api/auth/firebase` verifies real tokens; otherwise it answers `503 sign_in_not_configured`. | unset |
+| `Cors:AllowedOrigins` | Array of allowed CORS origins. Empty means no cross-origin access at all. In Development, `localhost`/`127.0.0.1`/`::1` on any port are also allowed (for `flutter run -d chrome`). | `[]` |
+| `CASSANDRA:HOSTS` | Comma-separated Cassandra/Scylla contact points. | `localhost` (Development) |
+| `CASSANDRA:KEYSPACE` | Keyspace name; created automatically if it doesn't exist (alphanumeric/underscore only). | `relationship_manager` (Development) |
+| `CASSANDRA:USER` / `CASSANDRA:PASSWORD` | Cassandra credentials. | `cassandra`/`cassandra` (Development) |
+| `CASSANDRA:REPLICATION_CLASS` / `CASSANDRA:REPLICATION_FACTOR` | Replication used only when creating the keyspace. | `NetworkTopologyStrategy`/`3` in code; `SimpleStrategy`/`1` in Development |
+| `CASSANDRA:X509Certificate_PATHS` | Comma-separated client certificate file(s) for TLS. Production Scylla requires this. | unset (TLS off) |
+| `CASSANDRA:X509Certificate_PASSWORD` | Password for the client certificate(s). Required if `X509Certificate_PATHS` is set. | - |
+| `CASSANDRA:X509Certificate_VALIDATION_PATH` | Root CA certificate to pin server validation to, instead of the system trust store. | unset |
+| `S3:ENDPOINT` / `S3:ACCESS_KEY` / `S3:SECRET_KEY` / `S3:BUCKET` | S3-compatible blob storage. S3 is optional: if any of these is blank, or the bucket can't be reached, blob-related endpoints answer `503` instead of failing to start. | MinIO dev values (Development) |
+| `S3:USE_PATH_STYLE` | Path-style S3 addressing (needed for MinIO). | `true` |
+| `Transcription:BaseUrl` | Upstream speech-to-text base URL. Empty disables the feature (`503 transcription_not_configured`). | unset |
+| `Transcription:Api` | `asr-webservice` (onerahmet/openai-whisper-asr-webservice, used in production) or `openai` (`/audio/transcriptions`-compatible). | `asr-webservice` |
+| `Transcription:Model` | Model name, `openai` protocol only. | `whisper-1` |
+| `Transcription:ApiKey` | Bearer token, `openai` protocol only. | unset |
+| `Transcription:TimeoutSeconds` | Upstream call timeout. | `60` |
+| `Transcription:DefaultLanguage` | ISO 639-1 language used when a request doesn't specify one. Empty means auto-detect. | unset |
+| `Transcription:MaxConcurrentPerUser` | Max transcription segments one user can have in flight at once (`429` beyond it). | `2` |
+| `Transcription:MaxSegmentBytes` | Max size of one audio segment, enforced while the body is being streamed in (`413` beyond it). | `5242880` (5 MB) |
+
+## Live Transcription
+
+While a user records a story, the client sends short audio segments (~6s, WAV PCM 16kHz mono is the primary case; `webm`/`ogg`/`mp4`/`mpeg` are also accepted) and the backend streams each one straight through to a speech-to-text upstream and returns the text - it is a pass-through, not a store.
+
+* `GET /api/transcription/status` (authenticated) → `{ "available": true|false }`, so the app can show up front whether live text will work.
+* `POST /api/transcription/segment` (authenticated), body = raw audio bytes, `Content-Type` set to the audio format, optional `?language=xx` (two-letter ISO 639-1) → `{ "text": "..." }`.
+
+**Privacy is a hard requirement, not just a preference:** audio is never written to disk or stored anywhere, transcript text is never stored, and logging never includes audio content or transcript text - only sizes, durations and status codes.
+
+Error responses (all `{ "slug": "...", "message": "..." }`): `503 transcription_not_configured` (no `Transcription:BaseUrl`), `415` unsupported content type, `400 invalid_language`, `429 too_many_requests` (per-user concurrency), `413 segment_too_large`, `502 transcription_failed` (upstream error or timeout).
 
 ## Project Structure
 
 * `/backend/RelationshipManager.Api/` - Source code for the REST backend.
-  * `Controllers/` - Auth and Sync API endpoints.
-  * `Services/` - S3 Service logic and Sync Metadata logic.
+  * `Controllers/` - Auth, Sync, Transcription and health API endpoints.
+  * `Services/` - S3, sync, and transcription service logic.
+  * `Data/` - Cassandra session/keyspace handling and the per-table stores (`IUserStore`, `ISyncStore`), kept behind interfaces so tests can substitute in-memory fakes.
+  * `Auth/` - JWT issuing and Firebase token verification.
+  * `Errors/` - The uniform `{slug, message}` error shape.
+  * `Http/` - Small HTTP plumbing (e.g. the request-body size limiter used by transcription).
+* `/backend/RelationshipManager.Api.Tests/` - NUnit test project; see "Running the Backend Tests" above.
 * `/flutter_app/` - Source code for the Flutter mobile/web client.
   * `lib/models/` - Domain logic and classes (Events, Persons, Places, etc.).
   * `lib/screens/` - UI feature views.
