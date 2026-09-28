@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import '../../models/models.dart';
+import '../../relationships/family_graph.dart';
+import '../../relationships/relationship_text.dart';
 import '../../services/database_service.dart';
 import '../events/event_detail_screen.dart';
+import 'add_connection_dialog.dart';
 import 'add_person_screen.dart';
+import 'edit_connection_dialog.dart';
+import 'relationship_graph_screen.dart';
 
 class PersonDetailScreen extends StatefulWidget {
   final String personId;
@@ -45,6 +49,16 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
               appBar: AppBar(
                 title: Text(person.name),
                 actions: [
+                  IconButton(
+                    icon: const Icon(Icons.account_tree_outlined),
+                    tooltip: 'Show family graph',
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => RelationshipGraphScreen(centerPersonId: person.id),
+                      ),
+                    ),
+                  ),
                   IconButton(
                     icon: const Icon(Icons.edit),
                     onPressed: () => _editPerson(context, person),
@@ -210,13 +224,18 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
 
   Widget _buildConnectionsSection(
       BuildContext context, DatabaseService db, Person person) {
-    return FutureBuilder<List<Connection>>(
-      future: db.getConnectionsForPerson(person.id),
+    return FutureBuilder<List<Object>>(
+      future: Future.wait([db.getPersons(), db.getConnections()]),
       builder: (context, snapshot) {
-        final connections = snapshot.data ?? [];
-        if (connections.isEmpty) {
-          return const SizedBox.shrink();
-        }
+        if (!snapshot.hasData) return const SizedBox.shrink();
+        final allPersons = snapshot.data![0] as List<Person>;
+        final allConnections = snapshot.data![1] as List<Connection>;
+        final graph = FamilyGraph.build(persons: allPersons, connections: allConnections);
+        final grouped = graph.groupedNeighbors(person.id);
+        final nonEmptyGroups =
+            RelationshipGroup.values.where((g) => grouped[g]!.isNotEmpty).toList();
+
+        if (nonEmptyGroups.isEmpty) return const SizedBox.shrink();
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -225,9 +244,20 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
               'Connections',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
-            const SizedBox(height: 8),
-            ...connections
-                .map((conn) => _buildConnectionTile(context, db, person, conn)),
+            for (final group in nonEmptyGroups) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 12, bottom: 4),
+                child: Text(
+                  RelationshipText.groupLabel(group),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ),
+              ...grouped[group]!.map(
+                  (entry) => _buildConnectionTile(context, db, person, entry, graph)),
+            ],
           ],
         );
       },
@@ -235,33 +265,86 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
   }
 
   Widget _buildConnectionTile(BuildContext context, DatabaseService db,
-      Person person, Connection conn) {
-    final otherPersonId =
-        conn.person1Id == person.id ? conn.person2Id : conn.person1Id;
+      Person person, PersonRelationshipView entry, FamilyGraph graph) {
+    final neighbor = graph.personById(entry.neighborId);
+    final neighborName = neighbor?.name ?? 'Unknown';
+    final roleLabel = entry.kind.isKnown
+        ? RelationshipText.roleOfLabel(entry.kind.known!, neighborName)
+        : RelationshipText.roleOfLabelForRaw(entry.kind.raw, neighborName);
 
-    return FutureBuilder<Person?>(
-      future: db.getPerson(otherPersonId),
-      builder: (context, snapshot) {
-        final otherPerson = snapshot.data;
-        return ListTile(
-          leading: CircleAvatar(
-            child: Text(otherPerson?.name.isNotEmpty == true
-                ? otherPerson!.name[0].toUpperCase()
-                : '?'),
+    return ListTile(
+      leading: CircleAvatar(
+        child: Text(neighborName.isNotEmpty ? neighborName[0].toUpperCase() : '?'),
+      ),
+      title: Text(neighborName),
+      subtitle: Text(entry.isDerived ? '$roleLabel · derived' : roleLabel),
+      trailing: entry.isDerived
+          ? Tooltip(
+              message: 'Derived from shared parents - not an editable connection',
+              child: Icon(Icons.auto_awesome,
+                  size: 20, color: Theme.of(context).colorScheme.outline),
+            )
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined, size: 20),
+                  onPressed: neighbor == null
+                      ? null
+                      : () => _editConnection(context, db, person, entry, neighbor),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 20),
+                  onPressed: () => _deleteConnection(context, db, entry),
+                ),
+              ],
+            ),
+      onTap: neighbor != null
+          ? () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PersonDetailScreen(personId: neighbor.id),
+                ),
+              )
+          : null,
+    );
+  }
+
+  void _editConnection(BuildContext context, DatabaseService db, Person person,
+      PersonRelationshipView entry, Person neighbor) async {
+    final connection = await db.getConnection(entry.edgeId);
+    if (connection == null || !context.mounted) return;
+    final saved = await showEditConnectionDialog(
+      context,
+      connection: connection,
+      viewedPerson: person,
+      otherPerson: neighbor,
+    );
+    if (saved == true && mounted) setState(() => _refreshKey++);
+  }
+
+  void _deleteConnection(
+      BuildContext context, DatabaseService db, PersonRelationshipView entry) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Connection'),
+        content: const Text('Are you sure you want to delete this connection?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
           ),
-          title: Text(otherPerson?.name ?? 'Unknown'),
-          subtitle: Text(conn.relationshipType),
-          onTap: otherPerson != null
-              ? () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          PersonDetailScreen(personId: otherPerson.id),
-                    ),
-                  )
-              : null,
-        );
-      },
+          TextButton(
+            onPressed: () async {
+              await db.deleteConnection(entry.edgeId);
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+              if (mounted) setState(() => _refreshKey++);
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -307,38 +390,21 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
 
   void _addConnection(
       BuildContext context, DatabaseService db, Person person) async {
-    // Get all persons except current person
     final allPersons = await db.getPersons();
-    final otherPersons = allPersons.where((p) => p.id != person.id).toList();
-
-    if (otherPersons.isEmpty) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Add another person first to create a connection')),
-        );
-      }
-      return;
-    }
-
-    // Get all events for selecting origin event
+    final allConnections = await db.getConnections();
     final allEvents = await db.getEvents();
 
     if (!context.mounted) return;
 
-    final result = await showDialog<Connection>(
-      context: context,
-      builder: (context) => _AddConnectionDialog(
-        currentPerson: person,
-        otherPersons: otherPersons,
-        events: allEvents,
-      ),
+    final saved = await showAddConnectionDialog(
+      context,
+      viewedPerson: person,
+      allPersons: allPersons,
+      allConnections: allConnections,
+      allEvents: allEvents,
     );
 
-    if (result != null) {
-      await db.saveConnection(result);
-      setState(() => _refreshKey++);
-    }
+    if (saved == true && mounted) setState(() => _refreshKey++);
   }
 
   Widget _buildEventsSection(
@@ -386,233 +452,6 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
           ],
         );
       },
-    );
-  }
-}
-
-// Dialog for adding a connection
-class _AddConnectionDialog extends StatefulWidget {
-  final Person currentPerson;
-  final List<Person> otherPersons;
-  final List<Event> events;
-
-  const _AddConnectionDialog({
-    required this.currentPerson,
-    required this.otherPersons,
-    required this.events,
-  });
-
-  @override
-  State<_AddConnectionDialog> createState() => _AddConnectionDialogState();
-}
-
-class _AddConnectionDialogState extends State<_AddConnectionDialog> {
-  Person? _selectedPerson;
-  Event? _selectedEvent;
-  String _relationshipType = 'friend';
-  final _descriptionController = TextEditingController();
-  DateTime _startDate = DateTime.now();
-  bool _createNewEvent = false;
-  final _newEventTitleController = TextEditingController();
-
-  final List<String> _relationshipTypes = [
-    'friend',
-    'colleague',
-    'family',
-    'partner',
-    'spouse',
-    'parent',
-    'child',
-    'sibling',
-    'acquaintance',
-    'mentor',
-    'other',
-  ];
-
-  @override
-  void dispose() {
-    _descriptionController.dispose();
-    _newEventTitleController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Add Connection'),
-      content: SizedBox(
-        width: 400,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Select person
-              DropdownButtonFormField<Person>(
-                decoration: const InputDecoration(labelText: 'Connect with *'),
-                value: _selectedPerson,
-                items: widget.otherPersons
-                    .map((p) => DropdownMenuItem(
-                          value: p,
-                          child: Text(p.name),
-                        ))
-                    .toList(),
-                onChanged: (p) => setState(() => _selectedPerson = p),
-              ),
-              const SizedBox(height: 16),
-
-              // Relationship type
-              DropdownButtonFormField<String>(
-                decoration:
-                    const InputDecoration(labelText: 'Relationship Type'),
-                value: _relationshipType,
-                items: _relationshipTypes
-                    .map((t) => DropdownMenuItem(
-                          value: t,
-                          child: Text(t[0].toUpperCase() + t.substring(1)),
-                        ))
-                    .toList(),
-                onChanged: (t) =>
-                    setState(() => _relationshipType = t ?? 'friend'),
-              ),
-              const SizedBox(height: 16),
-
-              // Start date
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Start Date'),
-                subtitle: Text(DateFormat.yMMMd().format(_startDate)),
-                trailing: const Icon(Icons.calendar_today),
-                onTap: () async {
-                  final date = await showDatePicker(
-                    context: context,
-                    initialDate: _startDate,
-                    firstDate: DateTime(1900),
-                    lastDate: DateTime.now(),
-                  );
-                  if (date != null) {
-                    setState(() => _startDate = date);
-                  }
-                },
-              ),
-              const SizedBox(height: 16),
-
-              // Origin event toggle
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Link to Origin Event'),
-                subtitle: const Text(
-                    'Optional: the event that started this connection'),
-                value: !_createNewEvent && _selectedEvent != null ||
-                    _createNewEvent,
-                onChanged: (v) => setState(() {
-                  if (!v) {
-                    _selectedEvent = null;
-                    _createNewEvent = false;
-                  }
-                }),
-              ),
-
-              if (!_createNewEvent &&
-                  (_selectedEvent != null || widget.events.isNotEmpty)) ...[
-                // Select existing event
-                DropdownButtonFormField<Event?>(
-                  decoration: const InputDecoration(labelText: 'Select Event'),
-                  value: _selectedEvent,
-                  items: [
-                    const DropdownMenuItem<Event?>(
-                      value: null,
-                      child: Text('None'),
-                    ),
-                    ...widget.events.map((e) => DropdownMenuItem(
-                          value: e,
-                          child: Text(
-                              '${e.title} (${DateFormat.yMMMd().format(e.dateTime)})'),
-                        )),
-                  ],
-                  onChanged: (e) => setState(() => _selectedEvent = e),
-                ),
-                TextButton(
-                  onPressed: () => setState(() => _createNewEvent = true),
-                  child: const Text('Or create new event'),
-                ),
-              ],
-
-              if (_createNewEvent) ...[
-                TextField(
-                  controller: _newEventTitleController,
-                  decoration: const InputDecoration(
-                    labelText: 'New Event Title',
-                    hintText: 'e.g., First met at conference',
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => setState(() => _createNewEvent = false),
-                  child: const Text('Cancel new event'),
-                ),
-              ],
-
-              const SizedBox(height: 16),
-              TextField(
-                controller: _descriptionController,
-                decoration: const InputDecoration(
-                  labelText: 'Description',
-                  hintText: 'Optional notes about this connection',
-                ),
-                maxLines: 2,
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _selectedPerson == null
-              ? null
-              : () async {
-                  String? originEventId;
-
-                  // Create new event if specified
-                  if (_createNewEvent &&
-                      _newEventTitleController.text.isNotEmpty) {
-                    final db = context.read<DatabaseService>();
-                    final newEvent = Event(
-                      title: _newEventTitleController.text.trim(),
-                      dateTime: _startDate,
-                      type: EventType.social,
-                      participantIds: [
-                        widget.currentPerson.id,
-                        _selectedPerson!.id
-                      ],
-                    );
-                    await db.saveEvent(newEvent);
-                    originEventId = newEvent.id;
-                  } else if (_selectedEvent != null) {
-                    originEventId = _selectedEvent!.id;
-                  }
-
-                  final connection = Connection(
-                    person1Id: widget.currentPerson.id,
-                    person2Id: _selectedPerson!.id,
-                    relationshipType: _relationshipType,
-                    originEventId: originEventId,
-                    description: _descriptionController.text.trim().isEmpty
-                        ? null
-                        : _descriptionController.text.trim(),
-                    startDate: _startDate,
-                  );
-
-                  if (context.mounted) {
-                    Navigator.pop(context, connection);
-                  }
-                },
-          child: const Text('Add'),
-        ),
-      ],
     );
   }
 }
