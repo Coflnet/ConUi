@@ -299,12 +299,30 @@ class _RestoreScreenState extends State<RestoreScreen> {
           SizedBox(
             width: double.infinity,
             child: FilledButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => _finishSuccessfulRestore(context),
               child: const Text('Done'),
             ),
           ),
         ],
       ),
     );
+  }
+
+  /// "Done" after a successful restore doesn't just pop back one screen:
+  /// entity data just changed underneath whatever screens are already
+  /// open, and most of them (see the final report for exactly which)
+  /// loaded their data once in `initState` rather than listening to
+  /// [DatabaseService], so they'd otherwise keep showing pre-restore data
+  /// indefinitely. Popping all the way back to the app's first route and
+  /// notifying [DatabaseService] covers what this screen can do about that
+  /// on its own: routes popped past here are disposed and will reload
+  /// fresh next time they're pushed again, and any ALREADY-reactive screen
+  /// still on the stack (one that listens via `Consumer<DatabaseService>`/
+  /// `context.watch`) picks up the change immediately. A screen that does
+  /// neither - kept alive without listening - needs that other agent's fix
+  /// to actually refresh; this alone can't reach it.
+  void _finishSuccessfulRestore(BuildContext context) {
+    context.read<DatabaseService>().notifyDataRestored();
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 }
