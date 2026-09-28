@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
+import '../l10n/gen/app_localizations.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 
@@ -71,7 +72,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } else {
       if (mounted) {
         setState(() {
-          _error = 'Login failed. Make sure the server is running.';
+          _error = AppLocalizations.of(context).loginFailed;
         });
       }
     }
@@ -92,6 +93,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -110,7 +112,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    'Relationship Manager',
+                    l10n.loginTitle,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -118,116 +120,129 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Organize your connections',
+                    l10n.loginTagline,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           color: Colors.grey,
                         ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 48),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Development Login',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 16),
-                          TextField(
-                            controller: _userIdController,
-                            decoration: const InputDecoration(
-                              labelText: 'User ID',
-                              prefixIcon: Icon(Icons.person),
+                  // The development login form only exists in debug
+                  // builds: it talks to a local dev server no production
+                  // user has, and must never be offered as a real sign-in
+                  // option - see the production rollout brief's item 6a.
+                  // "Continue without account" is release's only, and so
+                  // main, action.
+                  if (kDebugMode) ...[
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              l10n.loginDevSectionTitle,
+                              style: Theme.of(context).textTheme.titleMedium,
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _nameController,
-                            decoration: const InputDecoration(
-                              labelText: 'Name',
-                              prefixIcon: Icon(Icons.badge),
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: _userIdController,
+                              decoration: InputDecoration(
+                                labelText: l10n.loginUserIdLabel,
+                                prefixIcon: const Icon(Icons.person),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _emailController,
-                            decoration: const InputDecoration(
-                              labelText: 'Email',
-                              prefixIcon: Icon(Icons.email),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _nameController,
+                              decoration: InputDecoration(
+                                labelText: l10n.loginNameLabel,
+                                prefixIcon: const Icon(Icons.badge),
+                              ),
                             ),
-                            keyboardType: TextInputType.emailAddress,
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _passwordController,
-                            decoration: const InputDecoration(
-                              labelText: 'Encryption Password',
-                              prefixIcon: Icon(Icons.lock),
-                              helperText: 'Used for encrypting your data',
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _emailController,
+                              decoration: InputDecoration(
+                                labelText: l10n.loginEmailLabel,
+                                prefixIcon: const Icon(Icons.email),
+                              ),
+                              keyboardType: TextInputType.emailAddress,
                             ),
-                            obscureText: true,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  if (_error != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.errorContainer,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        _error!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onErrorContainer,
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _passwordController,
+                              decoration: InputDecoration(
+                                labelText: l10n.loginPasswordLabel,
+                                prefixIcon: const Icon(Icons.lock),
+                                helperText: l10n.loginPasswordHelper,
+                              ),
+                              obscureText: true,
+                            ),
+                          ],
                         ),
-                        textAlign: TextAlign.center,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                  ],
-                  FilledButton.icon(
-                    onPressed: _isLoading ? null : _login,
-                    icon: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.login),
-                    label: Text(_isLoading ? 'Logging in...' : 'Login'),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton(
-                    onPressed: _isLoading ? null : _continueWithoutAccount,
-                    child: const Text('Continue without account'),
-                  ),
+                    const SizedBox(height: 24),
+                    if (_error != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          _error!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onErrorContainer,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    FilledButton.icon(
+                      onPressed: _isLoading ? null : _login,
+                      icon: _isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.login),
+                      label: Text(_isLoading ? l10n.loginButtonBusy : l10n.loginButton),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: _isLoading ? null : _continueWithoutAccount,
+                      child: Text(l10n.loginContinueWithoutAccount),
+                    ),
+                  ] else
+                    FilledButton(
+                      onPressed: _continueWithoutAccount,
+                      child: Text(l10n.loginContinueWithoutAccount),
+                    ),
                   const SizedBox(height: 8),
                   Text(
-                    'Recording and local data work without an account. '
-                    'Sync and live transcription need sign-in later.',
+                    l10n.loginContinueExplainer,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Colors.grey,
                         ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'For production, Firebase authentication will be used.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey,
-                        ),
-                    textAlign: TextAlign.center,
-                  ),
+                  if (kDebugMode) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      l10n.loginDevNote,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.grey,
+                          ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ],
               ),
             ),

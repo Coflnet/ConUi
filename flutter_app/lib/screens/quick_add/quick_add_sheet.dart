@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/models.dart';
+import '../../services/app_settings_service.dart';
 import '../../services/audio_capture.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
@@ -183,6 +184,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   static RecorderController _buildDefaultRecorderController(BuildContext context) {
     final auth = context.read<AuthService>();
     final db = context.read<DatabaseService>();
+    final settings = context.read<AppSettingsService>();
     return RecorderController(
       audioCapture: RecordPackageAudioCapture(),
       fileStore: createRecordingFileStore(),
@@ -191,6 +193,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
         baseUrl: auth.baseUrl,
         getToken: () => auth.token,
       ),
+      language: settings.effectiveRecordingLanguage,
     );
   }
 

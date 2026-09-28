@@ -19,11 +19,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:relationship_manager/backup/backup_create_screen.dart';
 import 'package:relationship_manager/backup/backup_service.dart';
-import 'package:relationship_manager/backup/backup_strings.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/services/recording_file_store_native.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../support/localized_app.dart';
 import '../support/test_database.dart';
 import 'fake_destination.dart';
 import 'fake_export_offer.dart';
@@ -66,11 +66,11 @@ void main() {
   /// offer).
   Future<void> runBackupToDone(
       WidgetTester tester, BackupService service, FakeBackupExportOffer exportOffer) async {
-    await tester.pumpWidget(MaterialApp(
-      home: BackupCreateScreen(backupService: service, exportOffer: exportOffer),
+    await tester.pumpWidget(wrapLocalized(
+      BackupCreateScreen(backupService: service, exportOffer: exportOffer),
     ));
     await _settle(tester);
-    await tester.tap(find.widgetWithText(FilledButton, BackupStrings.createTitle));
+    await tester.tap(find.widgetWithText(FilledButton, 'Create backup'));
     await _settle(tester, rounds: 100);
   }
 
@@ -84,7 +84,7 @@ void main() {
 
     await runBackupToDone(tester, service, FakeBackupExportOffer());
 
-    expect(find.text(BackupStrings.exportOfferTitle), findsNothing);
+    expect(find.text('Get this backup out of the app'), findsNothing);
     expect(find.textContaining('Saved to:'), findsOneWidget);
   });
 
@@ -98,9 +98,9 @@ void main() {
 
     await runBackupToDone(tester, service, FakeBackupExportOffer());
 
-    expect(find.text(BackupStrings.exportOfferTitle), findsOneWidget);
-    expect(find.text(BackupStrings.exportSaveAsButton), findsOneWidget);
-    expect(find.text(BackupStrings.exportShareButton), findsOneWidget);
+    expect(find.text('Get this backup out of the app'), findsOneWidget);
+    expect(find.text('Save to…'), findsOneWidget);
+    expect(find.text('Share…'), findsOneWidget);
     // The plain "Saved to" summary (which would be misleading here - the
     // file hasn't left the app yet) must not be shown at the same time.
     expect(find.textContaining('Saved to:'), findsNothing);
@@ -116,12 +116,12 @@ void main() {
       ..nextSaveAsResult = '/sdcard/Documents/backup.zip';
 
     await runBackupToDone(tester, service, exportOffer);
-    await tester.tap(find.text(BackupStrings.exportSaveAsButton));
+    await tester.tap(find.text('Save to…'));
     await _settle(tester);
 
     expect(find.textContaining('/sdcard/Documents/backup.zip'), findsOneWidget);
     expect(exportOffer.deletedPaths, hasLength(1));
-    expect(find.text(BackupStrings.exportOfferTitle), findsNothing);
+    expect(find.text('Get this backup out of the app'), findsNothing);
   });
 
   testWidgets(
@@ -134,12 +134,12 @@ void main() {
     final exportOffer = FakeBackupExportOffer()..nextSaveAsResult = null;
 
     await runBackupToDone(tester, service, exportOffer);
-    await tester.tap(find.text(BackupStrings.exportSaveAsButton));
+    await tester.tap(find.text('Save to…'));
     await _settle(tester);
 
-    expect(find.text(BackupStrings.exportOfferWarning), findsOneWidget);
-    expect(find.text(BackupStrings.exportSaveAsButton), findsOneWidget);
-    expect(find.text(BackupStrings.exportShareButton), findsOneWidget);
+    expect(find.text('This backup is ONLY inside the app right now and will be lost with the app. Choose one of the options below to keep it safe.'), findsOneWidget);
+    expect(find.text('Save to…'), findsOneWidget);
+    expect(find.text('Share…'), findsOneWidget);
     expect(exportOffer.deletedPaths, isEmpty);
   });
 
@@ -153,10 +153,10 @@ void main() {
     final exportOffer = FakeBackupExportOffer()..nextShareResult = true;
 
     await runBackupToDone(tester, service, exportOffer);
-    await tester.tap(find.text(BackupStrings.exportShareButton));
+    await tester.tap(find.text('Share…'));
     await _settle(tester);
 
-    expect(find.text(BackupStrings.exportSharedTitle), findsOneWidget);
+    expect(find.text('Shared'), findsOneWidget);
     expect(exportOffer.deletedPaths, hasLength(1));
   });
 
@@ -169,12 +169,12 @@ void main() {
     final exportOffer = FakeBackupExportOffer()..nextShareResult = false;
 
     await runBackupToDone(tester, service, exportOffer);
-    await tester.tap(find.text(BackupStrings.exportShareButton));
+    await tester.tap(find.text('Share…'));
     await _settle(tester);
 
-    expect(find.text(BackupStrings.exportOfferWarning), findsOneWidget);
-    expect(find.text(BackupStrings.exportSaveAsButton), findsOneWidget);
-    expect(find.text(BackupStrings.exportShareButton), findsOneWidget);
+    expect(find.text('This backup is ONLY inside the app right now and will be lost with the app. Choose one of the options below to keep it safe.'), findsOneWidget);
+    expect(find.text('Save to…'), findsOneWidget);
+    expect(find.text('Share…'), findsOneWidget);
     expect(exportOffer.deletedPaths, isEmpty);
   });
 }

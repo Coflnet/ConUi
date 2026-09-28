@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import '../../models/models.dart';
+import '../../services/app_settings_service.dart';
 import '../../services/audio_capture.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
@@ -69,6 +70,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
   static RecorderController _buildDefaultRecorderController(BuildContext context) {
     final auth = context.read<AuthService>();
     final db = context.read<DatabaseService>();
+    final settings = context.read<AppSettingsService>();
     return RecorderController(
       audioCapture: RecordPackageAudioCapture(),
       fileStore: createRecordingFileStore(),
@@ -77,6 +79,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
         baseUrl: auth.baseUrl,
         getToken: () => auth.token,
       ),
+      language: settings.effectiveRecordingLanguage,
     );
   }
 

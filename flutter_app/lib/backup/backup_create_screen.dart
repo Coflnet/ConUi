@@ -3,13 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
+import '../l10n/gen/app_localizations.dart';
 import '../services/database_service.dart';
+import 'backup_byte_format.dart';
 import 'backup_destination.dart';
 import 'backup_export.dart';
 import 'backup_manifest.dart';
+import 'backup_preview_text.dart';
 import 'backup_progress.dart';
 import 'backup_service.dart';
-import 'backup_strings.dart';
 
 /// "Create backup": shows what will be included (with the missing-audio
 /// notice up front, per the brief), asks for confirmation, then runs the
@@ -86,21 +88,22 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
   Future<void> _confirmAndStart() async {
     final plan = _plan;
     if (kIsWeb && plan != null && plan.recordingBytes > BackupService.webSizeWarnThresholdBytes) {
+      final l10n = AppLocalizations.of(context);
       final proceed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text(BackupStrings.webSizeWarningTitle),
-          content: Text(BackupStrings.webSizeWarningBody(
-            BackupStrings.bytesToHuman(plan.recordingBytes),
-            BackupStrings.bytesToHuman(BackupService.webSizeWarnThresholdBytes),
+          title: Text(l10n.backupWebSizeWarningTitle),
+          content: Text(l10n.backupWebSizeWarningBody(
+            BackupByteFormat.human(plan.recordingBytes),
+            BackupByteFormat.human(BackupService.webSizeWarnThresholdBytes),
           )),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text(BackupStrings.cancel)),
+                child: Text(l10n.commonCancel)),
             TextButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('Continue')),
+                child: Text(l10n.commonContinue)),
           ],
         ),
       );
@@ -129,8 +132,9 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text(BackupStrings.createTitle)),
+      appBar: AppBar(title: Text(l10n.backupCreateTitle)),
       body: switch (_step) {
         _Step.loadingPlan => const Center(child: CircularProgressIndicator()),
         _Step.showingPlan => _buildPlan(context),
@@ -141,20 +145,21 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
   }
 
   Widget _buildPlan(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final plan = _plan;
     if (plan == null) {
-      return Center(child: Text('Could not prepare a backup: $_planError'));
+      return Center(child: Text(l10n.backupCouldNotPreparePlan(_planError.toString())));
     }
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(BackupStrings.previewTitle, style: Theme.of(context).textTheme.titleMedium),
+          Text(l10n.backupPreviewTitle, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          Text(BackupStrings.previewCounts(plan.counts)),
+          Text(backupPreviewCountsText(l10n, plan.counts)),
           const SizedBox(height: 8),
-          Text(BackupStrings.recordingsSummary(plan.recordingCount, plan.recordingBytes)),
+          Text(l10n.backupRecordingsSummary(plan.recordingCount, plan.recordingBytes)),
           if (plan.missingAudioCount > 0) ...[
             const SizedBox(height: 16),
             Container(
@@ -164,7 +169,7 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                BackupStrings.missingAudioWarning(plan.missingAudioCount),
+                l10n.backupMissingAudioWarning(plan.missingAudioCount),
                 style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
               ),
             ),
@@ -174,7 +179,7 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
             width: double.infinity,
             child: FilledButton(
               onPressed: _confirmAndStart,
-              child: const Text(BackupStrings.createTitle),
+              child: Text(l10n.backupCreateTitle),
             ),
           ),
         ],
@@ -183,15 +188,16 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
   }
 
   Widget _buildRunning(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final progress = _progress;
     final total = progress?.total ?? 0;
     final current = progress?.current ?? 0;
     final phaseLabel = switch (progress?.phase) {
-      BackupPhase.collectingData => 'Reading your data…',
-      BackupPhase.writingRecordings => 'Writing recordings ($current of $total)…',
-      BackupPhase.writingMetadata => 'Writing data…',
-      BackupPhase.verifying => BackupStrings.verifying,
-      _ => BackupStrings.creatingTitle,
+      BackupPhase.collectingData => l10n.backupPhaseReadingData,
+      BackupPhase.writingRecordings => l10n.backupPhaseWritingRecordings(current, total),
+      BackupPhase.writingMetadata => l10n.backupPhaseWritingMetadata,
+      BackupPhase.verifying => l10n.backupVerifying,
+      _ => l10n.backupCreatingTitle,
     };
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -207,7 +213,7 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
           const SizedBox(height: 24),
           OutlinedButton(
             onPressed: () => setState(() => _cancelRequested = true),
-            child: const Text(BackupStrings.cancel),
+            child: Text(l10n.commonCancel),
           ),
         ],
       ),
@@ -215,6 +221,7 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
   }
 
   Widget _buildDone(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final outcome = _outcome;
     return switch (outcome) {
       BackupCreateSuccess(:final manifest, :final location) =>
@@ -226,16 +233,16 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(BackupStrings.createCancelledTitle,
+              Text(l10n.backupCreateCancelledTitle,
                   style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
-              const Text(BackupStrings.createCancelledBody),
+              Text(l10n.backupCreateCancelledBody),
               const Spacer(),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Close'),
+                  child: Text(l10n.commonClose),
                 ),
               ),
             ],
@@ -248,7 +255,7 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
             children: [
               Icon(Icons.error, color: Theme.of(context).colorScheme.error, size: 48),
               const SizedBox(height: 12),
-              Text(BackupStrings.createFailedTitle,
+              Text(l10n.backupCreateFailedTitle,
                   style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
               Text(message),
@@ -257,7 +264,7 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
                 width: double.infinity,
                 child: OutlinedButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Close'),
+                  child: Text(l10n.commonClose),
                 ),
               ),
             ],
@@ -269,16 +276,17 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
 
   Widget _buildSavedSummary(
       BuildContext context, BackupManifest manifest, BackupSaveLocation location) {
+    final l10n = AppLocalizations.of(context);
     final String savedText;
     if (_exported) {
       final exportedDescription = _exportedDescription;
       savedText = exportedDescription != null
-          ? BackupStrings.exportSavedTo(exportedDescription)
-          : BackupStrings.exportSharedBody;
+          ? l10n.backupExportSavedTo(exportedDescription)
+          : l10n.backupExportSharedBody;
     } else if (location.isFilePath) {
-      savedText = BackupStrings.createSuccessSavedTo(location.description);
+      savedText = l10n.backupCreateSuccessSavedTo(location.description);
     } else {
-      savedText = BackupStrings.createSuccessDownloaded;
+      savedText = l10n.backupCreateSuccessDownloaded;
     }
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -289,22 +297,22 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
           const SizedBox(height: 12),
           Text(
             _exported && _exportedDescription == null
-                ? BackupStrings.exportSharedTitle
-                : BackupStrings.createSuccessTitle,
+                ? l10n.backupExportSharedTitle
+                : l10n.backupCreateSuccessTitle,
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
           Text(savedText),
           if (manifest.missingAudio.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(BackupStrings.missingAudioWarning(manifest.missingAudio.length)),
+            Text(l10n.backupMissingAudioWarning(manifest.missingAudio.length)),
           ],
           const Spacer(),
           SizedBox(
             width: double.infinity,
             child: FilledButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Done'),
+              child: Text(l10n.backupDoneButton),
             ),
           ),
         ],
@@ -319,6 +327,7 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
   /// wording and keeps both buttons on screen after either dialog is
   /// dismissed, per the brief: cancelling is never a dead end here.
   Widget _buildExportOffer(BuildContext context, BackupSaveLocation location) {
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -327,15 +336,15 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
           Icon(Icons.warning_amber_rounded,
               color: Theme.of(context).colorScheme.error, size: 48),
           const SizedBox(height: 12),
-          Text(BackupStrings.exportOfferTitle, style: Theme.of(context).textTheme.titleLarge),
+          Text(l10n.backupExportOfferTitle, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           Text(_exportCancelledOnce
-              ? BackupStrings.exportOfferWarning
-              : BackupStrings.exportOfferBody),
+              ? l10n.backupExportOfferWarning
+              : l10n.backupExportOfferBody),
           if (_exportError != null) ...[
             const SizedBox(height: 12),
             Text(
-              BackupStrings.exportFailed(_exportError.toString()),
+              l10n.backupExportFailed(_exportError.toString()),
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ],
@@ -348,7 +357,7 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
               child: FilledButton.icon(
                 icon: const Icon(Icons.save_alt),
                 onPressed: () => _handleSaveAs(location),
-                label: const Text(BackupStrings.exportSaveAsButton),
+                label: Text(l10n.backupExportSaveAsButton),
               ),
             ),
             const SizedBox(height: 12),
@@ -357,7 +366,7 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.share),
                 onPressed: () => _handleShare(location),
-                label: const Text(BackupStrings.exportShareButton),
+                label: Text(l10n.backupExportShareButton),
               ),
             ),
           ],

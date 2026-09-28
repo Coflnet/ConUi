@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../backup/backup_byte_format.dart';
 import '../backup/backup_create_screen.dart';
 import '../backup/backup_service.dart';
-import '../backup/backup_strings.dart';
 import '../backup/restore_screen.dart';
+import '../l10n/gen/app_localizations.dart';
+import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import '../services/database_service.dart';
@@ -82,6 +85,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _forceSync() async {
+    final l10n = AppLocalizations.of(context);
     setState(() => _isSyncing = true);
     try {
       final syncService = context.read<SyncService>();
@@ -89,13 +93,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _loadSyncStatus();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sync completed successfully')),
+          SnackBar(content: Text(l10n.settingsSyncCompleted)),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sync failed: $e')),
+          SnackBar(content: Text(l10n.settingsSyncFailed(e.toString()))),
         );
       }
     } finally {
@@ -104,20 +108,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _logout() async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text(
-            'Are you sure you want to logout? Unsynced data may be lost.'),
+        title: Text(l10n.settingsLogoutConfirmTitle),
+        content: Text(l10n.settingsLogoutConfirmBody),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+              child: Text(l10n.commonCancel)),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Logout'),
+            child: Text(l10n.settingsLogout),
           ),
         ],
       ),
@@ -130,20 +134,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _clearAllData() async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear All Data'),
-        content: const Text(
-            'This will permanently delete all local data. This action cannot be undone.'),
+        title: Text(l10n.settingsClearAllDataConfirmTitle),
+        content: Text(l10n.settingsClearAllDataConfirmBody),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+              child: Text(l10n.commonCancel)),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete Everything'),
+            child: Text(l10n.settingsClearAllDataConfirmButton),
           ),
         ],
       ),
@@ -157,20 +161,88 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Shows a simple "pick one" dialog - big, obvious radio options rather
+  /// than a dropdown/segmented control, matching the app's non-technical,
+  /// often-older audience.
+  ///
+  /// Returns the picked value wrapped in a 1-tuple, or null if the dialog
+  /// was dismissed without picking anything - needed because [T] (e.g.
+  /// `Locale?`) can itself legitimately be null (the "System"/"Automatic"
+  /// option), which would otherwise be indistinguishable from a dismiss.
+  Future<(T,)?> _pickOption<T>(
+    String title,
+    List<(T value, String label)> options,
+    T current,
+  ) {
+    return showDialog<(T,)>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(title),
+        children: [
+          RadioGroup<T>(
+            groupValue: current,
+            onChanged: (v) => Navigator.pop(context, (v as T,)),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final (value, label) in options)
+                  RadioListTile<T>(title: Text(label), value: value),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickAppLanguage() async {
+    final l10n = AppLocalizations.of(context);
+    final settings = context.read<AppSettingsService>();
+    final chosen = await _pickOption<Locale?>(
+      l10n.settingsLanguageApp,
+      [
+        (null, l10n.settingsLanguageSystem),
+        (const Locale('de'), l10n.settingsLanguageGerman),
+        (const Locale('en'), l10n.settingsLanguageEnglish),
+      ],
+      settings.languageOverride,
+    );
+    if (chosen != null) {
+      await settings.setLanguageOverride(chosen.$1);
+    }
+  }
+
+  Future<void> _pickRecordingLanguage() async {
+    final l10n = AppLocalizations.of(context);
+    final settings = context.read<AppSettingsService>();
+    final chosen = await _pickOption<String?>(
+      l10n.settingsRecordingLanguage,
+      [
+        (null, l10n.settingsRecordingLanguageAutomatic),
+        ('de', l10n.settingsLanguageGerman),
+        ('en', l10n.settingsLanguageEnglish),
+      ],
+      settings.recordingLanguageOverride,
+    );
+    if (chosen != null) {
+      await settings.setRecordingLanguageOverride(chosen.$1);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final appSettings = context.watch<AppSettingsService>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(l10n.settingsTitle)),
       body: ListView(
         children: [
           // Sync Section
-          _buildSectionHeader('Sync'),
+          _buildSectionHeader(l10n.settingsSyncSection),
           ListTile(
             leading: const Icon(Icons.sync),
-            title: const Text('Force Sync'),
-            subtitle: _pendingChanges > 0
-                ? Text('$_pendingChanges pending changes')
-                : const Text('All changes synced'),
+            title: Text(l10n.settingsForceSync),
+            subtitle: Text(l10n.settingsPendingChanges(_pendingChanges)),
             trailing: _isSyncing
                 ? const SizedBox(
                     width: 24,
@@ -183,22 +255,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (_lastSyncTime != null)
             ListTile(
               leading: const Icon(Icons.schedule),
-              title: const Text('Last Sync'),
+              title: Text(l10n.settingsLastSync),
               subtitle: Text(_lastSyncTime!),
             ),
 
           const Divider(),
 
+          // Language Section
+          _buildSectionHeader(l10n.settingsLanguageSection),
+          ListTile(
+            leading: const Icon(Icons.language),
+            title: Text(l10n.settingsLanguageApp),
+            subtitle: Text(_languageLabel(l10n, appSettings.languageOverride)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _pickAppLanguage,
+          ),
+          ListTile(
+            leading: const Icon(Icons.mic_external_on),
+            title: Text(l10n.settingsRecordingLanguage),
+            subtitle: Text(_recordingLanguageLabel(
+                l10n, appSettings.recordingLanguageOverride)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _pickRecordingLanguage,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              l10n.settingsRecordingLanguageHelp,
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            ),
+          ),
+
+          const Divider(),
+
           // Backup Section
-          _buildSectionHeader(BackupStrings.sectionTitle),
+          _buildSectionHeader(l10n.backupSectionTitle),
           ListTile(
             leading: const Icon(Icons.backup),
-            title: const Text(BackupStrings.createTitle),
+            title: Text(l10n.backupCreateTitle),
             subtitle: !_backupStatusLoaded
-                ? const Text(BackupStrings.createSubtitleIdle)
+                ? Text(l10n.backupCreateSubtitleIdle)
                 : Text(_lastBackupAt == null
-                    ? BackupStrings.createSubtitleNever
-                    : BackupStrings.createSubtitleLastBackup(
+                    ? l10n.backupCreateSubtitleNever
+                    : l10n.backupCreateSubtitleLastBackup(
                         _formatDateTime(_lastBackupAt!))),
             trailing: const Icon(Icons.chevron_right),
             onTap: _openCreateBackup,
@@ -207,7 +306,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Text(
-                BackupStrings.newRecordingsReminder(_newRecordingsSinceBackup),
+                l10n.backupNewRecordingsReminder(_newRecordingsSinceBackup),
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.tertiary,
                   fontSize: 12,
@@ -216,23 +315,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ListTile(
             leading: const Icon(Icons.restore),
-            title: const Text(BackupStrings.restoreTitle),
-            subtitle: const Text(BackupStrings.restoreSubtitle),
+            title: Text(l10n.backupRestoreTitle),
+            subtitle: Text(l10n.backupRestoreSubtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: _openRestore,
           ),
           ListTile(
             leading: const Icon(Icons.mic),
-            title: const Text(BackupStrings.recordingsSpaceTitle),
+            title: Text(l10n.backupRecordingsSpaceTitle),
             subtitle: Text(_backupStatusLoaded
-                ? BackupStrings.bytesToHuman(_recordingsSpaceBytes)
+                ? BackupByteFormat.human(_recordingsSpaceBytes)
                 : '…'),
           ),
           ListTile(
             leading: Icon(Icons.contacts,
                 color: Theme.of(context).colorScheme.primary),
-            title: const Text('Import Contacts'),
-            subtitle: const Text('Import from device contacts'),
+            title: Text(l10n.settingsImportContactsTitle),
+            subtitle: Text(l10n.settingsImportContactsSubtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _importContacts(),
           ),
@@ -240,32 +339,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(),
 
           // Account Section
-          _buildSectionHeader('Account'),
+          _buildSectionHeader(l10n.settingsAccountSection),
           Consumer<AuthService>(
             builder: (context, auth, _) {
               return ListTile(
                 leading: const Icon(Icons.person),
-                title: const Text('Logged in as'),
-                subtitle: Text(auth.userId ?? 'Unknown'),
+                title: Text(l10n.settingsLoggedInAs),
+                subtitle: Text(auth.userId ?? l10n.settingsUnknownUser),
               );
             },
           ),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.orange),
-            title: const Text('Logout'),
-            subtitle: const Text('Sign out of your account'),
+            title: Text(l10n.settingsLogout),
+            subtitle: Text(l10n.settingsLogoutSubtitle),
             onTap: _logout,
           ),
 
           const Divider(),
 
           // Danger Zone
-          _buildSectionHeader('Danger Zone', color: Colors.red),
+          _buildSectionHeader(l10n.settingsDangerZoneSection, color: Colors.red),
           ListTile(
             leading: const Icon(Icons.delete_forever, color: Colors.red),
-            title:
-                const Text('Clear All Data', style: TextStyle(color: Colors.red)),
-            subtitle: const Text('Delete all local data permanently'),
+            title: Text(l10n.settingsClearAllData,
+                style: const TextStyle(color: Colors.red)),
+            subtitle: Text(l10n.settingsClearAllDataSubtitle),
             onTap: _clearAllData,
           ),
 
@@ -274,7 +373,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // Version Info
           Center(
             child: Text(
-              'Relationship Manager v1.0.0',
+              l10n.settingsVersion('1.0.0'),
               style: TextStyle(color: Colors.grey[500], fontSize: 12),
             ),
           ),
@@ -282,6 +381,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  String _languageLabel(AppLocalizations l10n, Locale? override) {
+    switch (override?.languageCode) {
+      case 'de':
+        return l10n.settingsLanguageGerman;
+      case 'en':
+        return l10n.settingsLanguageEnglish;
+      default:
+        return l10n.settingsLanguageSystem;
+    }
+  }
+
+  String _recordingLanguageLabel(AppLocalizations l10n, String? override) {
+    switch (override) {
+      case 'de':
+        return l10n.settingsLanguageGerman;
+      case 'en':
+        return l10n.settingsLanguageEnglish;
+      default:
+        return l10n.settingsRecordingLanguageAutomatic;
+    }
   }
 
   Widget _buildSectionHeader(String title, {Color? color}) {
@@ -300,15 +421,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   String _formatDateTime(DateTime dt) {
-    final local = dt.toLocal();
-    String two(int v) => v.toString().padLeft(2, '0');
-    return '${local.year}-${two(local.month)}-${two(local.day)} '
-        '${two(local.hour)}:${two(local.minute)}';
+    final locale = Localizations.localeOf(context).toString();
+    return DateFormat.yMd(locale).add_Hm().format(dt.toLocal());
   }
 
   Future<void> _importContacts() async {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Contact import will request permissions')),
+      SnackBar(content: Text(AppLocalizations.of(context).settingsImportContactsPlaceholder)),
     );
     // TODO: Implement contact import. The `contacts_service` package this
     // was originally slated to use was removed from pubspec.yaml - it's

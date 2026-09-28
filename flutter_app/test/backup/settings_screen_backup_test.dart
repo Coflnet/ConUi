@@ -21,8 +21,10 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:relationship_manager/backup/backup_service.dart';
+import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/screens/settings_screen.dart';
+import 'package:relationship_manager/services/app_settings_service.dart';
 import 'package:relationship_manager/services/auth_service.dart';
 import 'package:relationship_manager/services/database_service.dart';
 import 'package:relationship_manager/services/recording_file_store_native.dart';
@@ -35,11 +37,15 @@ Widget _wrap({
   required BackupService backupService,
 }) {
   return MaterialApp(
+    locale: const Locale('en'),
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: const [Locale('en'), Locale('de')],
     home: MultiProvider(
       providers: [
         ChangeNotifierProvider<DatabaseService>.value(value: db),
         ChangeNotifierProvider<AuthService>(create: (_) => AuthService()),
         Provider<SyncService>(create: (_) => SyncService(db, AuthService())),
+        ChangeNotifierProvider<AppSettingsService>(create: (_) => AppSettingsService()),
       ],
       child: SettingsScreen(backupService: backupService),
     ),
@@ -93,8 +99,12 @@ void main() {
         ChangeNotifierProvider<DatabaseService>.value(value: db),
         ChangeNotifierProvider<AuthService>(create: (_) => AuthService()),
         Provider<SyncService>(create: (_) => SyncService(db, AuthService())),
+        ChangeNotifierProvider<AppSettingsService>(create: (_) => AppSettingsService()),
       ],
       child: MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: const [Locale('en'), Locale('de')],
         home: Builder(
           builder: (context) => Scaffold(
             body: Center(
@@ -235,7 +245,7 @@ void main() {
 
     expect(find.text('Recordings on this device'), findsOneWidget);
     // 44-byte WAV header + 1000 bytes of PCM = 1044 bytes -> "1 KB" per
-    // BackupStrings.bytesToHuman's rounding.
+    // BackupByteFormat.human's rounding.
     expect(find.text('1 KB'), findsOneWidget);
   });
 }

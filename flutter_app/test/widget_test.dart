@@ -12,6 +12,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:relationship_manager/main.dart';
+import 'package:relationship_manager/services/app_settings_service.dart';
 import 'package:relationship_manager/services/auth_service.dart';
 import 'package:relationship_manager/services/database_service.dart';
 import 'package:relationship_manager/services/sync_service.dart';
@@ -42,6 +43,7 @@ void main() {
     });
 
     final syncService = SyncService(dbService, authService);
+    final appSettings = AppSettingsService();
 
     await tester.pumpWidget(
       MultiProvider(
@@ -49,6 +51,7 @@ void main() {
           ChangeNotifierProvider.value(value: dbService),
           ChangeNotifierProvider.value(value: authService),
           ChangeNotifierProvider.value(value: syncService),
+          ChangeNotifierProvider.value(value: appSettings),
         ],
         child: const RelationshipManagerApp(),
       ),

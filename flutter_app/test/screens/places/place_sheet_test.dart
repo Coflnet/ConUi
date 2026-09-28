@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/screens/places/place_sheet.dart';
 import 'package:relationship_manager/screens/quick_add/quick_add_sheet.dart';
+import 'package:relationship_manager/services/app_settings_service.dart';
 import 'package:relationship_manager/services/auth_service.dart';
 import 'package:relationship_manager/services/database_service.dart';
 
@@ -22,6 +23,7 @@ Widget _wrap(DatabaseService db, Widget child) {
     providers: [
       ChangeNotifierProvider<DatabaseService>.value(value: db),
       ChangeNotifierProvider<AuthService>.value(value: AuthService()),
+      ChangeNotifierProvider<AppSettingsService>(create: (_) => AppSettingsService()),
     ],
     child: MaterialApp(home: Scaffold(body: child)),
   );

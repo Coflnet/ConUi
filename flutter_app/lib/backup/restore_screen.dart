@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/gen/app_localizations.dart';
 import '../services/database_service.dart';
 import 'backup_exceptions.dart';
+import 'backup_preview_text.dart';
 import 'backup_progress.dart';
 import 'backup_restore_result.dart';
 import 'backup_restorer.dart';
 import 'backup_service.dart';
 import 'backup_source.dart';
-import 'backup_strings.dart';
 
 /// "Restore from backup": pick a file, show what's in it and what will
 /// happen, confirm, then run the restore with progress and report the
@@ -124,8 +126,9 @@ class _RestoreScreenState extends State<RestoreScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text(BackupStrings.restoreTitle)),
+      appBar: AppBar(title: Text(l10n.backupRestoreTitle)),
       body: switch (_step) {
         _Step.pickFile => const Center(child: CircularProgressIndicator()),
         _Step.preview => _buildPreview(context),
@@ -136,6 +139,7 @@ class _RestoreScreenState extends State<RestoreScreen> {
   }
 
   Widget _buildPreview(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final error = _error;
     if (error != null) {
       return Padding(
@@ -143,7 +147,7 @@ class _RestoreScreenState extends State<RestoreScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(BackupStrings.restoreFailedTitle,
+            Text(l10n.backupRestoreFailedTitle,
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Text(error is BackupRestoreException ? error.message : error.toString()),
@@ -152,7 +156,7 @@ class _RestoreScreenState extends State<RestoreScreen> {
               width: double.infinity,
               child: OutlinedButton(
                 onPressed: _closeClearingPickedFileCache,
-                child: const Text('Close'),
+                child: Text(l10n.commonClose),
               ),
             ),
           ],
@@ -161,25 +165,29 @@ class _RestoreScreenState extends State<RestoreScreen> {
     }
 
     final manifest = _preview!.manifest;
+    final createdAt =
+        DateFormat.yMd(Localizations.localeOf(context).toString()).add_Hm().format(
+              manifest.createdAt.toLocal(),
+            );
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(BackupStrings.restorePreviewTitle, style: Theme.of(context).textTheme.titleMedium),
+          Text(l10n.backupRestorePreviewTitle, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
-          Text(BackupStrings.restorePreviewCreatedAt(manifest.createdAt.toLocal().toString())),
+          Text(l10n.backupRestorePreviewCreatedAt(createdAt)),
           const SizedBox(height: 8),
-          Text(BackupStrings.previewCounts(manifest.counts)),
+          Text(backupPreviewCountsText(l10n, manifest.counts)),
           const SizedBox(height: 8),
-          Text(BackupStrings.recordingsSummary(
+          Text(l10n.backupRecordingsSummary(
               manifest.recordings.length, manifest.totalRecordingBytes)),
           if (manifest.missingAudio.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(BackupStrings.missingAudioWarning(manifest.missingAudio.length)),
+            Text(l10n.backupMissingAudioWarning(manifest.missingAudio.length)),
           ],
           const SizedBox(height: 16),
-          Text(BackupStrings.restorePreviewExplain,
+          Text(l10n.backupRestorePreviewExplain,
               style: Theme.of(context).textTheme.bodySmall),
           const Spacer(),
           Row(
@@ -187,14 +195,14 @@ class _RestoreScreenState extends State<RestoreScreen> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: _closeClearingPickedFileCache,
-                  child: const Text(BackupStrings.restorePreviewCancel),
+                  child: Text(l10n.commonCancel),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: FilledButton(
                   onPressed: _confirmAndStart,
-                  child: const Text(BackupStrings.restorePreviewConfirm),
+                  child: Text(l10n.backupRestorePreviewConfirm),
                 ),
               ),
             ],
@@ -205,13 +213,15 @@ class _RestoreScreenState extends State<RestoreScreen> {
   }
 
   Widget _buildRunning(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final progress = _progress;
     final total = progress?.total ?? 0;
     final current = progress?.current ?? 0;
     final phaseLabel = switch (progress?.phase) {
-      BackupPhase.restoringRecordings => 'Restoring recordings ($current of $total)…',
-      BackupPhase.restoringData => 'Restoring data…',
-      _ => BackupStrings.restoringTitle,
+      BackupPhase.restoringRecordings =>
+        l10n.backupPhaseRestoringRecordings(current, total),
+      BackupPhase.restoringData => l10n.backupPhaseRestoringData,
+      _ => l10n.backupRestoringTitle,
     };
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -227,7 +237,7 @@ class _RestoreScreenState extends State<RestoreScreen> {
           const SizedBox(height: 24),
           OutlinedButton(
             onPressed: () => setState(() => _cancelRequested = true),
-            child: const Text(BackupStrings.cancel),
+            child: Text(l10n.commonCancel),
           ),
         ],
       ),
@@ -235,6 +245,7 @@ class _RestoreScreenState extends State<RestoreScreen> {
   }
 
   Widget _buildDone(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final error = _error;
     final result = _result;
     if (error != null || result == null) {
@@ -243,7 +254,7 @@ class _RestoreScreenState extends State<RestoreScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(BackupStrings.restoreFailedTitle,
+            Text(l10n.backupRestoreFailedTitle,
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Text(error is BackupRestoreException ? error.message : '$error'),
@@ -252,7 +263,7 @@ class _RestoreScreenState extends State<RestoreScreen> {
               width: double.infinity,
               child: OutlinedButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Close'),
+                child: Text(l10n.commonClose),
               ),
             ),
           ],
@@ -263,11 +274,11 @@ class _RestoreScreenState extends State<RestoreScreen> {
     final warnings = <String>[
       for (final r in result.recordings)
         if (r.outcome == RecordingOutcome.conflictKept)
-          BackupStrings.recordingConflictWarning(r.id)
+          l10n.backupRecordingConflictWarning(r.id)
         else if (r.outcome == RecordingOutcome.checksumMismatch)
-          BackupStrings.recordingChecksumWarning(r.id)
+          l10n.backupRecordingChecksumWarning(r.id)
         else if (r.outcome == RecordingOutcome.invalidId)
-          BackupStrings.recordingInvalidIdWarning(r.id),
+          l10n.backupRecordingInvalidIdWarning(r.id),
     ];
 
     return Padding(
@@ -277,16 +288,16 @@ class _RestoreScreenState extends State<RestoreScreen> {
         children: [
           Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary, size: 48),
           const SizedBox(height: 12),
-          Text(BackupStrings.restoreResultTitle, style: Theme.of(context).textTheme.titleLarge),
+          Text(l10n.backupRestoreResultTitle, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
-          Text(BackupStrings.restoreResultEntities(
+          Text(l10n.backupRestoreResultEntities(
               result.addedCount, result.updatedCount, result.skippedCount)),
           const SizedBox(height: 4),
-          Text(BackupStrings.restoreResultRecordings(
+          Text(l10n.backupRestoreResultRecordings(
               result.recordingsRestoredCount, result.recordingsAlreadyPresentCount)),
           if (warnings.isNotEmpty) ...[
             const SizedBox(height: 16),
-            Text(BackupStrings.restoreWarningsTitle,
+            Text(l10n.backupRestoreWarningsTitle,
                 style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 4),
             Expanded(
@@ -300,7 +311,7 @@ class _RestoreScreenState extends State<RestoreScreen> {
             width: double.infinity,
             child: FilledButton(
               onPressed: () => _finishSuccessfulRestore(context),
-              child: const Text('Done'),
+              child: Text(l10n.backupDoneButton),
             ),
           ),
         ],

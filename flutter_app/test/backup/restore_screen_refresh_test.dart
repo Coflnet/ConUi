@@ -20,11 +20,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:relationship_manager/backup/backup_service.dart';
-import 'package:relationship_manager/backup/backup_strings.dart';
 import 'package:relationship_manager/backup/restore_screen.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/services/database_service.dart';
 import 'package:relationship_manager/services/recording_file_store_native.dart';
+import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/test_database.dart';
@@ -128,6 +128,9 @@ void main() {
       ChangeNotifierProvider<DatabaseService>.value(
         value: destDb,
         child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: const [Locale('en'), Locale('de')],
           home: Builder(
             builder: (context) => Scaffold(
               body: Center(
@@ -159,10 +162,10 @@ void main() {
     await tester.tap(find.text('SETTINGS'));
     await _settle(tester, rounds: 100); // pick + preview the real backup file
 
-    expect(find.text(BackupStrings.restorePreviewConfirm), findsOneWidget,
+    expect(find.text('Restore'), findsOneWidget,
         reason: 'expected the restore preview to be showing by now');
 
-    await tester.tap(find.text(BackupStrings.restorePreviewConfirm));
+    await tester.tap(find.text('Restore'));
     await _settle(tester, rounds: 100); // run the actual restore
 
     expect(find.text('Done'), findsOneWidget,

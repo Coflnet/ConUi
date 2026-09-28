@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
+import 'l10n/gen/app_localizations.dart';
+import 'services/app_settings_service.dart';
 import 'services/auth_service.dart';
 import 'services/database_service.dart';
 import 'services/sync_service.dart';
@@ -17,12 +20,16 @@ void main() async {
 
   final syncService = SyncService(dbService, authService);
 
+  final appSettings = AppSettingsService();
+  await appSettings.initialize();
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: dbService),
         ChangeNotifierProvider.value(value: authService),
         ChangeNotifierProvider.value(value: syncService),
+        ChangeNotifierProvider.value(value: appSettings),
       ],
       child: const RelationshipManagerApp(),
     ),
@@ -34,8 +41,22 @@ class RelationshipManagerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appSettings = context.watch<AppSettingsService>();
     return MaterialApp(
-      title: 'Relationship Manager',
+      onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
+      locale: appSettings.languageOverride,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      // English first, not AppLocalizations.supportedLocales (which lists
+      // them alphabetically, German first): Flutter's default resolution
+      // falls back to supportedLocales.first for a device language that
+      // matches neither, and that fallback must be English, per the
+      // brief ("German for de*, English otherwise").
+      supportedLocales: const [Locale('en'), Locale('de')],
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         // Roboto itself is bundled as an asset (see assets/fonts/README.md),

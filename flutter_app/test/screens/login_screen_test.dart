@@ -22,6 +22,7 @@ import 'package:relationship_manager/services/auth_service.dart';
 import 'package:relationship_manager/services/database_service.dart';
 import 'package:relationship_manager/services/sync_service.dart';
 
+import '../support/localized_app.dart';
 import '../support/test_database.dart';
 
 void main() {
@@ -51,7 +52,7 @@ void main() {
           ChangeNotifierProvider.value(value: authService),
           ChangeNotifierProvider.value(value: syncService),
         ],
-        child: const MaterialApp(home: LoginScreen()),
+        child: wrapLocalized(const LoginScreen()),
       ),
     );
 
@@ -73,5 +74,41 @@ void main() {
 
     expect(authService.continuedWithoutAccount, isTrue);
     expect(syncService.needsSignIn, isTrue);
+  });
+
+  testWidgets('shows German text with a German device locale', (tester) async {
+    late DatabaseService dbService;
+    late AuthService authService;
+    await tester.runAsync(() async {
+      dbService = createTestDatabaseService();
+      await dbService.initialize();
+      authService = AuthService(
+        httpClient: MockClient((request) async => http.Response('{}', 404)),
+      );
+      await authService.initialize();
+    });
+    final syncService = SyncService(dbService, authService);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: dbService),
+          ChangeNotifierProvider.value(value: authService),
+          ChangeNotifierProvider.value(value: syncService),
+        ],
+        child: wrapLocalized(const LoginScreen(), locale: const Locale('de')),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+    }
+
+    expect(find.text('Ohne Konto fortfahren'), findsOneWidget);
+    expect(find.text('Entwicklungs-Anmeldung'), findsOneWidget);
+    expect(find.textContaining('Anmeldung fehlgeschlagen'), findsOneWidget);
+    // Nothing from the English strings must leak through.
+    expect(find.text('Continue without account'), findsNothing);
+    expect(find.text('Development Login'), findsNothing);
   });
 }

@@ -1,9 +1,10 @@
 import 'backup_manifest.dart';
 import 'backup_source.dart';
 
-/// What a restore actually did, in plain structured data - the settings
-/// screen turns this into the "what was added, updated, skipped... and
-/// every warning" result screen text (see backup_strings.dart).
+/// What a restore actually did, in plain structured data - RestoreScreen
+/// turns this into the "what was added, updated, skipped... and every
+/// warning" result screen text (see the `backupRestoreResult*`/
+/// `backupRecording*Warning` ARB keys).
 class RestoreResult {
   final BackupManifest manifest;
   final List<EntityMergeResult> entities;
