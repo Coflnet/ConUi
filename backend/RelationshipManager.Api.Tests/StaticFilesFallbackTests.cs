@@ -19,6 +19,16 @@ public class StaticFilesFallbackTests
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
         Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo("application/json"));
         Assert.That(body, Does.Contain("not_found"));
+
+        // Regression test: this response is written by hand via a bare JsonSerializer.Serialize
+        // call (see the comment above MapFallback in RelationshipManagerApp.cs), which - unlike
+        // every controller response, which goes through MVC's camelCase-by-default JSON options -
+        // used to have no naming policy at all and so emitted PascalCase ({"Slug","Message"}),
+        // unlike every other error response in the API ({"slug","message"}).
+        Assert.That(body, Does.Contain("\"slug\""));
+        Assert.That(body, Does.Contain("\"message\""));
+        Assert.That(body, Does.Not.Contain("\"Slug\""));
+        Assert.That(body, Does.Not.Contain("\"Message\""));
     }
 
     [Test]

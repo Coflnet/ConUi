@@ -53,7 +53,7 @@ public class TranscriptionController : ControllerBase
     public async Task<IActionResult> Segment([FromQuery] string? language)
     {
         var userId = GetUserId();
-        if (userId == null) return Unauthorized();
+        if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
         if (!_transcriptionService.IsConfigured)
         {

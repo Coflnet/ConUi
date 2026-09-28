@@ -23,6 +23,16 @@ public static class RelationshipManagerApp
     /// <summary>Placeholder JWT secret shipped in appsettings.json for local development only.</summary>
     public const string DevJwtSecretPlaceholder = "super-secret-key-for-development-only-32chars!";
 
+    /// <summary>
+    /// Matches the camelCase naming policy <c>AddControllers()</c> applies by default to every
+    /// MVC JSON response (so <see cref="Errors.ApiError"/> serializes as <c>{"slug","message"}</c>
+    /// there). The <see cref="Errors.ApiError"/> written directly below (outside MVC, from
+    /// <c>MapFallback</c>) needs the same options explicitly - a bare <c>JsonSerializer.Serialize</c>
+    /// call has no naming policy and would otherwise emit PascalCase (<c>{"Slug","Message"}</c>),
+    /// which is what made that one response's JSON shape drift from every other error response.
+    /// </summary>
+    private static readonly JsonSerializerOptions ApiErrorJsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
     /// <param name="args">Command-line args, forwarded to <see cref="WebApplication.CreateBuilder(WebApplicationOptions)"/>.</param>
     /// <param name="configureBuilder">Hook to override configuration/services before the app is built (used by tests).</param>
     /// <param name="environmentName">
@@ -268,7 +278,7 @@ public static class RelationshipManagerApp
             {
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
                 context.Response.ContentType = "application/json";
-                await context.Response.WriteAsync(JsonSerializer.Serialize(new ApiError("not_found", "The requested resource was not found.")));
+                await context.Response.WriteAsync(JsonSerializer.Serialize(new ApiError("not_found", "The requested resource was not found."), ApiErrorJsonOptions));
                 return;
             }
 

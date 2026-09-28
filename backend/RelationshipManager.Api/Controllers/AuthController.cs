@@ -82,7 +82,10 @@ public class AuthController : ControllerBase
     {
         if (!_environment.IsDevelopment() || !_config.GetValue("ENABLE_DEV_AUTH", false))
         {
-            return NotFound();
+            // Same slug/message as the generic route-not-found fallback (RelationshipManagerApp's
+            // MapFallback) - deliberately indistinguishable from a route that doesn't exist at
+            // all, so a disabled dev-login endpoint doesn't reveal that it exists.
+            return NotFound(new ApiError("not_found", "The requested resource was not found."));
         }
 
         var externalUserId = $"dev_{request.UserId}";
@@ -115,13 +118,13 @@ public class AuthController : ControllerBase
         var userId = GetUserId();
         if (userId == null)
         {
-            return Unauthorized();
+            return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
         }
 
         var user = await _authService.GetUserById(userId.Value);
         if (user == null)
         {
-            return NotFound();
+            return NotFound(new ApiError("not_found", "User not found."));
         }
 
         return Ok(user);
