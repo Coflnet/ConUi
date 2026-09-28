@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../services/database_service.dart';
 
@@ -22,11 +23,12 @@ class _ObjectsScreenState extends State<ObjectsScreen> {
               return const Center(child: CircularProgressIndicator());
             }
 
+            final l10n = AppLocalizations.of(context);
             final objects = snapshot.data ?? [];
 
             return Scaffold(
               body: objects.isEmpty
-                  ? _buildEmptyState()
+                  ? _buildEmptyState(l10n)
                   : ListView.builder(
                       itemCount: objects.length,
                       padding: const EdgeInsets.only(bottom: 80),
@@ -45,17 +47,17 @@ class _ObjectsScreenState extends State<ObjectsScreen> {
                               : null,
                           trailing: object.eventIds.isNotEmpty
                               ? Chip(
-                                  label:
-                                      Text('${object.eventIds.length} events'))
+                                  label: Text(
+                                      l10n.objectsStoryCountChip(object.eventIds.length)))
                               : null,
-                          onTap: () => _showObjectDetails(context, db, object),
+                          onTap: () => _showObjectDetails(context, l10n, db, object),
                         );
                       },
                     ),
               floatingActionButton: FloatingActionButton.extended(
                 onPressed: () => _addObject(context),
                 icon: const Icon(Icons.add),
-                label: const Text('Add Object'),
+                label: Text(l10n.objectsAdd),
               ),
             );
           },
@@ -64,17 +66,17 @@ class _ObjectsScreenState extends State<ObjectsScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(AppLocalizations l10n) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.category_outlined, size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
-          Text('No objects yet',
+          Text(l10n.objectsEmptyTitle,
               style: TextStyle(fontSize: 18, color: Colors.grey[600])),
           const SizedBox(height: 8),
-          Text('Objects are things involved in events',
+          Text(l10n.objectsEmptySubtitle,
               style: TextStyle(color: Colors.grey[500])),
         ],
       ),
@@ -82,30 +84,31 @@ class _ObjectsScreenState extends State<ObjectsScreen> {
   }
 
   void _addObject(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final nameController = TextEditingController();
     final descController = TextEditingController();
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Add Object'),
+        title: Text(l10n.objectsAdd),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
                 controller: nameController,
-                decoration: const InputDecoration(labelText: 'Name *')),
+                decoration: InputDecoration(labelText: l10n.objectsNameLabel)),
             const SizedBox(height: 8),
             TextField(
                 controller: descController,
-                decoration: const InputDecoration(labelText: 'Description'),
+                decoration: InputDecoration(labelText: l10n.objectsDescriptionLabel),
                 maxLines: 2),
           ],
         ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+              child: Text(l10n.commonCancel)),
           TextButton(
             onPressed: () async {
               if (nameController.text.trim().isEmpty) return;
@@ -119,7 +122,7 @@ class _ObjectsScreenState extends State<ObjectsScreen> {
               await db.saveObject(object);
               if (context.mounted) Navigator.pop(context);
             },
-            child: const Text('Add'),
+            child: Text(l10n.commonAdd),
           ),
         ],
       ),
@@ -127,7 +130,7 @@ class _ObjectsScreenState extends State<ObjectsScreen> {
   }
 
   void _showObjectDetails(
-      BuildContext context, DatabaseService db, EventObject object) {
+      BuildContext context, AppLocalizations l10n, DatabaseService db, EventObject object) {
     showModalBottomSheet(
       context: context,
       builder: (context) => Padding(
@@ -143,7 +146,7 @@ class _ObjectsScreenState extends State<ObjectsScreen> {
             ],
             if (object.eventIds.isNotEmpty) ...[
               const SizedBox(height: 16),
-              Text('Involved in ${object.eventIds.length} events'),
+              Text(l10n.objectsInvolvedInCount(object.eventIds.length)),
             ],
             const SizedBox(height: 16),
             Row(
@@ -154,12 +157,11 @@ class _ObjectsScreenState extends State<ObjectsScreen> {
                     await db.deleteObject(object.id);
                     if (context.mounted) Navigator.pop(context);
                   },
-                  child:
-                      const Text('Delete', style: TextStyle(color: Colors.red)),
+                  child: Text(l10n.commonDelete, style: const TextStyle(color: Colors.red)),
                 ),
                 TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Close')),
+                    child: Text(l10n.commonClose)),
               ],
             ),
           ],
