@@ -66,6 +66,9 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:8000
+      # Dev-only login endpoint (POST /api/auth/dev) - only ever active in Development, and only
+      # when this is explicitly true (it defaults to false, including in Development).
+      - ENABLE_DEV_AUTH=true
       # Cassandra: the app connects without a keyspace, creates it if missing with this
       # replication, then switches to it - it owns its own schema, so nothing besides the
       # keyspace needs to be pre-created.
