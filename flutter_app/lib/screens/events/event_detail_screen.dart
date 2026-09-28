@@ -3,12 +3,22 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../models/models.dart';
 import '../../services/database_service.dart';
+import '../../services/recording_file_store.dart';
+import '../../widgets/recording_player.dart';
 import 'add_event_screen.dart';
 
 class EventDetailScreen extends StatefulWidget {
   final String eventId;
 
-  const EventDetailScreen({super.key, required this.eventId});
+  /// Overridable for tests, so a fake store can be used instead of a real
+  /// (platform-specific) one.
+  final RecordingFileStore? recordingFileStore;
+
+  const EventDetailScreen({
+    super.key,
+    required this.eventId,
+    this.recordingFileStore,
+  });
 
   @override
   State<EventDetailScreen> createState() => _EventDetailScreenState();
@@ -16,6 +26,8 @@ class EventDetailScreen extends StatefulWidget {
 
 class _EventDetailScreenState extends State<EventDetailScreen> {
   int _refreshKey = 0;
+  late final RecordingFileStore _recordingFileStore =
+      widget.recordingFileStore ?? createRecordingFileStore();
 
   void _refresh() {
     setState(() => _refreshKey++);
@@ -160,21 +172,36 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Widget _buildFilesSection(Event event) {
+    final recordings = event.files.where((f) => f.isRecording).toList();
+    final otherFiles = event.files.where((f) => !f.isRecording).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Files',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        const SizedBox(height: 8),
-        ...event.files.map((file) => Card(
-              child: ListTile(
-                leading: Icon(file.isImage
-                    ? Icons.image
-                    : (file.isAudio ? Icons.audiotrack : Icons.attach_file)),
-                title: Text(file.fileName),
-                subtitle: Text('${(file.size / 1024).toStringAsFixed(1)} KB'),
-              ),
-            )),
+        if (recordings.isNotEmpty) ...[
+          const Text('Recordings',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 8),
+          ...recordings.map((file) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: RecordingPlayer(file: file, store: _recordingFileStore),
+              )),
+          const SizedBox(height: 8),
+        ],
+        if (otherFiles.isNotEmpty) ...[
+          const Text('Files',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 8),
+          ...otherFiles.map((file) => Card(
+                child: ListTile(
+                  leading: Icon(file.isImage
+                      ? Icons.image
+                      : (file.isAudio ? Icons.audiotrack : Icons.attach_file)),
+                  title: Text(file.fileName),
+                  subtitle: Text('${(file.size / 1024).toStringAsFixed(1)} KB'),
+                ),
+              )),
+        ],
       ],
     );
   }

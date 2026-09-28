@@ -2,12 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../models/models.dart';
+import '../../services/audio_capture.dart';
+import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
+import '../../services/record_package_audio_capture.dart';
+import '../../services/recorder_controller.dart';
+import '../../services/recording_file_store.dart';
+import '../../services/transcription_client.dart';
 
 class AddEventScreen extends StatefulWidget {
   final Event? existingEvent; // If provided, we're editing an existing event
 
-  const AddEventScreen({super.key, this.existingEvent});
+  /// Overridable for tests/previews, so a fake can be driven without a real
+  /// microphone or backend. Production code leaves this null and gets a
+  /// real RecorderController built from the app's services.
+  final RecorderController? recorderController;
+
+  const AddEventScreen({super.key, this.existingEvent, this.recorderController});
 
   @override
   State<AddEventScreen> createState() => _AddEventScreenState();
@@ -24,6 +35,11 @@ class _AddEventScreenState extends State<AddEventScreen> {
   String? _placeId;
   bool _isSaving = false;
 
+  late final RecorderController _recorder;
+  bool _ownsRecorder = false;
+  AttachedFile? _pendingRecording;
+  String? _descriptionBeforeRecording;
+
   @override
   void initState() {
     super.initState();
@@ -37,13 +53,76 @@ class _AddEventScreenState extends State<AddEventScreen> {
       _participantIds = List.from(e.participantIds);
       _placeId = e.placeId;
     }
+
+    if (widget.recorderController != null) {
+      _recorder = widget.recorderController!;
+    } else {
+      _recorder = _buildDefaultRecorderController(context);
+      _ownsRecorder = true;
+    }
+    _recorder.addListener(_onRecorderChanged);
+  }
+
+  static RecorderController _buildDefaultRecorderController(BuildContext context) {
+    final auth = context.read<AuthService>();
+    final db = context.read<DatabaseService>();
+    return RecorderController(
+      audioCapture: RecordPackageAudioCapture(),
+      fileStore: createRecordingFileStore(),
+      database: db,
+      transcriptionClient: TranscriptionClient(
+        baseUrl: auth.baseUrl,
+        getToken: () => auth.token,
+      ),
+    );
+  }
+
+  void _onRecorderChanged() {
+    if (!mounted) return;
+    // While recording, the live transcript flows straight into the
+    // description field so the user sees it forming as they talk.
+    if (_recorder.state == RecorderState.recording) {
+      final live = _recorder.liveTranscript;
+      if (live.isNotEmpty) {
+        _descriptionController.text = live;
+      }
+    }
+    setState(() {});
   }
 
   @override
   void dispose() {
+    _recorder.removeListener(_onRecorderChanged);
+    if (_ownsRecorder) {
+      _recorder.dispose();
+    }
     _titleController.dispose();
     _descriptionController.dispose();
     super.dispose();
+  }
+
+  Future<void> _toggleRecording() async {
+    if (_recorder.state == RecorderState.recording) {
+      final result = await _recorder.stop();
+      _pendingRecording = result.attachedFile;
+      if (result.transcript.isNotEmpty) {
+        _descriptionController.text = result.transcript;
+      } else if (_descriptionBeforeRecording != null) {
+        _descriptionController.text = _descriptionBeforeRecording!;
+      }
+      if (mounted && result.failedSegments.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '${result.failedSegments.length} part(s) of the recording could not be transcribed live. The audio was kept.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    _descriptionBeforeRecording = _descriptionController.text;
+    await _recorder.start();
   }
 
   Future<void> _selectDateTime() async {
@@ -73,6 +152,10 @@ class _AddEventScreenState extends State<AddEventScreen> {
     setState(() => _isSaving = true);
 
     final db = context.read<DatabaseService>();
+    final newFiles = <AttachedFile>[
+      ...(widget.existingEvent?.files ?? const []),
+      if (_pendingRecording != null) _pendingRecording!,
+    ];
     final event = widget.existingEvent != null
         ? widget.existingEvent!.copyWith(
             title: _titleController.text.trim(),
@@ -84,6 +167,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
             endDateTime: _endDateTime,
             participantIds: _participantIds,
             placeId: _placeId,
+            files: newFiles,
           )
         : Event(
             title: _titleController.text.trim(),
@@ -95,9 +179,18 @@ class _AddEventScreenState extends State<AddEventScreen> {
             endDateTime: _endDateTime,
             participantIds: _participantIds,
             placeId: _placeId,
+            files: newFiles,
           );
 
     await db.saveEvent(event);
+
+    final pending = _pendingRecording;
+    if (pending != null) {
+      final recording = await db.getLocalRecording(pending.id);
+      if (recording != null) {
+        await db.saveLocalRecording(recording.copyWith(eventId: event.id));
+      }
+    }
 
     if (mounted) {
       Navigator.pop(
@@ -170,6 +263,8 @@ class _AddEventScreenState extends State<AddEventScreen> {
               onTap: _selectEndDateTime,
             ),
             const SizedBox(height: 16),
+            _buildRecordingCard(),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _descriptionController,
               decoration: const InputDecoration(
@@ -204,6 +299,111 @@ class _AddEventScreenState extends State<AddEventScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildRecordingCard() {
+    final state = _recorder.state;
+    final isRecording = state == RecorderState.recording;
+    final isBusy = state == RecorderState.requestingPermission ||
+        state == RecorderState.finishing;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  icon: Icon(
+                    isRecording ? Icons.stop_circle : Icons.mic,
+                    color: isRecording ? Colors.red : null,
+                  ),
+                  iconSize: 36,
+                  onPressed: isBusy ? null : _toggleRecording,
+                ),
+                const SizedBox(width: 8),
+                Text(_formatElapsed(_recorder.elapsed)),
+                const SizedBox(width: 16),
+                if (isRecording)
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: _recorder.inputLevel.clamp(0.0, 1.0),
+                        minHeight: 8,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            if (state == RecorderState.failed && _recorder.failure != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  _messageForFailure(_recorder.failure!.reason),
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ),
+            if (isRecording)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  _messageForTranscriptionReason(_recorder.liveTranscriptionReason),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            if (_pendingRecording != null && !isRecording)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Recording attached (${_formatElapsed(Duration(milliseconds: _pendingRecording!.durationMs ?? 0))})',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatElapsed(Duration d) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    final hours = d.inHours;
+    final minutes = d.inMinutes.remainder(60);
+    final seconds = d.inSeconds.remainder(60);
+    return hours > 0
+        ? '${two(hours)}:${two(minutes)}:${two(seconds)}'
+        : '${two(minutes)}:${two(seconds)}';
+  }
+
+  String _messageForFailure(AudioCaptureFailureReason reason) {
+    switch (reason) {
+      case AudioCaptureFailureReason.permissionDenied:
+        return 'Microphone permission was denied.';
+      case AudioCaptureFailureReason.noMicrophone:
+        return 'No microphone is available on this device.';
+      case AudioCaptureFailureReason.other:
+        return 'Could not start recording.';
+    }
+  }
+
+  String _messageForTranscriptionReason(LiveTranscriptionReason reason) {
+    switch (reason) {
+      case LiveTranscriptionReason.notStarted:
+        return 'Recording...';
+      case LiveTranscriptionReason.working:
+        return 'Live transcription is working.';
+      case LiveTranscriptionReason.offline:
+        return 'Offline - recording without live transcription.';
+      case LiveTranscriptionReason.notSignedIn:
+        return 'Sign in for live transcription - recording continues without it.';
+      case LiveTranscriptionReason.notConfigured:
+        return 'Live transcription is not available right now.';
+      case LiveTranscriptionReason.failing:
+        return 'Live transcription is having trouble - recording continues.';
+    }
   }
 
   Future<void> _selectEndDateTime() async {
