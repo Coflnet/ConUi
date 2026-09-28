@@ -16,6 +16,39 @@ flutter run
 
 To view the complete documentation, view the [online documentation](https://docs.flutter.dev/), which offers tutorials, samples, guidance on mobile development, and a full API reference.
 
+## Where the app's name lives
+
+The in-app title (window/tab title bar, Android app-switcher label while
+running) comes from `AppLocalizations.appTitle`, defined once per language
+in `lib/l10n/app_en.arb`/`lib/l10n/app_de.arb` - change it there and it
+follows the user's chosen app language everywhere inside the app.
+
+The name/description also appear in a few places *outside* Flutter's own
+widget tree, which gen_l10n can't reach because they are read by the OS or
+the browser before (or instead of) the Dart app ever running. Each needs
+its own edit if the name changes:
+
+- **Android app label** (shown under the home-screen icon and in the
+  system app list): `android:label` on `<application>` in
+  `android/app/src/main/AndroidManifest.xml`.
+- **Web page title** (browser tab) and **meta description** (search
+  engines, link previews): `<title>` and `<meta name="description">` in
+  `web/index.html`. The same file's `<meta name="apple-mobile-web-app-title">`
+  is the name iOS/iPadOS shows if the page is added to the home screen from
+  Safari.
+- **Web app manifest** (name shown while installing/installed as a PWA):
+  `name`, `short_name` and `description` in `web/manifest.json`.
+- `web/index.html`'s `<html lang="de">` and the manifest/meta descriptions
+  above are currently German, matching the app's primarily German-speaking
+  audience - flip `lang` (and translate the description) if that
+  assumption ever changes; unlike the in-app title, these have no
+  per-language variant since the OS/browser reads them once, before the
+  user has had any chance to pick a language inside the app.
+- **Not** the app's name: `name`/`description` in `pubspec.yaml` are the
+  Dart package identifier and pub tooling metadata - never shown to an end
+  user, and `name` in particular has to stay a valid lowercase
+  `snake_case` Dart package name regardless of what the app is branded as.
+
 ## Migrating a contacts import from `contacts_service` to `flutter_contacts`
 
 `contacts_service` was removed from this project (see the "drop the

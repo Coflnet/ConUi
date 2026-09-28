@@ -1,11 +1,11 @@
 {
-    "name": "relationship_manager",
-    "short_name": "relationship_manager",
+    "name": "Relationship Manager",
+    "short_name": "Relationship Manager",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Bewahren Sie familiäre Beziehungen und die dazugehörigen Geschichten, einschließlich Audioaufnahmen.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
