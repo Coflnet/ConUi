@@ -17,11 +17,22 @@ class _PersonsScreenState extends State<PersonsScreen> {
   String _searchQuery = '';
   List<Person> _allPersons = [];
   bool _isLoading = true;
+  // Cached (rather than looked up again via context.read in dispose()),
+  // because by dispose() time the ancestor Provider may already be
+  // deactivated if this whole subtree is being torn down together -
+  // looking it up again there is unsafe.
+  late final DatabaseService _db;
 
   @override
   void initState() {
     super.initState();
+    _db = context.read<DatabaseService>();
     _loadPersons();
+    // A restore or a sync writes persons straight to the database and
+    // calls DatabaseService.notifyListeners()/notifyDataRestored() rather
+    // than going through this screen, so without this the list would keep
+    // showing whatever was loaded at initState time.
+    _db.addListener(_loadPersons);
     _searchController.addListener(() {
       if (_searchQuery != _searchController.text) {
         setState(() {
@@ -33,8 +44,7 @@ class _PersonsScreenState extends State<PersonsScreen> {
 
   Future<void> _loadPersons() async {
     setState(() => _isLoading = true);
-    final db = context.read<DatabaseService>();
-    final persons = await db.getPersons();
+    final persons = await _db.getPersons();
     if (mounted) {
       setState(() {
         _allPersons = persons;
@@ -45,6 +55,7 @@ class _PersonsScreenState extends State<PersonsScreen> {
 
   @override
   void dispose() {
+    _db.removeListener(_loadPersons);
     _searchController.dispose();
     super.dispose();
   }
