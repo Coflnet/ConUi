@@ -91,6 +91,15 @@ abstract class RecordingFileStore {
   /// (e.g. from `State.dispose`) - on web this revokes the object URL so
   /// its memory can be freed; on native it's a no-op.
   Future<PlaybackSource> openPlaybackSource(String id);
+
+  /// A filesystem path to recording [id]'s bytes, when this store keeps
+  /// them as a real file (native/desktop only) - lets a caller (see
+  /// BackupWriter) stream straight from disk with something like
+  /// package:archive's InputFileStream instead of going through
+  /// [openReadStream], which on a store with no real file (web) has to
+  /// assemble the whole recording in memory first. Null when there is no
+  /// such path, or when [id] doesn't exist.
+  Future<String?> filePathIfAvailable(String id);
 }
 
 /// Where a [RecordingPlayer] should read a recording's audio from. Exactly

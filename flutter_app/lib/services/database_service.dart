@@ -637,4 +637,13 @@ class DatabaseService extends ChangeNotifier {
     await db.delete('local_recordings');
     notifyListeners();
   }
+
+  // ==================== BACKUP/RESTORE ====================
+  // notifyListeners() is @protected, so code outside this class (the
+  // backup/restore feature under lib/backup/, which writes entity rows
+  // directly via the `database` getter rather than duplicating each
+  // save*() method) needs a public way to ask listening widgets to
+  // refresh after a restore changes data underneath them.
+
+  void notifyDataRestored() => notifyListeners();
 }

@@ -170,6 +170,10 @@ class WebRecordingFileStore implements RecordingFileStore {
   }
 
   @override
+  Future<String?> filePathIfAvailable(String id) async =>
+      null; // IndexedDB-backed - no real file exists to point to.
+
+  @override
   Future<List<String>> listIds() async {
     final db = await _open();
     final txn = db.transaction(_chunksStoreName, idbModeReadOnly);
