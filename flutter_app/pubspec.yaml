@@ -35,6 +35,7 @@ dependencies:
   idb_shim: ^2.9.9
   record: ^7.1.1
   web: ^1.1.0
+  geolocator: ^13.0.1
 
 dev_dependencies:
   flutter_test:
