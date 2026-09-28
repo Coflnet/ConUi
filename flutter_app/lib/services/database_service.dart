@@ -5,6 +5,7 @@ import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:sqflite_common/sqflite.dart' as sqflite_common;
 import '../models/models.dart';
 import 'db_migrations.dart';
+import 'recording_file_store.dart';
 
 class DatabaseService extends ChangeNotifier {
   /// Optional overrides for tests: an explicit [DatabaseFactory] (e.g. the
@@ -482,6 +483,70 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
+  // ==================== LOCAL RECORDINGS ====================
+  // Local-only bookkeeping about recordings' bytes on this device. Not part
+  // of the synced Event/AttachedFile data - see LocalRecordingState's doc
+  // comment for what each row means and the deletion rule.
+
+  Future<void> saveLocalRecording(LocalRecordingState recording) async {
+    final db = await database;
+    await db.insert(
+      'local_recordings',
+      recording.toRow(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<LocalRecordingState?> getLocalRecording(String id) async {
+    final db = await database;
+    final results =
+        await db.query('local_recordings', where: 'id = ?', whereArgs: [id]);
+    if (results.isEmpty) return null;
+    return LocalRecordingState.fromRow(results.first);
+  }
+
+  Future<List<LocalRecordingState>> getLocalRecordingsByState(
+      RecordingLifecycleState state) async {
+    final db = await database;
+    final results = await db.query('local_recordings',
+        where: 'state = ?', whereArgs: [state.name]);
+    return results.map(LocalRecordingState.fromRow).toList();
+  }
+
+  Future<List<LocalRecordingState>> getLocalRecordingsForEvent(
+      String eventId) async {
+    final db = await database;
+    final results = await db.query('local_recordings',
+        where: 'event_id = ?', whereArgs: [eventId]);
+    return results.map(LocalRecordingState.fromRow).toList();
+  }
+
+  /// Removes just the bookkeeping row, without touching any bytes in a
+  /// RecordingFileStore. Used when a recording never produced any bytes
+  /// worth keeping (e.g. recovery found an empty orphaned entry). For an
+  /// actual recording, use [deleteRecordingPermanently] instead so its
+  /// bytes are deleted too.
+  Future<void> deleteLocalRecordingRow(String id) async {
+    final db = await database;
+    await db.delete('local_recordings', where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// Permanently deletes a recording: its bytes in [store] AND its local
+  /// bookkeeping row.
+  ///
+  /// IMPORTANT deletion rule: call this only after the user has explicitly
+  /// confirmed deleting that specific recording (e.g. a "Delete recording"
+  /// confirmation dialog), or when emptying a soft-deleted event that still
+  /// owns it. Soft-deleting an event (`Event.isDeleted = true` /
+  /// [deleteEvent]) must NEVER by itself reach this method - the audio has
+  /// to stay recoverable for as long as the soft-deleted event could still
+  /// be restored.
+  Future<void> deleteRecordingPermanently(
+      String recordingId, RecordingFileStore store) async {
+    await store.delete(recordingId);
+    await deleteLocalRecordingRow(recordingId);
+  }
+
   // ==================== BULK OPERATIONS ====================
 
   Future<void> bulkSavePersons(List<Person> persons) async {
@@ -542,6 +607,10 @@ class DatabaseService extends ChangeNotifier {
     await db.delete('files');
     await db.delete('pending_changes');
     await db.delete('sync_index');
+    // Bookkeeping rows only; actual recording bytes in a RecordingFileStore
+    // are intentionally left alone here - see deleteRecordingPermanently's
+    // doc comment for why this must never be an implicit side effect.
+    await db.delete('local_recordings');
     notifyListeners();
   }
 }
