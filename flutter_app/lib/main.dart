@@ -38,6 +38,12 @@ class RelationshipManagerApp extends StatelessWidget {
       title: 'Relationship Manager',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        // Roboto itself is bundled as an asset (see assets/fonts/README.md),
+        // so Material's default "Roboto" family resolves locally; this
+        // fallback only covers the rare glyph Roboto itself doesn't have
+        // (e.g. certain symbols/arrows), so web never needs to reach
+        // fonts.gstatic.com for either.
+        fontFamilyFallback: const ['Noto Sans Symbols'],
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.indigo,
           brightness: Brightness.light,
@@ -61,6 +67,7 @@ class RelationshipManagerApp extends StatelessWidget {
         ),
       ),
       darkTheme: ThemeData(
+        fontFamilyFallback: const ['Noto Sans Symbols'],
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.indigo,
           brightness: Brightness.dark,
