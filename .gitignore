@@ -45,3 +45,5 @@ playwright-report
 .playwright-mcp
 backend/RelationshipManager.Api/bin/
 backend/RelationshipManager.Api/obj/
+backend/RelationshipManager.Api.Tests/bin/
+backend/RelationshipManager.Api.Tests/obj/

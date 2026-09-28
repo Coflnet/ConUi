@@ -1,81 +1,27 @@
-using Cassandra;
-using Cassandra.Data.Linq;
-using Cassandra.Mapping;
+using RelationshipManager.Api.Data;
 using RelationshipManager.Api.Models;
-using CassandraSession = Cassandra.ISession;
 
 namespace RelationshipManager.Api.Services;
 
 public class SyncService
 {
-    private readonly Table<SyncEntry> _syncTable;
-    private readonly Table<UserObject> _userObjectsTable;
-    private readonly Table<UserDevice> _userDevicesTable;
-    private readonly Table<UserStorageLimit> _storageLimitsTable;
+    private readonly ISyncStore _store;
     private readonly IS3Service _s3Service;
     private readonly ILogger<SyncService> _logger;
     private const long DefaultStorageLimit = 100 * 1024 * 1024; // 100MB
 
-    public SyncService(CassandraSession session, IS3Service s3Service, ILogger<SyncService> logger)
+    public SyncService(ISyncStore store, IS3Service s3Service, ILogger<SyncService> logger)
     {
-        // Sync entries table - partition by UserId, cluster by Version DESC for efficient latest-first queries
-        var syncMapping = new MappingConfiguration()
-            .Define(new Map<SyncEntry>()
-                .TableName("sync_entries")
-                .PartitionKey(e => e.UserId)
-                .ClusteringKey(e => e.Version, SortOrder.Descending)
-                .ClusteringKey(e => e.BlobType)
-                .ClusteringKey(e => e.BlobId)
-            );
-        _syncTable = new Table<SyncEntry>(session, syncMapping);
-
-        // User objects table - tracks current state of each object
-        var objectsMapping = new MappingConfiguration()
-            .Define(new Map<UserObject>()
-                .TableName("user_objects")
-                .PartitionKey(e => e.UserId)
-                .ClusteringKey(e => e.BlobType)
-                .ClusteringKey(e => e.BlobId)
-            );
-        _userObjectsTable = new Table<UserObject>(session, objectsMapping);
-
-        // User devices table - tracks devices and their sync state
-        var devicesMapping = new MappingConfiguration()
-            .Define(new Map<UserDevice>()
-                .TableName("user_devices")
-                .PartitionKey(e => e.UserId)
-                .ClusteringKey(e => e.DeviceId)
-            );
-        _userDevicesTable = new Table<UserDevice>(session, devicesMapping);
-
-        // Storage limits table
-        var storageMapping = new MappingConfiguration()
-            .Define(new Map<UserStorageLimit>()
-                .TableName("user_storage_limits")
-                .PartitionKey(e => e.UserId)
-            );
-        _storageLimitsTable = new Table<UserStorageLimit>(session, storageMapping);
-
+        _store = store;
         _s3Service = s3Service;
         _logger = logger;
-    }
-
-    public void InitializeTables()
-    {
-        _syncTable.CreateIfNotExists();
-        _userObjectsTable.CreateIfNotExists();
-        _userDevicesTable.CreateIfNotExists();
-        _storageLimitsTable.CreateIfNotExists();
-        _logger.LogInformation("Sync tables initialized");
     }
 
     public async Task<SyncResponse> GetUpdatesAsync(Guid userId, SyncRequest request)
     {
         // Fetch all entries for user, then filter by version in memory
         // Cassandra LINQ can't do range queries on clustering keys without ALLOW FILTERING
-        var allEntriesResult = await _syncTable
-            .Where(e => e.UserId == userId)
-            .ExecuteAsync();
+        var allEntriesResult = await _store.GetSyncEntriesAsync(userId);
 
         var newEntries = allEntriesResult
             .Where(e => e.Version > request.LastSyncVersion)
@@ -89,7 +35,7 @@ public class SyncService
         // Update device sync info if device ID provided
         if (!string.IsNullOrEmpty(request.DeviceId))
         {
-            await UpdateDeviceSyncAsync(userId, request.DeviceId, 
+            await UpdateDeviceSyncAsync(userId, request.DeviceId,
                 newEntries.Count > 0 ? newEntries.Max(e => e.Version) : request.LastSyncVersion);
         }
 
@@ -106,15 +52,8 @@ public class SyncService
 
     public async Task<BlobUploadResponse> GetUploadUrlAsync(Guid userId, BlobUploadRequest request)
     {
-        // Check storage limit
-        var storageInfo = await GetStorageInfoAsync(userId);
-        
-        // Check for version conflicts using user_objects table
-        var existingObjects = await _userObjectsTable
-            .Where(e => e.UserId == userId && e.BlobType == request.BlobType && e.BlobId == request.BlobId)
-            .ExecuteAsync();
-        
-        var existing = existingObjects.FirstOrDefault();
+        // Check for version conflicts using the user_objects table
+        var existing = await _store.GetUserObjectAsync(userId, request.BlobType, request.BlobId);
         if (existing != null && request.ExpectedVersion > 0 && existing.Version != request.ExpectedVersion)
         {
             throw new InvalidOperationException($"Version conflict: expected {request.ExpectedVersion}, current is {existing.Version}");
@@ -122,7 +61,7 @@ public class SyncService
 
         var newVersion = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var s3Key = $"{userId}/{request.BlobType}/{request.BlobId}_{newVersion}";
-        
+
         var uploadUrl = await _s3Service.GetUploadUrlAsync(s3Key, TimeSpan.FromMinutes(15));
 
         return new BlobUploadResponse
@@ -135,12 +74,7 @@ public class SyncService
 
     public async Task<BlobDownloadResponse?> GetDownloadUrlAsync(Guid userId, string blobType, string blobId)
     {
-        // Use user_objects table for current state
-        var objects = await _userObjectsTable
-            .Where(e => e.UserId == userId && e.BlobType == blobType && e.BlobId == blobId)
-            .ExecuteAsync();
-        
-        var entry = objects.FirstOrDefault();
+        var entry = await _store.GetUserObjectAsync(userId, blobType, blobId);
         if (entry == null || entry.IsDeleted)
         {
             return null;
@@ -160,13 +94,10 @@ public class SyncService
     {
         var version = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var now = DateTime.UtcNow;
-        
+
         // Get existing object for size delta calculation
-        var existingObjects = await _userObjectsTable
-            .Where(e => e.UserId == userId && e.BlobType == commit.BlobType && e.BlobId == commit.BlobId)
-            .ExecuteAsync();
-        var existing = existingObjects.FirstOrDefault();
-        
+        var existing = await _store.GetUserObjectAsync(userId, commit.BlobType, commit.BlobId);
+
         // Calculate size delta for storage tracking
         long sizeDelta = commit.Size;
         if (existing != null)
@@ -204,15 +135,15 @@ public class SyncService
         };
 
         // Insert sync entry (append-only log)
-        await _syncTable.Insert(syncEntry).ExecuteAsync();
-        
+        await _store.InsertSyncEntryAsync(syncEntry);
+
         // Upsert user object (current state)
-        await _userObjectsTable.Insert(userObject).ExecuteAsync();
-        
+        await _store.UpsertUserObjectAsync(userObject);
+
         // Update storage usage
         await UpdateStorageUsageAsync(userId, sizeDelta);
 
-        _logger.LogInformation("Committed blob: {BlobType}/{BlobId} for user {UserId}", 
+        _logger.LogInformation("Committed blob: {BlobType}/{BlobId} for user {UserId}",
             commit.BlobType, commit.BlobId, userId);
     }
 
@@ -226,11 +157,7 @@ public class SyncService
 
     public async Task<SyncEntry?> GetEntryAsync(Guid userId, string blobType, string blobId)
     {
-        var objects = await _userObjectsTable
-            .Where(e => e.UserId == userId && e.BlobType == blobType && e.BlobId == blobId)
-            .ExecuteAsync();
-        
-        var obj = objects.FirstOrDefault();
+        var obj = await _store.GetUserObjectAsync(userId, blobType, blobId);
         if (obj == null)
         {
             return null;
@@ -253,10 +180,8 @@ public class SyncService
     public async Task<List<SyncEntry>> GetAllEntriesAsync(Guid userId)
     {
         // Return current state from user_objects, converted to SyncEntry format
-        var objects = await _userObjectsTable
-            .Where(e => e.UserId == userId)
-            .ExecuteAsync();
-        
+        var objects = await _store.GetUserObjectsAsync(userId);
+
         return objects.Select(o => new SyncEntry
         {
             UserId = o.UserId,
@@ -274,11 +199,7 @@ public class SyncService
 
     public async Task DeleteEntryAsync(Guid userId, string blobType, string blobId)
     {
-        var objects = await _userObjectsTable
-            .Where(e => e.UserId == userId && e.BlobType == blobType && e.BlobId == blobId)
-            .ExecuteAsync();
-        
-        var entry = objects.FirstOrDefault();
+        var entry = await _store.GetUserObjectAsync(userId, blobType, blobId);
         if (entry != null)
         {
             // Mark as deleted via commit
@@ -298,12 +219,8 @@ public class SyncService
     public async Task<UserDevice?> RegisterDeviceAsync(Guid userId, DeviceRegistrationRequest request)
     {
         var now = DateTime.UtcNow;
-        var existingDevices = await _userDevicesTable
-            .Where(d => d.UserId == userId && d.DeviceId == request.DeviceId)
-            .ExecuteAsync();
-        
-        var existing = existingDevices.FirstOrDefault();
-        
+        var existing = await _store.GetDeviceAsync(userId, request.DeviceId);
+
         var device = new UserDevice
         {
             UserId = userId,
@@ -316,43 +233,32 @@ public class SyncService
             LastSeen = now
         };
 
-        await _userDevicesTable.Insert(device).ExecuteAsync();
+        await _store.UpsertDeviceAsync(device);
         return device;
     }
 
     public async Task<List<UserDevice>> GetUserDevicesAsync(Guid userId)
     {
-        var devices = await _userDevicesTable
-            .Where(d => d.UserId == userId)
-            .ExecuteAsync();
-        return devices.ToList();
+        return await _store.GetDevicesAsync(userId);
     }
 
     private async Task UpdateDeviceSyncAsync(Guid userId, string deviceId, long version)
     {
-        var devices = await _userDevicesTable
-            .Where(d => d.UserId == userId && d.DeviceId == deviceId)
-            .ExecuteAsync();
-        
-        var device = devices.FirstOrDefault();
+        var device = await _store.GetDeviceAsync(userId, deviceId);
         if (device != null)
         {
             device.LastSyncVersion = version;
             device.LastSyncTime = DateTime.UtcNow;
             device.LastSeen = DateTime.UtcNow;
-            await _userDevicesTable.Insert(device).ExecuteAsync();
+            await _store.UpsertDeviceAsync(device);
         }
     }
 
     // Storage management
     public async Task<StorageInfoResponse> GetStorageInfoAsync(Guid userId)
     {
-        var limits = await _storageLimitsTable
-            .Where(s => s.UserId == userId)
-            .ExecuteAsync();
-        
-        var limit = limits.FirstOrDefault();
-        
+        var limit = await _store.GetStorageLimitAsync(userId);
+
         if (limit == null)
         {
             // Create default storage limit
@@ -363,7 +269,7 @@ public class SyncService
                 UsedBytes = 0,
                 UpdatedAt = DateTime.UtcNow
             };
-            await _storageLimitsTable.Insert(limit).ExecuteAsync();
+            await _store.UpsertStorageLimitAsync(limit);
         }
 
         return new StorageInfoResponse
@@ -375,12 +281,8 @@ public class SyncService
 
     private async Task UpdateStorageUsageAsync(Guid userId, long sizeDelta)
     {
-        var limits = await _storageLimitsTable
-            .Where(s => s.UserId == userId)
-            .ExecuteAsync();
-        
-        var limit = limits.FirstOrDefault();
-        
+        var limit = await _store.GetStorageLimitAsync(userId);
+
         if (limit == null)
         {
             limit = new UserStorageLimit
@@ -397,7 +299,7 @@ public class SyncService
             limit.UpdatedAt = DateTime.UtcNow;
         }
 
-        await _storageLimitsTable.Insert(limit).ExecuteAsync();
+        await _store.UpsertStorageLimitAsync(limit);
     }
 
     public async Task SetStorageLimitAsync(Guid userId, long limitBytes)
@@ -410,6 +312,6 @@ public class SyncService
             UsedBytes = info.UsedBytes,
             UpdatedAt = DateTime.UtcNow
         };
-        await _storageLimitsTable.Insert(limit).ExecuteAsync();
+        await _store.UpsertStorageLimitAsync(limit);
     }
 }

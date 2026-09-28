@@ -1,56 +1,33 @@
-using Cassandra;
-using Cassandra.Data.Linq;
-using Cassandra.Mapping;
-using RelationshipManager.Api.Models;
 using Microsoft.IdentityModel.Tokens;
+using RelationshipManager.Api.Data;
+using RelationshipManager.Api.Models;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using CassandraSession = Cassandra.ISession;
 
 namespace RelationshipManager.Api.Auth;
 
 public class AuthService
 {
-    private readonly Table<User> _userTable;
+    private readonly IUserStore _userStore;
     private readonly IConfiguration _config;
     private readonly ILogger<AuthService> _logger;
 
-    public AuthService(CassandraSession session, IConfiguration config, ILogger<AuthService> logger)
+    public AuthService(IUserStore userStore, IConfiguration config, ILogger<AuthService> logger)
     {
-        var mapping = new MappingConfiguration()
-            .Define(new Map<User>()
-                .TableName("users")
-                .PartitionKey(u => u.AuthProviderId)
-                .Column(u => u.Id, cm => cm.WithSecondaryIndex())
-                .Column(u => u.Email, cm => cm.WithSecondaryIndex())
-            );
-        _userTable = new Table<User>(session, mapping);
-        _userTable.CreateIfNotExists();
+        _userStore = userStore;
         _config = config;
         _logger = logger;
     }
 
-    public async Task<Guid> GetUserId(string authProviderId)
-    {
-        var users = await _userTable.Where(u => u.AuthProviderId == authProviderId)
-            .Select(u => u.Id)
-            .ExecuteAsync();
-        return users.FirstOrDefault();
-    }
-
     public async Task<User?> GetUser(string authProviderId)
     {
-        var users = await _userTable.Where(u => u.AuthProviderId == authProviderId)
-            .ExecuteAsync();
-        return users.FirstOrDefault();
+        return await _userStore.GetByAuthProviderIdAsync(authProviderId);
     }
 
     public async Task<User?> GetUserById(Guid userId)
     {
-        var users = await _userTable.Where(u => u.Id == userId)
-            .ExecuteAsync();
-        return users.FirstOrDefault();
+        return await _userStore.GetByIdAsync(userId);
     }
 
     public async Task<Guid> CreateUser(string authProviderId, string? name = null, string? email = null)
@@ -66,14 +43,14 @@ public class AuthService
             LastSeenAt = DateTime.UtcNow,
             EncryptionKeySalt = salt
         };
-        await _userTable.Insert(user).ExecuteAsync();
+        await _userStore.UpsertAsync(user);
         return user.Id;
     }
 
     public async Task UpdateUserLastSeen(User user)
     {
         user.LastSeenAt = DateTime.UtcNow;
-        await _userTable.Insert(user).ExecuteAsync();
+        await _userStore.UpsertAsync(user);
     }
 
     public string CreateTokenFor(Guid userId, int validForDays = 30, params Claim[] additionalClaims)
