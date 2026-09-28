@@ -527,6 +527,24 @@ class DatabaseService extends ChangeNotifier {
     return results.map(LocalRecordingState.fromRow).toList();
   }
 
+  /// Recordings that exist on this device but aren't attached to any
+  /// story: finished captures whose eventId was never set, either because
+  /// the quick-add sheet that started them was dismissed before Save, or
+  /// because RecordingRecoveryService found them abandoned at start-up
+  /// after a crash. Excludes rows still mid-recording (state ==
+  /// [RecordingLifecycleState.recording]) - those aren't abandoned, they're
+  /// just in progress. Surfaced by the map's "N recordings aren't attached
+  /// to a story" banner.
+  Future<List<LocalRecordingState>> getOrphanedRecordings() async {
+    final db = await database;
+    final results = await db.query(
+      'local_recordings',
+      where: 'event_id IS NULL AND state != ?',
+      whereArgs: [RecordingLifecycleState.recording.name],
+    );
+    return results.map(LocalRecordingState.fromRow).toList();
+  }
+
   /// Removes just the bookkeeping row, without touching any bytes in a
   /// RecordingFileStore. Used when a recording never produced any bytes
   /// worth keeping (e.g. recovery found an empty orphaned entry). For an
