@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+  security-events: write
+
+# Serialize deployments so an older build cannot overtake a newer feature.
+concurrency:
+  group: conui-ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  container-ci:
+    uses: Coflnet/.github/.github/workflows/container-ci.yml@main
+    with:
+      k8s_file: con-chart/chart/values.yaml
+      repo_url: https://github.com/Coflnet/fleet
+    secrets:
+      ARGO_WEBHOOK_SECRET: ${{ secrets.ARGO_WEBHOOK_SECRET }}
