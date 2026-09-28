@@ -62,7 +62,9 @@ RUN flutter pub get
 COPY flutter_app/ .
 # No API base URL is passed: the app is served from the same origin as the API in production, so
 # it falls back to relative requests against the origin it was loaded from.
-RUN flutter build web --release
+# --no-web-resources-cdn bundles the renderer (canvaskit) into the image instead of loading it
+# from a Google server in every user's browser.
+RUN flutter build web --release --no-web-resources-cdn
 
 ########################################################################################
 # Stage: build - restores and publishes the ASP.NET Core backend
@@ -97,10 +99,7 @@ WORKDIR /web
 COPY flutter_app/pubspec.yaml flutter_app/pubspec.lock ./
 RUN flutter pub get
 COPY flutter_app/ .
-# NOTE: flutter_app/test/widget_test.dart is currently a leftover counter-app template being
-# replaced on another branch. Once that merges, change the line below back to a plain
-# `flutter test` so the full suite (including whatever replaces widget_test.dart) runs again.
-RUN flutter test test/relationships test/screens
+RUN flutter test
 
 FROM scratch AS test
 COPY --from=backend-test /src/RelationshipManager.Api.Tests/RelationshipManager.Api.Tests.csproj /backend-test.ok
