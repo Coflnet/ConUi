@@ -195,7 +195,7 @@ public class SyncController : ControllerBase
             var existingEntry = await _syncService.GetEntryAsync(userId.Value, blobType, blobId);
             if (existingEntry != null && existingEntry.Version >= version)
             {
-                return Conflict(new { error = "version_conflict", message = "A newer version already exists" });
+                return Conflict(new ApiError("version_conflict", "A newer version already exists"));
             }
 
             // Upload to S3 through backend
