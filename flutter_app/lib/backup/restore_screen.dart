@@ -103,7 +103,23 @@ class _RestoreScreenState extends State<RestoreScreen> {
         _result = null;
         _step = _Step.done;
       });
+    } finally {
+      // This restore attempt is done with the picked file either way - see
+      // pickBackupFile()'s doc comment for why file_picker's own cache copy
+      // of it (Android/iOS) needs an explicit clear rather than cleaning
+      // itself up.
+      await _service.clearPickedFileCache();
     }
+  }
+
+  /// Backing out at the preview step (whether the archive previewed fine
+  /// and the user chose not to restore it, or it failed to preview at all)
+  /// still leaves file_picker's cache copy of it behind on Android/iOS - see
+  /// pickBackupFile()'s doc comment - so this clears it before popping,
+  /// same as the success/failure paths in [_confirmAndStart].
+  Future<void> _closeClearingPickedFileCache() async {
+    await _service.clearPickedFileCache();
+    if (mounted) Navigator.of(context).pop();
   }
 
   @override
@@ -135,7 +151,7 @@ class _RestoreScreenState extends State<RestoreScreen> {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: _closeClearingPickedFileCache,
                 child: const Text('Close'),
               ),
             ),
@@ -170,7 +186,7 @@ class _RestoreScreenState extends State<RestoreScreen> {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: _closeClearingPickedFileCache,
                   child: const Text(BackupStrings.restorePreviewCancel),
                 ),
               ),

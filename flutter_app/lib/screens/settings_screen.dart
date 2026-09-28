@@ -310,7 +310,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Contact import will request permissions')),
     );
-    // TODO: Implement contact import using contacts_service package
+    // TODO: Implement contact import. The `contacts_service` package this
+    // was originally slated to use was removed from pubspec.yaml - it's
+    // incompatible with the current Flutter engine (still references the
+    // long-removed v1 PluginRegistry.Registrar Android embedding API,
+    // which fails to compile) and was never actually called from here
+    // anyway (this button only ever showed the placeholder snackbar
+    // below). Pick a maintained alternative (e.g. `flutter_contacts`) when
+    // implementing this for real.
     // This requires platform-specific permissions setup
   }
 }

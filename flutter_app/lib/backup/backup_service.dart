@@ -201,6 +201,14 @@ class BackupService {
   /// Reads the WHOLE file into memory on web (file_picker's only option
   /// there for local files); streams from disk on native.
   ///
+  /// On Android/iOS, file_picker copies the picked document into this app's
+  /// own cache directory first (SAF/`UIDocumentPickerViewController` results
+  /// often aren't a plain filesystem path the Dart side can open directly),
+  /// and [path] below is that COPY, not the original - streaming from it is
+  /// still memory-safe (it's a real file either way), but the copy itself
+  /// is this app's responsibility to clean up; see [clearPickedFileCache],
+  /// which RestoreScreen calls once it's done with a restore attempt.
+  ///
   /// Returns a re-openable [PickedBackupFile] rather than a single
   /// [InputStream]: an [InputStream] is a stateful, position-advancing
   /// reader, and both [previewRestore] and [applyRestore] need to read the
@@ -227,6 +235,21 @@ class BackupService {
       throw StateError('The picked file had no path available.');
     }
     return PickedBackupFile(() => InputFileStream(path));
+  }
+
+  /// Deletes whatever cache copy file_picker made of a file picked via
+  /// [pickBackupFile] (see its doc comment) - harmless to call even if
+  /// nothing needs clearing (no file was ever picked, or this platform
+  /// doesn't make a cache copy in the first place). Best-effort: a failure
+  /// here (e.g. the platform channel rejects it) must never stop
+  /// RestoreScreen from finishing/closing over what is, at worst, a stray
+  /// temp file - so this swallows rather than propagates.
+  Future<void> clearPickedFileCache() async {
+    try {
+      await fp.FilePicker.platform.clearTemporaryFiles();
+    } catch (_) {
+      // Best-effort - see doc comment above.
+    }
   }
 
   /// Parses and validates [picked] far enough to show the user what it

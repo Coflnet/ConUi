@@ -60,6 +60,28 @@ class BackupStrings {
   static const String createSuccessDownloaded = 'Downloaded to your browser\'s '
       'downloads.';
 
+  // ---- Getting a private-app-storage backup out of the app ----
+  // (Android/iOS - see BackupSaveLocation.isPrivateAppStorage.)
+  static const String exportOfferTitle = 'Get this backup out of the app';
+  static const String exportOfferBody =
+      'This backup is currently only stored inside this app. It will be lost '
+      'if the app is uninstalled or the phone is lost. Choose where to keep '
+      'it:';
+  static const String exportOfferWarning =
+      'This backup is ONLY inside the app right now and will be lost with '
+      'the app. Choose one of the options below to keep it safe.';
+  static const String exportSaveAsButton = 'Save to…';
+  static const String exportShareButton = 'Share…';
+  static String exportSavedTo(String where) => 'Saved to:\n$where';
+  static const String exportSharedTitle = 'Shared';
+  static const String exportSharedBody =
+      'The backup was handed off to share. Once that finishes, it will be '
+      'safe outside this app.';
+  static const String exportFailedTitle = 'Could not export the backup';
+  static String exportFailed(String message) =>
+      'That didn\'t work: $message\n\nThe backup is still safe inside the app - '
+      'you can try again.';
+
   static const String createFailedTitle = 'Backup failed';
   static const String createCancelledTitle = 'Backup cancelled';
   static const String createCancelledBody = 'No file was saved.';

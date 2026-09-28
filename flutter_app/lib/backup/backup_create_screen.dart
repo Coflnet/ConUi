@@ -1,8 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
 import '../services/database_service.dart';
+import 'backup_destination.dart';
+import 'backup_export.dart';
+import 'backup_manifest.dart';
 import 'backup_progress.dart';
 import 'backup_service.dart';
 import 'backup_strings.dart';
@@ -10,7 +14,11 @@ import 'backup_strings.dart';
 /// "Create backup": shows what will be included (with the missing-audio
 /// notice up front, per the brief), asks for confirmation, then runs the
 /// backup with progress and a cancel button, and reports where the file
-/// went (or what went wrong).
+/// went (or what went wrong). On Android/iOS, where BackupDestinationProvider
+/// can only leave the finished backup in this app's own private storage
+/// (see [BackupSaveLocation.isPrivateAppStorage]), this screen then offers
+/// "Save to..."/"Share..." via [BackupExportOffer] before calling the job
+/// done - see [_buildExportOffer].
 class BackupCreateScreen extends StatefulWidget {
   /// Reuses the caller's BackupService when given one (SettingsScreen
   /// passes its own); otherwise builds one from context. Also how tests
@@ -18,7 +26,12 @@ class BackupCreateScreen extends StatefulWidget {
   /// platform channels.
   final BackupService? backupService;
 
-  const BackupCreateScreen({super.key, this.backupService});
+  /// Same idea as [backupService], for the Android/iOS "Save to..."/
+  /// "Share..." offer - lets tests supply a fake instead of the real
+  /// flutter_file_dialog/share_plus platform channels.
+  final BackupExportOffer? exportOffer;
+
+  const BackupCreateScreen({super.key, this.backupService, this.exportOffer});
 
   @override
   State<BackupCreateScreen> createState() => _BackupCreateScreenState();
@@ -28,6 +41,7 @@ enum _Step { loadingPlan, showingPlan, running, done }
 
 class _BackupCreateScreenState extends State<BackupCreateScreen> {
   late final BackupService _service;
+  late final BackupExportOffer _exportOffer;
   _Step _step = _Step.loadingPlan;
   BackupPlan? _plan;
   Object? _planError;
@@ -36,11 +50,19 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
   BackupProgress? _progress;
   BackupCreateOutcome? _outcome;
 
+  // Export-offer state (Android/iOS only - see this class's doc comment).
+  bool _exporting = false;
+  bool _exportCancelledOnce = false;
+  bool _exported = false;
+  String? _exportedDescription; // null after a share (no destination path)
+  Object? _exportError;
+
   @override
   void initState() {
     super.initState();
     _service = widget.backupService ??
         BackupService(databaseService: context.read<DatabaseService>());
+    _exportOffer = widget.exportOffer ?? createBackupExportOffer();
     _loadPlan();
   }
 
@@ -195,34 +217,10 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
   Widget _buildDone(BuildContext context) {
     final outcome = _outcome;
     return switch (outcome) {
-      BackupCreateSuccess(:final manifest, :final location) => Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary, size: 48),
-              const SizedBox(height: 12),
-              Text(BackupStrings.createSuccessTitle,
-                  style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              Text(location.isFilePath
-                  ? BackupStrings.createSuccessSavedTo(location.description)
-                  : BackupStrings.createSuccessDownloaded),
-              if (manifest.missingAudio.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(BackupStrings.missingAudioWarning(manifest.missingAudio.length)),
-              ],
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Done'),
-                ),
-              ),
-            ],
-          ),
-        ),
+      BackupCreateSuccess(:final manifest, :final location) =>
+        (location.isPrivateAppStorage && _exportOffer.needsExport && !_exported)
+            ? _buildExportOffer(context, location)
+            : _buildSavedSummary(context, manifest, location),
       BackupCreateCancelled() => Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -267,5 +265,172 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
         ),
       null => const SizedBox.shrink(),
     };
+  }
+
+  Widget _buildSavedSummary(
+      BuildContext context, BackupManifest manifest, BackupSaveLocation location) {
+    final String savedText;
+    if (_exported) {
+      final exportedDescription = _exportedDescription;
+      savedText = exportedDescription != null
+          ? BackupStrings.exportSavedTo(exportedDescription)
+          : BackupStrings.exportSharedBody;
+    } else if (location.isFilePath) {
+      savedText = BackupStrings.createSuccessSavedTo(location.description);
+    } else {
+      savedText = BackupStrings.createSuccessDownloaded;
+    }
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary, size: 48),
+          const SizedBox(height: 12),
+          Text(
+            _exported && _exportedDescription == null
+                ? BackupStrings.exportSharedTitle
+                : BackupStrings.createSuccessTitle,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 8),
+          Text(savedText),
+          if (manifest.missingAudio.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(BackupStrings.missingAudioWarning(manifest.missingAudio.length)),
+          ],
+          const Spacer(),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Done'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shown instead of [_buildSavedSummary] on Android/iOS until the user has
+  /// actually gotten the backup out of the app - see this screen's class
+  /// doc comment and [BackupSaveLocation.isPrivateAppStorage].
+  /// [_exportCancelledOnce] switches the body text to the stronger warning
+  /// wording and keeps both buttons on screen after either dialog is
+  /// dismissed, per the brief: cancelling is never a dead end here.
+  Widget _buildExportOffer(BuildContext context, BackupSaveLocation location) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded,
+              color: Theme.of(context).colorScheme.error, size: 48),
+          const SizedBox(height: 12),
+          Text(BackupStrings.exportOfferTitle, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          Text(_exportCancelledOnce
+              ? BackupStrings.exportOfferWarning
+              : BackupStrings.exportOfferBody),
+          if (_exportError != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              BackupStrings.exportFailed(_exportError.toString()),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
+          const Spacer(),
+          if (_exporting)
+            const Center(child: CircularProgressIndicator())
+          else ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                icon: const Icon(Icons.save_alt),
+                onPressed: () => _handleSaveAs(location),
+                label: const Text(BackupStrings.exportSaveAsButton),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.share),
+                onPressed: () => _handleShare(location),
+                label: const Text(BackupStrings.exportShareButton),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleSaveAs(BackupSaveLocation location) async {
+    setState(() {
+      _exporting = true;
+      _exportError = null;
+    });
+    try {
+      final saved = await _exportOffer.saveAs(
+        sourceFilePath: location.description,
+        suggestedFileName: p.basename(location.description),
+      );
+      if (!mounted) return;
+      if (saved == null) {
+        setState(() {
+          _exporting = false;
+          _exportCancelledOnce = true;
+        });
+        return;
+      }
+      await _exportOffer.deleteTemporaryCopy(location.description);
+      if (!mounted) return;
+      setState(() {
+        _exporting = false;
+        _exported = true;
+        _exportedDescription = saved;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _exporting = false;
+        _exportError = e;
+      });
+    }
+  }
+
+  Future<void> _handleShare(BackupSaveLocation location) async {
+    setState(() {
+      _exporting = true;
+      _exportError = null;
+    });
+    try {
+      final shared = await _exportOffer.share(
+        sourceFilePath: location.description,
+        suggestedFileName: p.basename(location.description),
+      );
+      if (!mounted) return;
+      if (!shared) {
+        setState(() {
+          _exporting = false;
+          _exportCancelledOnce = true;
+        });
+        return;
+      }
+      await _exportOffer.deleteTemporaryCopy(location.description);
+      if (!mounted) return;
+      setState(() {
+        _exporting = false;
+        _exported = true;
+        _exportedDescription = null; // sharing doesn't give us a destination path
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _exporting = false;
+        _exportError = e;
+      });
+    }
   }
 }

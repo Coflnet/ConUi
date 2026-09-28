@@ -15,7 +15,14 @@ class TempDirBackupDestinationProvider implements BackupDestinationProvider {
   /// cancelled a save dialog) and resets itself.
   bool cancelNextPrepare = false;
 
-  TempDirBackupDestinationProvider(this.dir);
+  /// Passed straight through to the [BackupSaveLocation] [commit] returns -
+  /// set true to exercise BackupCreateScreen's Android/iOS "Save to..."/
+  /// "Share..." export offer (see backup_export.dart) without a real
+  /// platform channel; false (the default) mirrors desktop, where
+  /// file_picker already asked the user for a real location.
+  final bool isPrivateAppStorage;
+
+  TempDirBackupDestinationProvider(this.dir, {this.isPrivateAppStorage = false});
 
   @override
   Future<BackupWriteTarget?> prepareTarget(String suggestedFileName) async {
@@ -29,6 +36,7 @@ class TempDirBackupDestinationProvider implements BackupDestinationProvider {
       output: OutputFileStream(tempPath),
       tempPath: tempPath,
       finalPath: finalPath,
+      isPrivateAppStorage: isPrivateAppStorage,
     );
   }
 }
@@ -38,10 +46,14 @@ class _TempDirBackupWriteTarget implements BackupWriteTarget {
   final OutputStream output;
   final String tempPath;
   final String finalPath;
+  final bool isPrivateAppStorage;
   bool _finished = false;
 
   _TempDirBackupWriteTarget(
-      {required this.output, required this.tempPath, required this.finalPath});
+      {required this.output,
+      required this.tempPath,
+      required this.finalPath,
+      this.isPrivateAppStorage = false});
 
   @override
   Future<void> finish() async {
@@ -58,7 +70,8 @@ class _TempDirBackupWriteTarget implements BackupWriteTarget {
     final finalFile = File(finalPath);
     if (await finalFile.exists()) await finalFile.delete();
     await File(tempPath).rename(finalPath);
-    return BackupSaveLocation(description: finalPath, isFilePath: true);
+    return BackupSaveLocation(
+        description: finalPath, isFilePath: true, isPrivateAppStorage: isPrivateAppStorage);
   }
 
   @override
