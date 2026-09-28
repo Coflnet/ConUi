@@ -1,8 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Hosting;
 using RelationshipManager.Api.Auth;
+using RelationshipManager.Api.Errors;
 using RelationshipManager.Api.Models;
-using FirebaseAdmin.Auth;
 
 namespace RelationshipManager.Api.Controllers;
 
@@ -11,74 +12,75 @@ namespace RelationshipManager.Api.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly AuthService _authService;
+    private readonly IFirebaseTokenVerifier _firebaseVerifier;
+    private readonly IHostEnvironment _environment;
     private readonly ILogger<AuthController> _logger;
     private readonly IConfiguration _config;
 
-    public AuthController(AuthService authService, ILogger<AuthController> logger, IConfiguration config)
+    public AuthController(
+        AuthService authService,
+        IFirebaseTokenVerifier firebaseVerifier,
+        IHostEnvironment environment,
+        ILogger<AuthController> logger,
+        IConfiguration config)
     {
         _authService = authService;
+        _firebaseVerifier = firebaseVerifier;
+        _environment = environment;
         _logger = logger;
         _config = config;
     }
 
     /// <summary>
-    /// Login with Firebase token
+    /// Login with a Firebase ID token. 503 (sign_in_not_configured) when Firebase isn't set up.
     /// </summary>
     [HttpPost("firebase")]
     public async Task<ActionResult<TokenContainer>> LoginWithFirebase([FromBody] LoginRequest request)
     {
+        if (!_firebaseVerifier.IsConfigured)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new ApiError("sign_in_not_configured", "Firebase sign-in is not configured on this server."));
+        }
+
+        FirebaseVerificationResult verified;
         try
         {
-            string externalUserId;
-            string? email = null;
-            string? name = null;
-
-            if (FirebaseAuth.DefaultInstance != null)
-            {
-                var decodedToken = await FirebaseAuth.DefaultInstance.VerifyIdTokenAsync(request.FirebaseToken);
-                externalUserId = decodedToken.Uid;
-                email = decodedToken.Claims.TryGetValue("email", out var e) ? e.ToString() : null;
-                name = decodedToken.Claims.TryGetValue("name", out var n) ? n.ToString() : null;
-            }
-            else
-            {
-                // Development mode - mock token
-                _logger.LogWarning("Firebase not initialized, using development mode");
-                externalUserId = $"dev_{request.FirebaseToken}";
-            }
-
-            var user = await _authService.GetUser(externalUserId);
-            Guid userId;
-
-            if (user == null)
-            {
-                userId = await _authService.CreateUser(externalUserId, name, email);
-                _logger.LogInformation("Created new user: {UserId}", userId);
-            }
-            else
-            {
-                userId = user.Id;
-                await _authService.UpdateUserLastSeen(user);
-            }
-
-            var token = _authService.CreateTokenFor(userId);
-
-            return Ok(new TokenContainer { AuthToken = token });
+            verified = await _firebaseVerifier.VerifyAsync(request.FirebaseToken);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Firebase login failed");
-            return BadRequest(new { error = "authentication_failed", message = ex.Message });
+            _logger.LogWarning(ex, "Firebase token verification failed");
+            return Unauthorized(new ApiError("invalid_token", "The provided Firebase token could not be verified."));
         }
+
+        var user = await _authService.GetUser(verified.Uid);
+        Guid userId;
+
+        if (user == null)
+        {
+            userId = await _authService.CreateUser(verified.Uid, verified.Name, verified.Email);
+            _logger.LogInformation("Created new user: {UserId}", userId);
+        }
+        else
+        {
+            userId = user.Id;
+            await _authService.UpdateUserLastSeen(user);
+        }
+
+        var token = _authService.CreateTokenFor(userId);
+
+        return Ok(new TokenContainer { AuthToken = token });
     }
 
     /// <summary>
-    /// Development-only login for testing
+    /// Development-only login for testing. 404 unless the environment is Development AND
+    /// ENABLE_DEV_AUTH is true (default false).
     /// </summary>
     [HttpPost("dev")]
     public async Task<ActionResult<TokenContainer>> DevLogin([FromBody] DevLoginRequest request)
     {
-        if (!_config.GetValue<bool>("ENABLE_DEV_AUTH", true))
+        if (!_environment.IsDevelopment() || !_config.GetValue("ENABLE_DEV_AUTH", false))
         {
             return NotFound();
         }

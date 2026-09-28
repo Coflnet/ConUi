@@ -85,6 +85,28 @@ public static class RelationshipManagerApp
         // S3 Service - lazy, optional. See Services/S3Service.cs.
         builder.Services.TryAddSingleton<IS3Service, S3Service>();
 
+        // Firebase: only initialize when a service account is actually configured, so
+        // /api/auth/firebase can answer 503 instead of trusting an unverified token when it's
+        // not (see IFirebaseTokenVerifier). GoogleCredential.GetApplicationDefault() reads
+        // GOOGLE_APPLICATION_CREDENTIALS itself; we only check it exists first so a missing/typo'd
+        // path fails fast with a clear log line instead of a cryptic credentials error.
+        var googleCredentialsPath = System.Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS");
+        if (!string.IsNullOrEmpty(googleCredentialsPath) && FirebaseAdmin.FirebaseApp.DefaultInstance == null)
+        {
+            if (File.Exists(googleCredentialsPath))
+            {
+                FirebaseAdmin.FirebaseApp.Create(new FirebaseAdmin.AppOptions
+                {
+                    Credential = Google.Apis.Auth.OAuth2.GoogleCredential.GetApplicationDefault()
+                });
+            }
+            else
+            {
+                Console.Error.WriteLine($"GOOGLE_APPLICATION_CREDENTIALS is set to '{googleCredentialsPath}', but that file does not exist. Firebase sign-in stays disabled.");
+            }
+        }
+        builder.Services.TryAddSingleton<IFirebaseTokenVerifier, FirebaseTokenVerifier>();
+
         // JWT secret: refuse to start outside Development with a missing, too-short, or placeholder secret.
         var jwtSecret = builder.Configuration["jwt:secret"];
         if (!builder.Environment.IsDevelopment())

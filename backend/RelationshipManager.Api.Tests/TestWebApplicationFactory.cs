@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RelationshipManager.Api;
+using RelationshipManager.Api.Auth;
 using RelationshipManager.Api.Data;
 using RelationshipManager.Api.Tests.Fakes;
 
@@ -32,6 +33,7 @@ public class TestWebApplicationFactory : IAsyncDisposable
     public InMemoryUserStore UserStore { get; } = new();
     public InMemorySyncStore SyncStore { get; } = new();
     public FakeCassandraConnection CassandraConnection { get; } = new();
+    public FakeFirebaseTokenVerifier FirebaseVerifier { get; } = new();
 
     public string Environment { get; set; } = "Development";
 
@@ -63,6 +65,7 @@ public class TestWebApplicationFactory : IAsyncDisposable
             builder.Services.AddSingleton<IUserStore>(UserStore);
             builder.Services.AddSingleton<ISyncStore>(SyncStore);
             builder.Services.AddSingleton<ICassandraConnection>(CassandraConnection);
+            builder.Services.AddSingleton<IFirebaseTokenVerifier>(FirebaseVerifier);
         }, environmentName: Environment);
 
         await _app.StartAsync();
