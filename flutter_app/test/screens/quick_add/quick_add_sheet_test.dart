@@ -17,7 +17,6 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/screens/quick_add/quick_add_sheet.dart';
@@ -27,23 +26,7 @@ import 'package:relationship_manager/services/recording_file_store_native.dart';
 import 'package:relationship_manager/services/transcription_client.dart';
 
 import '../../support/fake_audio_capture.dart';
-
-// NOT using test/support/test_database.dart's createTestDatabaseService()
-// here: it opens every database at the literal `inMemoryDatabasePath`
-// (":memory:"), and sqflite_common_ffi's default singleInstance caching
-// keys its connection cache by that exact path string - so, despite the
-// helper's own doc comment promising "a fresh, isolated" database per call,
-// repeated calls within the same test process (i.e. every test in this
-// file) actually share ONE underlying connection, silently accumulating
-// data across tests. Several of the assertions below (e.g. exact place
-// counts) are sensitive to that leak, so each test here instead gets its
-// own real, uniquely-pathed on-disk database inside its own temp
-// directory - the same pattern database_migrations_test.dart already uses
-// for the same reason.
-DatabaseService _freshDb(Directory tempDir) {
-  sqfliteFfiInit();
-  return DatabaseService(factory: databaseFactoryFfi, path: '${tempDir.path}/test.db');
-}
+import '../../support/test_database.dart';
 
 // The various onPressed callbacks are statically typed as VoidCallback
 // (void Function()), but the actual closures passed in are async and
@@ -127,7 +110,7 @@ void main() {
     testWidgets('blocks save with neither text nor a recording', (tester) async {
       late DatabaseService db;
       await tester.runAsync(() async {
-        db = _freshDb(tempDir);
+        db = createTestDatabaseService();
         await db.initialize();
       });
       final capture = FakeAudioCapture();
@@ -150,7 +133,7 @@ void main() {
     testWidgets('typed text without any recording is a valid story', (tester) async {
       late DatabaseService db;
       await tester.runAsync(() async {
-        db = _freshDb(tempDir);
+        db = createTestDatabaseService();
         await db.initialize();
       });
       final capture = FakeAudioCapture();
@@ -181,7 +164,7 @@ void main() {
         (tester) async {
       late DatabaseService db;
       await tester.runAsync(() async {
-        db = _freshDb(tempDir);
+        db = createTestDatabaseService();
         await db.initialize();
       });
       final capture = FakeAudioCapture();
@@ -226,7 +209,7 @@ void main() {
       late DatabaseService db;
       late Person existing;
       await tester.runAsync(() async {
-        db = _freshDb(tempDir);
+        db = createTestDatabaseService();
         await db.initialize();
         existing = Person(name: 'Uncle Bob');
         await db.savePerson(existing);
@@ -267,7 +250,7 @@ void main() {
       late DatabaseService db;
       late Place existingPlace;
       await tester.runAsync(() async {
-        db = _freshDb(tempDir);
+        db = createTestDatabaseService();
         await db.initialize();
         existingPlace = Place(name: 'Grandma\'s house', latitude: 10.0, longitude: 10.0);
         await db.savePlace(existingPlace);
@@ -313,7 +296,7 @@ void main() {
         (tester) async {
       late DatabaseService db;
       await tester.runAsync(() async {
-        db = _freshDb(tempDir);
+        db = createTestDatabaseService();
         await db.initialize();
       });
       final capture = FakeAudioCapture();
@@ -348,7 +331,7 @@ void main() {
         (tester) async {
       late DatabaseService db;
       await tester.runAsync(() async {
-        db = _freshDb(tempDir);
+        db = createTestDatabaseService();
         await db.initialize();
       });
       final capture = FakeAudioCapture();
@@ -400,7 +383,7 @@ void main() {
     testWidgets('closing with nothing entered needs no confirmation', (tester) async {
       late DatabaseService db;
       await tester.runAsync(() async {
-        db = _freshDb(tempDir);
+        db = createTestDatabaseService();
         await db.initialize();
       });
       final capture = FakeAudioCapture();
@@ -420,7 +403,7 @@ void main() {
         (tester) async {
       late DatabaseService db;
       await tester.runAsync(() async {
-        db = _freshDb(tempDir);
+        db = createTestDatabaseService();
         await db.initialize();
       });
       final capture = FakeAudioCapture();
@@ -452,7 +435,7 @@ void main() {
         (tester) async {
       late DatabaseService db;
       await tester.runAsync(() async {
-        db = _freshDb(tempDir);
+        db = createTestDatabaseService();
         await db.initialize();
       });
       final capture = FakeAudioCapture();

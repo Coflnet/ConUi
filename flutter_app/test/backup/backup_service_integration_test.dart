@@ -12,10 +12,8 @@ import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:relationship_manager/backup/backup_service.dart';
 import 'package:relationship_manager/models/models.dart';
-import 'package:relationship_manager/services/database_service.dart';
 import 'package:relationship_manager/services/recording_file_store_native.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../support/test_database.dart';
 import 'fake_destination.dart';
@@ -142,17 +140,10 @@ void main() {
     final backupPath = (outcome as BackupCreateSuccess).location.description;
 
     // "Device B": fresh database, fresh recording store, restores the file.
-    // Deliberately NOT createTestDatabaseService() here: sqflite_common_ffi
-    // caches open databases by path with singleInstance=true by default, so
-    // two DatabaseServices both opened at the literal `inMemoryDatabasePath`
-    // string (":memory:") end up sharing the SAME underlying database
-    // rather than being independent - which silently turned this
-    // "restore onto a fresh device" test into a same-device no-op the first
-    // time it was written. A distinct real temp-file path keeps this
-    // "device" genuinely separate.
-    sqfliteFfiInit();
-    final dbB =
-        DatabaseService(factory: databaseFactoryFfi, path: '${tempRoot.path}/deviceB.db');
+    // createTestDatabaseService() now gives every call its own private
+    // in-memory database (see test_database.dart), so this "device" is
+    // genuinely separate from device A's.
+    final dbB = createTestDatabaseService();
     await dbB.initialize();
     final storeDirB = Directory('${tempRoot.path}/storeB')..createSync();
     final storeB = NativeRecordingFileStore(baseDirectory: storeDirB);

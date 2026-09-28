@@ -1,11 +1,8 @@
 // Widget tests for PlaceSheet: name (editable), stories at that place in
 // date order with their persons, and "Add story here".
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/screens/places/place_sheet.dart';
@@ -13,13 +10,7 @@ import 'package:relationship_manager/screens/quick_add/quick_add_sheet.dart';
 import 'package:relationship_manager/services/auth_service.dart';
 import 'package:relationship_manager/services/database_service.dart';
 
-// Same isolation fix as quick_add_sheet_test.dart: a uniquely-pathed
-// on-disk database per test rather than test_database.dart's shared
-// ":memory:" path, which leaks state across tests in the same file.
-DatabaseService _freshDb(Directory tempDir) {
-  sqfliteFfiInit();
-  return DatabaseService(factory: databaseFactoryFfi, path: '${tempDir.path}/test.db');
-}
+import '../../support/test_database.dart';
 
 // Providers wrap the whole MaterialApp, not just `home`: showModalBottomSheet
 // (used by both PlaceSheet.show and, from "Add story here", QuickAddSheet.show)
@@ -44,23 +35,13 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 void main() {
-  late Directory tempDir;
-
-  setUp(() {
-    tempDir = Directory.systemTemp.createTempSync('place_sheet_test');
-  });
-
-  tearDown(() {
-    if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
-  });
-
   testWidgets('shows the place name, and its stories in date order with their persons',
       (tester) async {
     late DatabaseService db;
     late Place place;
     late Person alice;
     await tester.runAsync(() async {
-      db = _freshDb(tempDir);
+      db = createTestDatabaseService();
       await db.initialize();
       place = Place(name: 'The old bridge', latitude: 10, longitude: 10);
       await db.savePlace(place);
@@ -97,7 +78,7 @@ void main() {
     late DatabaseService db;
     late Place place;
     await tester.runAsync(() async {
-      db = _freshDb(tempDir);
+      db = createTestDatabaseService();
       await db.initialize();
       place = Place(name: 'Empty spot', latitude: 1, longitude: 1);
       await db.savePlace(place);
@@ -113,7 +94,7 @@ void main() {
     late DatabaseService db;
     late Place place;
     await tester.runAsync(() async {
-      db = _freshDb(tempDir);
+      db = createTestDatabaseService();
       await db.initialize();
       place = Place(name: 'Old name', latitude: 5, longitude: 5);
       await db.savePlace(place);
@@ -137,7 +118,7 @@ void main() {
     late DatabaseService db;
     late Place place;
     await tester.runAsync(() async {
-      db = _freshDb(tempDir);
+      db = createTestDatabaseService();
       await db.initialize();
       place = Place(name: 'Grandpa\'s workshop', latitude: 20, longitude: 20);
       await db.savePlace(place);

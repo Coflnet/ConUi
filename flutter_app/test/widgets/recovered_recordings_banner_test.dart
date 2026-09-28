@@ -9,18 +9,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/services/database_service.dart';
 import 'package:relationship_manager/services/recording_file_store_native.dart';
 import 'package:relationship_manager/widgets/recovered_recordings_banner.dart';
 
-// Same isolation reasoning as quick_add_sheet_test.dart.
-DatabaseService _freshDb(Directory tempDir) {
-  sqfliteFfiInit();
-  return DatabaseService(factory: databaseFactoryFfi, path: '${tempDir.path}/test.db');
-}
+import '../support/test_database.dart';
 
 // See event_detail_screen_test.dart's identical helper for why this is
 // needed: RecordingPlayer (used to "listen" to a recovered recording)
@@ -88,7 +83,7 @@ void main() {
   testWidgets('shows nothing when there are no orphaned recordings', (tester) async {
     late DatabaseService db;
     await tester.runAsync(() async {
-      db = _freshDb(tempDir);
+      db = createTestDatabaseService();
       await db.initialize();
     });
 
@@ -103,7 +98,7 @@ void main() {
       (tester) async {
     late DatabaseService db;
     await tester.runAsync(() async {
-      db = _freshDb(tempDir);
+      db = createTestDatabaseService();
       await db.initialize();
       await seedOrphanedRecording(db, 'rec-a');
       await seedOrphanedRecording(db, 'rec-b');
@@ -119,7 +114,7 @@ void main() {
   testWidgets('a recording attached to an event is not counted as orphaned', (tester) async {
     late DatabaseService db;
     await tester.runAsync(() async {
-      db = _freshDb(tempDir);
+      db = createTestDatabaseService();
       await db.initialize();
       await seedOrphanedRecording(db, 'rec-attached');
       await db.saveLocalRecording(LocalRecordingState(
@@ -140,7 +135,7 @@ void main() {
       (tester) async {
     late DatabaseService db;
     await tester.runAsync(() async {
-      db = _freshDb(tempDir);
+      db = createTestDatabaseService();
       await db.initialize();
       await seedOrphanedRecording(db, 'rec-delete-me');
     });
@@ -184,7 +179,7 @@ void main() {
   });
 
   test('deleteRecordingPermanently removes both the bytes and the bookkeeping row', () async {
-    final db = _freshDb(tempDir);
+    final db = createTestDatabaseService();
     await db.initialize();
     await seedOrphanedRecording(db, 'rec-delete-me');
 

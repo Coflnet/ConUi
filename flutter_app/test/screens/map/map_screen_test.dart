@@ -8,45 +8,32 @@
 // itself (updated from onPositionChanged) instead of reading the
 // controller during build. This test pumps the real screen (not a stub)
 // so a regression there throws here too.
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:relationship_manager/screens/map/map_screen.dart';
 import 'package:relationship_manager/services/database_service.dart';
 import 'package:relationship_manager/services/location_service.dart';
+
+import '../../support/test_database.dart';
 
 class _FakeLocationService implements LocationService {
   @override
   Future<DeviceLocation?> getCurrentLocation() async => null;
 }
 
-DatabaseService _freshDb(Directory tempDir) {
-  sqfliteFfiInit();
-  return DatabaseService(factory: databaseFactoryFfi, path: '${tempDir.path}/test.db');
-}
-
 void main() {
-  late Directory tempDir;
-
   setUp(() {
-    tempDir = Directory.systemTemp.createTempSync('map_screen_test');
     SharedPreferences.setMockInitialValues({});
-  });
-
-  tearDown(() {
-    if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
   });
 
   testWidgets('renders the map, the Add story button and no recovered-recordings banner crash',
       (tester) async {
     late DatabaseService db;
     await tester.runAsync(() async {
-      db = _freshDb(tempDir);
+      db = createTestDatabaseService();
       await db.initialize();
     });
 
