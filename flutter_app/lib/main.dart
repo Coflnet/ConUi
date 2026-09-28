@@ -85,7 +85,7 @@ class RelationshipManagerApp extends StatelessWidget {
       ),
       home: Consumer<AuthService>(
         builder: (context, authService, _) {
-          if (authService.isAuthenticated) {
+          if (authService.isAuthenticated || authService.continuedWithoutAccount) {
             return const HomeScreen();
           }
           return const LoginScreen();
