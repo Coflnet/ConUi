@@ -351,10 +351,6 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
     );
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
-  }
-
   void _editPerson(BuildContext context, Person person) async {
     await Navigator.push(
       context,
@@ -419,25 +415,26 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
         final personEvents = allEvents
             .where((e) => e.participantIds.contains(person.id))
             .toList();
-        personEvents.sort((a, b) => b.dateTime.compareTo(a.dateTime));
+        personEvents.sort((a, b) => Event.compareByDate(b, a));
 
         if (personEvents.isEmpty) {
           return const SizedBox.shrink();
         }
 
+        // The complete list, not just a preview - every story this person
+        // is part of, each opening straight to it.
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Events',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            Text(
+              'Stories (${personEvents.length})',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             const SizedBox(height: 8),
-            ...personEvents.take(5).map((event) => ListTile(
+            ...personEvents.map((event) => ListTile(
                   leading: const Icon(Icons.event),
                   title: Text(event.title),
-                  subtitle: Text(
-                      '${_formatDate(event.dateTime)} • ${event.type.name}'),
+                  subtitle: Text(event.displayDate),
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -445,13 +442,6 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                     ),
                   ),
                 )),
-            if (personEvents.length > 5)
-              TextButton(
-                onPressed: () {
-                  // TODO: Navigate to full events list filtered by person
-                },
-                child: Text('See all ${personEvents.length} events'),
-              ),
           ],
         );
       },

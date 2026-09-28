@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
 import '../../models/models.dart';
 import '../../services/audio_capture.dart';
 import '../../services/auth_service.dart';
@@ -9,6 +10,8 @@ import '../../services/record_package_audio_capture.dart';
 import '../../services/recorder_controller.dart';
 import '../../services/recording_file_store.dart';
 import '../../services/transcription_client.dart';
+import '../map/location_picker_screen.dart';
+import '../map/nearby_place.dart';
 
 class AddEventScreen extends StatefulWidget {
   final Event? existingEvent; // If provided, we're editing an existing event
@@ -485,16 +488,25 @@ class _AddEventScreenState extends State<AddEventScreen> {
           width: double.maxFinite,
           child: ListView(
             shrinkWrap: true,
-            children: places
-                .map((p) => ListTile(
-                      title: Text(p.name),
-                      subtitle: p.address != null ? Text(p.address!) : null,
-                      onTap: () {
-                        setState(() => _placeId = p.id);
-                        Navigator.pop(context);
-                      },
-                    ))
-                .toList(),
+            children: [
+              ListTile(
+                leading: const Icon(Icons.map_outlined),
+                title: const Text('Pick on map'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickPlaceOnMap(db, places);
+                },
+              ),
+              const Divider(height: 1),
+              ...places.map((p) => ListTile(
+                    title: Text(p.name),
+                    subtitle: p.address != null ? Text(p.address!) : null,
+                    onTap: () {
+                      setState(() => _placeId = p.id);
+                      Navigator.pop(context);
+                    },
+                  )),
+            ],
           ),
         ),
         actions: [
@@ -504,5 +516,54 @@ class _AddEventScreenState extends State<AddEventScreen> {
         ],
       ),
     );
+  }
+
+  /// The "pick on map" action: opens the same [LocationPickerScreen] the
+  /// quick add sheet and place sheet use, then either proposes an existing
+  /// place within 50m (see [findNearbyPlace]) or creates a new one with a
+  /// sensible default name at that spot.
+  Future<void> _pickPlaceOnMap(DatabaseService db, List<Place> places) async {
+    final initialPlace = places.firstWhere(
+      (p) => p.id == _placeId,
+      orElse: () => Place(name: '', latitude: 48.8566, longitude: 2.3522),
+    );
+    final position = await Navigator.push<LatLng>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialPosition: LatLng(initialPlace.latitude, initialPlace.longitude),
+        ),
+      ),
+    );
+    if (position == null || !mounted) return;
+
+    final nearby = findNearbyPlace(places, position);
+    if (nearby != null) {
+      final useExisting = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Use nearby place?'),
+          content: Text('"${nearby.name}" is right here. Use it instead of creating a new place?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false), child: const Text('New place')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true), child: const Text('Use it')),
+          ],
+        ),
+      );
+      if (useExisting == true) {
+        setState(() => _placeId = nearby.id);
+        return;
+      }
+    }
+
+    final place = Place(
+      name: defaultPlaceName(position),
+      latitude: position.latitude,
+      longitude: position.longitude,
+    );
+    await db.savePlace(place);
+    if (mounted) setState(() => _placeId = place.id);
   }
 }
