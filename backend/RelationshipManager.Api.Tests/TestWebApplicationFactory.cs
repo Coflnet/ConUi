@@ -39,6 +39,9 @@ public class TestWebApplicationFactory : IAsyncDisposable
 
     public string Environment { get; set; } = "Development";
 
+    /// <summary>Override the content root (where wwwroot is looked up from) to test the static-file/SPA-fallback behaviour.</summary>
+    public string? ContentRootPath { get; set; }
+
     public Dictionary<string, string?> ConfigOverrides { get; } = new()
     {
         ["jwt:issuer"] = "relationship-manager-tests",
@@ -69,7 +72,7 @@ public class TestWebApplicationFactory : IAsyncDisposable
             builder.Services.AddSingleton<ICassandraConnection>(CassandraConnection);
             builder.Services.AddSingleton<IFirebaseTokenVerifier>(FirebaseVerifier);
             builder.Services.AddSingleton<ITranscriptionService>(TranscriptionService);
-        }, environmentName: Environment);
+        }, environmentName: Environment, contentRootPath: ContentRootPath);
 
         await _app.StartAsync();
         var baseAddress = _app.Urls.First();

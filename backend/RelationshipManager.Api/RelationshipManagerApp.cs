@@ -1,10 +1,14 @@
 using RelationshipManager.Api.Services;
 using RelationshipManager.Api.Auth;
 using RelationshipManager.Api.Data;
+using RelationshipManager.Api.Errors;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.IdentityModel.JsonWebTokens;
 
 namespace RelationshipManager.Api;
@@ -27,12 +31,18 @@ public static class RelationshipManagerApp
     /// <c>configureBuilder</c>: once <see cref="WebApplication.CreateBuilder(WebApplicationOptions)"/> has run,
     /// the unified WebApplicationBuilder no longer allows changing the environment.
     /// </param>
-    public static WebApplication Build(string[] args, Action<WebApplicationBuilder>? configureBuilder = null, string? environmentName = null)
+    /// <param name="contentRootPath">
+    /// Overrides the content root (where wwwroot is looked up from). Same restriction as
+    /// <paramref name="environmentName"/> - used by tests to exercise the wwwroot/index.html
+    /// static-file/SPA-fallback behaviour with a throwaway directory.
+    /// </param>
+    public static WebApplication Build(string[] args, Action<WebApplicationBuilder>? configureBuilder = null, string? environmentName = null, string? contentRootPath = null)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
             Args = args,
-            EnvironmentName = environmentName
+            EnvironmentName = environmentName,
+            ContentRootPath = contentRootPath
         });
         configureBuilder?.Invoke(builder);
 
@@ -183,9 +193,81 @@ public static class RelationshipManagerApp
         }
 
         app.UseCors();
+
+        // Serve the compiled Flutter web app from wwwroot when the production image has one
+        // baked in. When wwwroot/index.html is missing (e.g. local API-only development), the
+        // API behaves exactly as before - no static file middleware or SPA fallback is registered.
+        var webRootPath = app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+        var indexHtmlPath = Path.Combine(webRootPath, "index.html");
+        var indexHtmlExists = File.Exists(indexHtmlPath);
+
+        if (indexHtmlExists)
+        {
+            var noCacheFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "index.html", "flutter_bootstrap.js", "flutter_service_worker.js", "version.json"
+            };
+            // A content hash in the filename (Flutter/most bundlers use a long hex digest) is what
+            // makes long-term caching safe - anything else only gets the no-cache treatment above,
+            // or the framework's normal (uncached) static file defaults.
+            var hashedFileNamePattern = new Regex("[0-9a-f]{8,}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+            var contentTypeProvider = new FileExtensionContentTypeProvider();
+            contentTypeProvider.Mappings[".wasm"] = "application/wasm";
+
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                ContentTypeProvider = contentTypeProvider,
+                OnPrepareResponse = ctx =>
+                {
+                    var fileName = Path.GetFileName(ctx.File.Name);
+                    if (noCacheFileNames.Contains(fileName))
+                    {
+                        ctx.Context.Response.Headers.CacheControl = "no-cache";
+                    }
+                    else if (hashedFileNamePattern.IsMatch(fileName))
+                    {
+                        ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+                    }
+                }
+            });
+        }
+
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
+
+        // Unmatched /api, /health and /swagger paths stay a JSON 404 (not index.html); every
+        // other unmatched path gets the SPA's index.html when it exists, so client-side routing
+        // works on a hard refresh. Written by hand (not WriteAsJsonAsync/Results.Json) because
+        // that hits a PipeWriter.UnflushedBytes bug under this environment's TestServer - see
+        // RelationshipManager.Api.Tests/TestWebApplicationFactory.cs.
+        app.MapFallback(async context =>
+        {
+            var path = context.Request.Path.Value ?? "";
+            var isReservedPath = path.StartsWith("/api", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith("/health", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase);
+
+            if (isReservedPath)
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(JsonSerializer.Serialize(new ApiError("not_found", "The requested resource was not found.")));
+                return;
+            }
+
+            if (indexHtmlExists)
+            {
+                context.Response.ContentType = "text/html";
+                context.Response.Headers.CacheControl = "no-cache";
+                await context.Response.SendFileAsync(indexHtmlPath);
+            }
+            else
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+            }
+        });
 
         return app;
     }
