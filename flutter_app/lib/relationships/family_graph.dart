@@ -7,14 +7,15 @@ import 'relationship_type.dart';
 /// Display grouping for a person's neighbours (see [FamilyGraph.groupedNeighbors]).
 /// Deliberately coarser than [RelationshipType]: several types collapse into the same
 /// group (e.g. a step-parent groups with a parent) so the person-detail screen shows a
-/// short, family-tree-shaped list rather than one section per type.
+/// short, family-tree-shaped list rather than one section per type. Declared in the
+/// order the person-detail screen displays non-empty sections in.
 enum RelationshipGroup {
   parents,
   children,
-  grandparents,
-  grandchildren,
   siblings,
   partners,
+  grandparents,
+  grandchildren,
   otherFamily,
   friendsAndOthers,
 }
