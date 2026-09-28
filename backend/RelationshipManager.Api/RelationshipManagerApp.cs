@@ -85,6 +85,11 @@ public static class RelationshipManagerApp
         // S3 Service - lazy, optional. See Services/S3Service.cs.
         builder.Services.TryAddSingleton<IS3Service, S3Service>();
 
+        // Transcription - optional (Transcription:BaseUrl), via IHttpClientFactory.
+        builder.Services.AddHttpClient("transcription");
+        builder.Services.TryAddSingleton<ITranscriptionService, TranscriptionService>();
+        builder.Services.TryAddSingleton<PerUserConcurrencyLimiter>();
+
         // Firebase: only initialize when a service account is actually configured, so
         // /api/auth/firebase can answer 503 instead of trusting an unverified token when it's
         // not (see IFirebaseTokenVerifier). GoogleCredential.GetApplicationDefault() reads

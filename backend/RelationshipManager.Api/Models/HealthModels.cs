@@ -13,4 +13,5 @@ public class ReadinessStatus
 {
     public bool Cassandra { get; set; }
     public bool S3Configured { get; set; }
+    public bool TranscriptionConfigured { get; set; }
 }

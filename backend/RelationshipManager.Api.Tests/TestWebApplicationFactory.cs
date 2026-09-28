@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using RelationshipManager.Api;
 using RelationshipManager.Api.Auth;
 using RelationshipManager.Api.Data;
+using RelationshipManager.Api.Services;
 using RelationshipManager.Api.Tests.Fakes;
 
 namespace RelationshipManager.Api.Tests;
@@ -34,6 +35,7 @@ public class TestWebApplicationFactory : IAsyncDisposable
     public InMemorySyncStore SyncStore { get; } = new();
     public FakeCassandraConnection CassandraConnection { get; } = new();
     public FakeFirebaseTokenVerifier FirebaseVerifier { get; } = new();
+    public FakeTranscriptionService TranscriptionService { get; } = new();
 
     public string Environment { get; set; } = "Development";
 
@@ -66,6 +68,7 @@ public class TestWebApplicationFactory : IAsyncDisposable
             builder.Services.AddSingleton<ISyncStore>(SyncStore);
             builder.Services.AddSingleton<ICassandraConnection>(CassandraConnection);
             builder.Services.AddSingleton<IFirebaseTokenVerifier>(FirebaseVerifier);
+            builder.Services.AddSingleton<ITranscriptionService>(TranscriptionService);
         }, environmentName: Environment);
 
         await _app.StartAsync();

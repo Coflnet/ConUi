@@ -17,11 +17,13 @@ public class HealthController : ControllerBase
 {
     private readonly ICassandraConnection _cassandra;
     private readonly IS3Service _s3;
+    private readonly ITranscriptionService _transcription;
 
-    public HealthController(ICassandraConnection cassandra, IS3Service s3)
+    public HealthController(ICassandraConnection cassandra, IS3Service s3, ITranscriptionService transcription)
     {
         _cassandra = cassandra;
         _s3 = s3;
+        _transcription = transcription;
     }
 
     /// <summary>Liveness: always OK, never touches Cassandra/S3/transcription.</summary>
@@ -49,7 +51,8 @@ public class HealthController : ControllerBase
         var status = new ReadinessStatus
         {
             Cassandra = cassandraOk,
-            S3Configured = _s3.IsConfigured
+            S3Configured = _s3.IsConfigured,
+            TranscriptionConfigured = _transcription.IsConfigured
         };
 
         return cassandraOk ? Ok(status) : StatusCode(StatusCodes.Status503ServiceUnavailable, status);
