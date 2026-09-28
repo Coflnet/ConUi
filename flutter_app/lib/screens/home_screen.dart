@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../l10n/gen/app_localizations.dart';
 import '../services/database_service.dart';
 import '../services/sync_service.dart';
 import 'persons/persons_screen.dart';
@@ -87,15 +88,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   // Shared between the bottom NavigationBar (narrow) and the side
-  // NavigationRail (wide, see build()) so the five destinations' icons/
-  // labels are declared exactly once.
-  static const _destinations = [
-    (icon: Icons.map_outlined, selected: Icons.map, label: 'Map'),
-    (icon: Icons.people_outline, selected: Icons.people, label: 'People'),
-    (icon: Icons.event_outlined, selected: Icons.event, label: 'Events'),
-    (icon: Icons.place_outlined, selected: Icons.place, label: 'Places'),
-    (icon: Icons.category_outlined, selected: Icons.category, label: 'Objects'),
+  // NavigationRail (wide, see build()) so the five destinations' icons are
+  // declared exactly once. Labels come from [_navLabel] (localized), in the
+  // same order.
+  static const _destinationIcons = [
+    (icon: Icons.map_outlined, selected: Icons.map),
+    (icon: Icons.people_outline, selected: Icons.people),
+    (icon: Icons.event_outlined, selected: Icons.event),
+    (icon: Icons.place_outlined, selected: Icons.place),
+    (icon: Icons.category_outlined, selected: Icons.category),
   ];
+
+  String _navLabel(AppLocalizations l10n, int index) {
+    switch (index) {
+      case 0:
+        return l10n.homeNavMap;
+      case 1:
+        return l10n.homeNavPeople;
+      case 2:
+        return l10n.homeNavStories;
+      case 3:
+        return l10n.homeNavPlaces;
+      default:
+        return l10n.homeNavObjects;
+    }
+  }
 
   // About a tablet/small-desktop width: wide enough that a 5-item bottom
   // bar would spread its labels thin, per the brief.
@@ -114,9 +131,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final isWide = MediaQuery.sizeOf(context).width >= _wideLayoutBreakpoint;
     final bodyContent = _isSearching && _searchQuery.isNotEmpty
-        ? _buildSearchResults()
+        ? _buildSearchResults(l10n)
         : IndexedStack(
             index: _selectedIndex,
             children: _screens,
@@ -128,13 +146,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ? TextField(
                 controller: _searchController,
                 autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: 'Search people, events, objects...',
+                decoration: InputDecoration(
+                  hintText: l10n.homeSearchHint,
                   border: InputBorder.none,
                 ),
                 onChanged: (value) => setState(() => _searchQuery = value),
               )
-            : Text(_getTitle()),
+            : Text(_getTitle(l10n)),
         actions: [
           IconButton(
             icon: Icon(_isSearching ? Icons.close : Icons.search),
@@ -147,7 +165,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 }
               });
             },
-            tooltip: _isSearching ? 'Close search' : 'Search',
+            tooltip: _isSearching ? l10n.homeSearchClose : l10n.homeSearchOpen,
           ),
           Consumer<SyncService>(
             builder: (context, syncService, _) {
@@ -167,11 +185,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   await syncService.forceFullSync();
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Sync complete')),
+                      SnackBar(content: Text(l10n.homeSyncComplete)),
                     );
                   }
                 },
-                tooltip: 'Sync now',
+                tooltip: l10n.homeSyncNow,
               );
             },
           ),
@@ -194,11 +212,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   onDestinationSelected: _onDestinationSelected,
                   labelType: NavigationRailLabelType.all,
                   destinations: [
-                    for (final d in _destinations)
+                    for (final (index, d) in _destinationIcons.indexed)
                       NavigationRailDestination(
                         icon: Icon(d.icon),
                         selectedIcon: Icon(d.selected),
-                        label: Text(d.label),
+                        label: Text(_navLabel(l10n, index)),
                       ),
                   ],
                 ),
@@ -213,21 +231,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               selectedIndex: _selectedIndex,
               onDestinationSelected: _onDestinationSelected,
               destinations: [
-                for (final d in _destinations)
+                for (final (index, d) in _destinationIcons.indexed)
                   NavigationDestination(
                     icon: Icon(d.icon),
                     selectedIcon: Icon(d.selected),
-                    label: d.label,
+                    label: _navLabel(l10n, index),
                   ),
               ],
             ),
     );
   }
 
-  Widget _buildSearchResults() {
+  Widget _buildSearchResults(AppLocalizations l10n) {
     final db = context.read<DatabaseService>();
     return FutureBuilder<List<SearchResult>>(
-      future: _performSearch(db, _searchQuery),
+      future: _performSearch(db, _searchQuery, l10n),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -240,7 +258,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               children: [
                 Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
                 const SizedBox(height: 16),
-                Text('No results for "$_searchQuery"',
+                Text(l10n.homeNoResultsFor(_searchQuery),
                     style: TextStyle(color: Colors.grey[600], fontSize: 16)),
               ],
             ),
@@ -250,7 +268,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           itemCount: results.length,
           itemBuilder: (context, index) {
             final result = results[index];
-            return _buildSearchResultTile(result);
+            return _buildSearchResultTile(l10n, result);
           },
         );
       },
@@ -258,9 +276,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<List<SearchResult>> _performSearch(
-      DatabaseService db, String query) async {
+      DatabaseService db, String query, AppLocalizations l10n) async {
     final results = <SearchResult>[];
     final lowerQuery = query.toLowerCase();
+    final locale = Localizations.localeOf(context).toString();
 
     // Search persons
     final persons = await db.getPersons();
@@ -274,7 +293,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           title: person.name,
           subtitle: person.email ??
               (person.aliases.isNotEmpty
-                  ? 'aka ${person.aliases.first}'
+                  ? l10n.homeAka(person.aliases.first)
                   : null),
           icon: Icons.person,
         ));
@@ -291,7 +310,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           id: event.id,
           title: event.title,
           subtitle:
-              '${event.type.name} • ${event.dateTime.toString().split(' ')[0]}',
+              '${eventTypeLabel(l10n, event.type)} • ${event.displayDate(locale)}',
           icon: Icons.event,
         ));
       }
@@ -330,7 +349,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return results;
   }
 
-  Widget _buildSearchResultTile(SearchResult result) {
+  Widget _buildSearchResultTile(AppLocalizations l10n, SearchResult result) {
     return ListTile(
       leading: CircleAvatar(
         backgroundColor: _getColorForType(result.type),
@@ -339,12 +358,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       title: Text(result.title),
       subtitle: result.subtitle != null ? Text(result.subtitle!) : null,
       trailing: Chip(
-        label: Text(result.type.name),
+        label: Text(_resultTypeLabel(l10n, result.type)),
         padding: EdgeInsets.zero,
         visualDensity: VisualDensity.compact,
       ),
       onTap: () => _navigateToResult(result),
     );
+  }
+
+  String _resultTypeLabel(AppLocalizations l10n, SearchResultType type) {
+    switch (type) {
+      case SearchResultType.person:
+        return l10n.homeResultTypePerson;
+      case SearchResultType.event:
+        return l10n.homeResultTypeStory;
+      case SearchResultType.object:
+        return l10n.homeResultTypeObject;
+      case SearchResultType.place:
+        return l10n.homeResultTypePlace;
+    }
   }
 
   Color _getColorForType(SearchResultType type) {
@@ -393,20 +425,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  String _getTitle() {
-    switch (_selectedIndex) {
-      case 0:
-        return 'Map';
-      case 1:
-        return 'People';
-      case 2:
-        return 'Events';
-      case 3:
-        return 'Places';
-      case 4:
-        return 'Objects';
-      default:
-        return 'Relationship Manager';
+  String _getTitle(AppLocalizations l10n) {
+    if (_selectedIndex >= 0 && _selectedIndex < _destinationIcons.length) {
+      return _navLabel(l10n, _selectedIndex);
     }
+    return l10n.appTitle;
   }
 }
