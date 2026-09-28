@@ -8,6 +8,13 @@ class AuthService extends ChangeNotifier {
   static const String _userIdKey = 'user_id';
   static const String _encryptionSaltKey = 'encryption_salt';
 
+  /// Injectable so tests can pass an `http.testing.MockClient` instead of
+  /// hitting a real backend. Defaults to a plain client, so production
+  /// behaviour is unchanged.
+  final http.Client _http;
+
+  AuthService({http.Client? httpClient}) : _http = httpClient ?? http.Client();
+
   String? _token;
   String? _userId;
   String? _encryptionSalt;
@@ -38,7 +45,7 @@ class AuthService extends ChangeNotifier {
 
   Future<bool> loginWithFirebase(String firebaseToken) async {
     try {
-      final response = await http.post(
+      final response = await _http.post(
         Uri.parse('$baseUrl/api/auth/firebase'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'firebaseToken': firebaseToken}),
@@ -59,7 +66,7 @@ class AuthService extends ChangeNotifier {
   // Development login for testing
   Future<bool> devLogin(String userId, {String? name, String? email}) async {
     try {
-      final response = await http.post(
+      final response = await _http.post(
         Uri.parse('$baseUrl/api/auth/dev'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
@@ -88,7 +95,7 @@ class AuthService extends ChangeNotifier {
     if (_token == null) return;
 
     try {
-      final response = await http.get(
+      final response = await _http.get(
         Uri.parse('$baseUrl/api/auth/me'),
         headers: {
           'Content-Type': 'application/json',
@@ -149,7 +156,7 @@ class AuthService extends ChangeNotifier {
 
   // HTTP helper with auth header
   Future<http.Response> authenticatedGet(String path) async {
-    return http.get(
+    return _http.get(
       Uri.parse('$baseUrl$path'),
       headers: {
         'Content-Type': 'application/json',
@@ -160,7 +167,7 @@ class AuthService extends ChangeNotifier {
 
   Future<http.Response> authenticatedPost(
       String path, Map<String, dynamic> body) async {
-    return http.post(
+    return _http.post(
       Uri.parse('$baseUrl$path'),
       headers: {
         'Content-Type': 'application/json',
@@ -173,7 +180,7 @@ class AuthService extends ChangeNotifier {
   // HTTP helper for posting raw bytes (for proxy uploads)
   Future<http.Response> authenticatedPostBytes(
       String path, List<int> body) async {
-    return http.post(
+    return _http.post(
       Uri.parse('$baseUrl$path'),
       headers: {
         'Content-Type': 'application/octet-stream',
@@ -184,7 +191,7 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<http.Response> authenticatedDelete(String path) async {
-    return http.delete(
+    return _http.delete(
       Uri.parse('$baseUrl$path'),
       headers: {
         'Content-Type': 'application/json',

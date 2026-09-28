@@ -6,16 +6,31 @@ import 'package:sqflite_common/sqflite.dart' as sqflite_common;
 import '../models/models.dart';
 
 class DatabaseService extends ChangeNotifier {
-  static sqflite_common.Database? _database;
+  /// Optional overrides for tests: an explicit [DatabaseFactory] (e.g. the
+  /// native FFI factory pointed at an in-memory database) and/or a custom
+  /// database path. When left null the service picks the same factory and
+  /// path the app has always used, so production behaviour is unchanged.
+  final sqflite_common.DatabaseFactory? _injectedFactory;
+  final String _path;
+
+  DatabaseService({
+    sqflite_common.DatabaseFactory? factory,
+    String path = 'relationship_manager.db',
+  })  : _injectedFactory = factory,
+        _path = path;
+
+  sqflite_common.Database? _database;
   bool _initialized = false;
-  static bool _factoryInitialized = false;
-  static sqflite_common.DatabaseFactory? _factory;
+  bool _factoryInitialized = false;
+  sqflite_common.DatabaseFactory? _factory;
 
   bool get isInitialized => _initialized;
 
-  static Future<void> _initFactory() async {
+  Future<void> _initFactory() async {
     if (!_factoryInitialized) {
-      if (kIsWeb) {
+      if (_injectedFactory != null) {
+        _factory = _injectedFactory;
+      } else if (kIsWeb) {
         // Initialize web database factory with IndexedDB backend
         _factory = databaseFactoryFfiWebNoWebWorker;
       } else {
@@ -44,10 +59,8 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<sqflite_common.Database> _initDatabase() async {
-    String path = 'relationship_manager.db';
-
     return await _factory!.openDatabase(
-      path,
+      _path,
       options: sqflite_common.OpenDatabaseOptions(
         version: 1,
         onCreate: _onCreate,
