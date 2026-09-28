@@ -1,59 +1,82 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:sqflite/sqflite.dart' show databaseFactorySqflitePlugin;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:sqflite_common/sqflite.dart' as sqflite_common;
 import '../models/models.dart';
+import 'database_location.dart';
 import 'db_migrations.dart';
 import 'recording_file_store.dart';
 
 class DatabaseService extends ChangeNotifier {
   /// Optional overrides for tests: an explicit [DatabaseFactory] (e.g. the
   /// native FFI factory pointed at an in-memory database) and/or a custom
-  /// database path. When left null the service picks the same factory and
-  /// path the app has always used, so production behaviour is unchanged.
+  /// database path. When both are left null, production code resolves a
+  /// per-platform [DatabaseLocation] instead (see [_ensureFactoryAndPath]),
+  /// so tests that inject a factory never touch the real filesystem or
+  /// Platform checks.
   final sqflite_common.DatabaseFactory? _injectedFactory;
-  final String _path;
+  final String? _injectedPath;
+
+  /// Default database file name, used when no explicit [path] is given.
+  static const String defaultFileName = 'relationship_manager.db';
 
   DatabaseService({
     sqflite_common.DatabaseFactory? factory,
-    String path = 'relationship_manager.db',
+    String? path,
   })  : _injectedFactory = factory,
-        _path = path;
+        _injectedPath = path;
 
   sqflite_common.Database? _database;
   bool _initialized = false;
   bool _factoryInitialized = false;
   sqflite_common.DatabaseFactory? _factory;
+  String? _resolvedPath;
 
   bool get isInitialized => _initialized;
 
-  Future<void> _initFactory() async {
-    if (!_factoryInitialized) {
-      if (_injectedFactory != null) {
-        _factory = _injectedFactory;
-      } else if (kIsWeb) {
-        // Initialize web database factory with IndexedDB backend
-        _factory = databaseFactoryFfiWebNoWebWorker;
+  Future<void> _ensureFactoryAndPath() async {
+    if (_factoryInitialized) return;
+
+    if (_injectedFactory != null) {
+      // Test seam: caller controls both factory and path explicitly, so
+      // skip all platform/location resolution below.
+      _factory = _injectedFactory;
+      _resolvedPath = _injectedPath ?? defaultFileName;
+    } else if (kIsWeb) {
+      // Web database factory with IndexedDB backend. No real filesystem
+      // path, so there is nothing to resolve via DatabaseLocation.
+      _factory = databaseFactoryFfiWebNoWebWorker;
+      _resolvedPath = _injectedPath ?? defaultFileName;
+    } else {
+      final location =
+          await resolveDatabaseLocation(_injectedPath ?? defaultFileName);
+      if (location.useNativePlugin) {
+        // Android/iOS: the real sqflite plugin, a platform channel to the
+        // OS's own SQLite - see database_location_native.dart for why.
+        _factory = databaseFactorySqflitePlugin;
       } else {
-        // Initialize FFI database factory for desktop
+        // Desktop: FFI, dlopen-ing the system libsqlite3.
         sqfliteFfiInit();
         _factory = databaseFactoryFfi;
       }
-      _factoryInitialized = true;
+      _resolvedPath = location.path;
     }
+
+    _factoryInitialized = true;
   }
 
   Future<sqflite_common.Database> get database async {
     if (_database != null) return _database!;
-    await _initFactory();
+    await _ensureFactoryAndPath();
     _database = await _initDatabase();
     return _database!;
   }
 
   Future<void> initialize() async {
     if (!_initialized) {
-      await _initFactory();
+      await _ensureFactoryAndPath();
       _database = await _initDatabase();
       _initialized = true;
       notifyListeners();
@@ -62,7 +85,7 @@ class DatabaseService extends ChangeNotifier {
 
   Future<sqflite_common.Database> _initDatabase() async {
     return await _factory!.openDatabase(
-      _path,
+      _resolvedPath!,
       options: sqflite_common.OpenDatabaseOptions(
         version: latestDbVersion,
         onCreate: _onCreate,
