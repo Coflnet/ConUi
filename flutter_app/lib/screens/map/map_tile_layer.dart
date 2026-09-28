@@ -25,8 +25,22 @@ class StoryMapTileLayer extends StatelessWidget {
           urlTemplate: _osmTileUrlTemplate,
           userAgentPackageName: _osmUserAgentPackageName,
         ),
-        const SimpleAttributionWidget(
-          source: Text('OpenStreetMap contributors'),
+        // A minimal attribution box built here (not flutter_map's own
+        // SimpleAttributionWidget): that widget's internal Row reports a
+        // huge RenderFlex overflow when nested inside this Stack instead
+        // of being a direct top-level FlutterMap child - reproducible even
+        // at a full-screen map size. This is simple enough to fully
+        // control and avoids the issue entirely.
+        Align(
+          alignment: Alignment.bottomRight,
+          child: Container(
+            color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.8),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Text(
+              '© OpenStreetMap contributors',
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
+          ),
         ),
       ],
     );

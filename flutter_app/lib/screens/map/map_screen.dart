@@ -58,6 +58,15 @@ class MapScreenState extends State<MapScreen> {
   ValueNotifier<LatLng>? _pendingPin;
   double _currentZoom = 10;
 
+  /// Mirrors the map's current camera center, updated only from
+  /// [onPositionChanged] (i.e. once the map has actually attached).
+  /// MapController.camera throws until then, so anything read during
+  /// build() - like the recovered-recordings banner's picker start
+  /// position - must use this instead of reading the controller directly.
+  /// Starts equal to [_center]'s own default and is corrected as soon as
+  /// [_loadMapPosition] resolves.
+  LatLng _lastKnownCenter = const LatLng(48.8566, 2.3522);
+
   @override
   void initState() {
     super.initState();
@@ -72,6 +81,7 @@ class MapScreenState extends State<MapScreen> {
       final lat = prefs.getDouble(_mapLatKey);
       final lng = prefs.getDouble(_mapLngKey);
       if (lat != null && lng != null) _center = LatLng(lat, lng);
+      _lastKnownCenter = _center;
       _zoom = prefs.getDouble(_mapZoomKey) ?? _zoom;
       _currentZoom = _zoom;
       _positionInitialized = true;
@@ -80,9 +90,9 @@ class MapScreenState extends State<MapScreen> {
 
   Future<void> _saveMapPosition() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_mapLatKey, _mapController.camera.center.latitude);
-    await prefs.setDouble(_mapLngKey, _mapController.camera.center.longitude);
-    await prefs.setDouble(_mapZoomKey, _mapController.camera.zoom);
+    await prefs.setDouble(_mapLatKey, _lastKnownCenter.latitude);
+    await prefs.setDouble(_mapLngKey, _lastKnownCenter.longitude);
+    await prefs.setDouble(_mapZoomKey, _currentZoom);
   }
 
   Future<void> _recoverAbandonedRecordings() async {
@@ -123,7 +133,7 @@ class MapScreenState extends State<MapScreen> {
     final location = await _locationService.getCurrentLocation();
     final position = location != null
         ? LatLng(location.latitude, location.longitude)
-        : _mapController.camera.center;
+        : _lastKnownCenter;
     await _startQuickAddAt(position);
   }
 
@@ -189,6 +199,7 @@ class MapScreenState extends State<MapScreen> {
                     onTap: (tapPosition, point) => _startQuickAddAt(point),
                     onPositionChanged: (position, hasGesture) {
                       _currentZoom = position.zoom ?? _currentZoom;
+                      _lastKnownCenter = position.center ?? _lastKnownCenter;
                       if (hasGesture) {
                         _saveMapPosition();
                         setState(() {});
@@ -221,7 +232,7 @@ class MapScreenState extends State<MapScreen> {
                   right: 8,
                   child: RecoveredRecordingsBanner(
                     store: _recordingFileStore,
-                    pickerStartPosition: _mapController.camera.center,
+                    pickerStartPosition: _lastKnownCenter,
                   ),
                 ),
                 Positioned(
