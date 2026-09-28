@@ -1,3 +1,4 @@
+import 'family_graph.dart';
 import 'relationship_type.dart';
 
 /// English display text for the relationship logic in this package. Deliberately the
@@ -78,15 +79,49 @@ class RelationshipText {
   /// Full sentence describing a connection, in the app's one reading rule: "person1 is
   /// the &lt;type&gt; of person2.", e.g. `sentence('Anna', 'Bert', RelationshipType.parent)`
   /// -> "Anna is the parent of Bert." Used as the add/edit-connection dialog's live
-  /// preview and for shortest-path descriptions (`FamilyGraph.shortestPath`).
+  /// preview.
   static String sentence(String person1Name, String person2Name, RelationshipType type) {
-    return '$person1Name is the ${label(type).toLowerCase()} of $person2Name.';
+    return '${sentenceFragment(person1Name, person2Name, type)}.';
   }
 
   /// Same as [sentence] but for a possibly-unknown/legacy raw type string (see
   /// [labelForRaw]) - used when displaying an existing connection whose stored value
   /// predates the typed vocabulary.
   static String sentenceForRaw(String person1Name, String person2Name, String raw) {
-    return '$person1Name is the ${labelForRaw(raw).toLowerCase()} of $person2Name.';
+    return '${sentenceFragmentForRaw(person1Name, person2Name, raw)}.';
+  }
+
+  /// [sentence] without the trailing period, for chaining several hops into one
+  /// shortest-path narrative, e.g. "Anna is the parent of Bert, Bert is the spouse of
+  /// Clara." (see `FamilyGraph.shortestPath`).
+  static String sentenceFragment(String person1Name, String person2Name, RelationshipType type) {
+    return '$person1Name is the ${label(type).toLowerCase()} of $person2Name';
+  }
+
+  /// [sentenceFragment] for a possibly-unknown/legacy raw type string.
+  static String sentenceFragmentForRaw(String person1Name, String person2Name, String raw) {
+    return '$person1Name is the ${labelForRaw(raw).toLowerCase()} of $person2Name';
+  }
+
+  /// Section header for a [RelationshipGroup] on the person-detail screen.
+  static String groupLabel(RelationshipGroup group) {
+    switch (group) {
+      case RelationshipGroup.parents:
+        return 'Parents';
+      case RelationshipGroup.children:
+        return 'Children';
+      case RelationshipGroup.grandparents:
+        return 'Grandparents';
+      case RelationshipGroup.grandchildren:
+        return 'Grandchildren';
+      case RelationshipGroup.siblings:
+        return 'Siblings';
+      case RelationshipGroup.partners:
+        return 'Partners';
+      case RelationshipGroup.otherFamily:
+        return 'Other family';
+      case RelationshipGroup.friendsAndOthers:
+        return 'Friends & others';
+    }
   }
 }

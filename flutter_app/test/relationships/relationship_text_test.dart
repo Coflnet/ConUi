@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:relationship_manager/relationships/family_graph.dart';
 import 'package:relationship_manager/relationships/relationship_text.dart';
 import 'package:relationship_manager/relationships/relationship_type.dart';
 
@@ -55,6 +56,14 @@ void main() {
 
     test('falls back to the capitalised raw value for an unknown type', () {
       expect(RelationshipText.sentenceForRaw('Anna', 'Bert', 'family'), 'Anna is the family of Bert.');
+    });
+  });
+
+  group('RelationshipText.groupLabel()', () {
+    test('every group has a non-empty, distinct label', () {
+      final labels = RelationshipGroup.values.map(RelationshipText.groupLabel).toList();
+      expect(labels, everyElement(isNotEmpty));
+      expect(labels.toSet().length, labels.length);
     });
   });
 }
