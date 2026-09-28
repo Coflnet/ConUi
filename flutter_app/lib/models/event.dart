@@ -21,6 +21,23 @@ enum DatePrecision { year, month, day, time }
 DatePrecision _datePrecisionFromName(String? name) => DatePrecision.values
     .firstWhere((p) => p.name == name, orElse: () => DatePrecision.time);
 
+/// Formats [date] to match how precisely it's actually known: "1952",
+/// "June 1952", "Jun 12, 1952" or, with full time precision, "Jun 12, 1952
+/// 3:45 PM". Shared by [Event.displayDate] and [Person]'s birthday/death
+/// date display, which use the same [DatePrecision] vocabulary.
+String formatDateWithPrecision(DateTime date, DatePrecision precision) {
+  switch (precision) {
+    case DatePrecision.year:
+      return DateFormat.y().format(date);
+    case DatePrecision.month:
+      return DateFormat.yMMMM().format(date);
+    case DatePrecision.day:
+      return DateFormat.yMMMd().format(date);
+    case DatePrecision.time:
+      return DateFormat.yMMMd().add_jm().format(date);
+  }
+}
+
 class AttachedFile {
   /// Marks an [AttachedFile] as an audio recording captured inside this
   /// app (as opposed to e.g. an imported photo or document). See
@@ -158,18 +175,7 @@ class Event {
   /// Human-readable date, formatted to match how precisely the date is
   /// actually known: "1952", "June 1952", "Jun 12, 1952" or, with full
   /// time precision, "Jun 12, 1952 3:45 PM".
-  String get displayDate {
-    switch (datePrecision) {
-      case DatePrecision.year:
-        return DateFormat.y().format(dateTime);
-      case DatePrecision.month:
-        return DateFormat.yMMMM().format(dateTime);
-      case DatePrecision.day:
-        return DateFormat.yMMMd().format(dateTime);
-      case DatePrecision.time:
-        return DateFormat.yMMMd().add_jm().format(dateTime);
-    }
-  }
+  String get displayDate => formatDateWithPrecision(dateTime, datePrecision);
 
   /// Sorts events by date, most imprecise-safe: compares [dateTime]
   /// first (so chronological order is always respected regardless of

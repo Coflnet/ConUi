@@ -28,7 +28,7 @@ class FakeDatabaseService extends DatabaseService {
   Future<Person?> getPerson(String id) async => persons[id];
 
   @override
-  Future<void> savePerson(Person person) async {
+  Future<void> savePerson(Person person, {bool recordPendingChange = true}) async {
     persons[person.id] = person;
     notifyListeners();
   }
@@ -52,7 +52,8 @@ class FakeDatabaseService extends DatabaseService {
       connections.values.where((c) => c.originEventId == eventId).toList();
 
   @override
-  Future<void> saveConnection(Connection connection) async {
+  Future<void> saveConnection(Connection connection,
+      {bool recordPendingChange = true}) async {
     connections[connection.id] = connection;
     notifyListeners();
   }
@@ -71,7 +72,7 @@ class FakeDatabaseService extends DatabaseService {
   Future<Event?> getEvent(String id) async => events[id];
 
   @override
-  Future<void> saveEvent(Event event) async {
+  Future<void> saveEvent(Event event, {bool recordPendingChange = true}) async {
     events[event.id] = event;
     notifyListeners();
   }

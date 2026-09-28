@@ -23,6 +23,7 @@ class _AddPersonScreenState extends State<AddPersonScreen> {
   final _addressController = TextEditingController();
   final _notesController = TextEditingController();
   DateTime? _birthday;
+  DateTime? _deathDate;
   bool _isSaving = false;
 
   bool get _isEditing => widget.existingPerson != null;
@@ -41,6 +42,7 @@ class _AddPersonScreenState extends State<AddPersonScreen> {
       _addressController.text = p.address ?? '';
       _notesController.text = p.notes ?? '';
       _birthday = p.birthday;
+      _deathDate = p.deathDate;
     }
   }
 
@@ -67,6 +69,20 @@ class _AddPersonScreenState extends State<AddPersonScreen> {
     if (date != null) {
       setState(() {
         _birthday = date;
+      });
+    }
+  }
+
+  Future<void> _selectDeathDate() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _deathDate ?? _birthday ?? DateTime.now(),
+      firstDate: _birthday ?? DateTime(1900),
+      lastDate: DateTime.now(),
+    );
+    if (date != null) {
+      setState(() {
+        _deathDate = date;
       });
     }
   }
@@ -108,6 +124,8 @@ class _AddPersonScreenState extends State<AddPersonScreen> {
                 ? null
                 : _notesController.text.trim(),
             birthday: _birthday,
+            deathDate: _deathDate,
+            clearDeathDate: _deathDate == null,
           )
         : Person(
             name: _nameController.text.trim(),
@@ -136,6 +154,7 @@ class _AddPersonScreenState extends State<AddPersonScreen> {
                 ? null
                 : _notesController.text.trim(),
             birthday: _birthday,
+            deathDate: _deathDate,
           );
 
     await db.savePerson(person);
@@ -228,6 +247,25 @@ class _AddPersonScreenState extends State<AddPersonScreen> {
                       onPressed: () {
                         setState(() {
                           _birthday = null;
+                        });
+                      },
+                    )
+                  : null,
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.event_busy),
+              title: Text(_deathDate == null
+                  ? 'Date of death'
+                  : '${_deathDate!.day}/${_deathDate!.month}/${_deathDate!.year}'),
+              subtitle: const Text('Optional - tap to select'),
+              onTap: _selectDeathDate,
+              trailing: _deathDate != null
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        setState(() {
+                          _deathDate = null;
                         });
                       },
                     )

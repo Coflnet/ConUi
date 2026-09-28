@@ -399,7 +399,7 @@ class SyncService extends ChangeNotifier {
         's3Key': s3Key,
         'checksum': checksum,
         'size': encryptedData.length,
-        'isDeleted': false,
+        'isDeleted': connection.isDeleted,
       });
 
       return true;
@@ -526,21 +526,25 @@ class SyncService extends ChangeNotifier {
       final parsedData = jsonDecode(jsonData);
 
       switch (entry.blobType) {
+        // recordPendingChange: false on every case below - this data just
+        // came FROM the backend, so re-queuing it as a pending change would
+        // upload it straight back next sync (see DatabaseService.savePerson's
+        // doc comment).
         case 'person':
           final person = Person.fromJson(parsedData);
-          await _db.savePerson(person);
+          await _db.savePerson(person, recordPendingChange: false);
           break;
         case 'place':
           final place = Place.fromJson(parsedData);
-          await _db.savePlace(place);
+          await _db.savePlace(place, recordPendingChange: false);
           break;
         case 'object':
           final object = EventObject.fromJson(parsedData);
-          await _db.saveObject(object);
+          await _db.saveObject(object, recordPendingChange: false);
           break;
         case 'connection':
           final connection = Connection.fromJson(parsedData);
-          await _db.saveConnection(connection);
+          await _db.saveConnection(connection, recordPendingChange: false);
           break;
         case 'event_month':
           final monthlyEvents = MonthlyEvents.fromJson(parsedData);

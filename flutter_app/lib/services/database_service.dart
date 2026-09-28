@@ -109,7 +109,12 @@ class DatabaseService extends ChangeNotifier {
     return Person.fromJson(jsonDecode(results.first['data'] as String));
   }
 
-  Future<void> savePerson(Person person) async {
+  /// [recordPendingChange] should stay true for any locally-originated
+  /// change (the normal case). The sync download path passes false: a
+  /// person/place/object/connection/event just downloaded from the backend
+  /// must not be queued to be uploaded straight back to it - see
+  /// SyncService._downloadAndApplyBlob.
+  Future<void> savePerson(Person person, {bool recordPendingChange = true}) async {
     final db = await database;
     final exists =
         (await db.query('persons', where: 'id = ?', whereArgs: [person.id]))
@@ -130,8 +135,10 @@ class DatabaseService extends ChangeNotifier {
       await db.insert('persons', data);
     }
 
-    await _addPendingChange(
-        'person', person.id, exists ? 'update' : 'create', person.toJson());
+    if (recordPendingChange) {
+      await _addPendingChange(
+          'person', person.id, exists ? 'update' : 'create', person.toJson());
+    }
     notifyListeners();
   }
 
@@ -192,7 +199,8 @@ class DatabaseService extends ChangeNotifier {
         .toList();
   }
 
-  Future<void> saveConnection(Connection connection) async {
+  Future<void> saveConnection(Connection connection,
+      {bool recordPendingChange = true}) async {
     final db = await database;
     final exists = (await db
             .query('connections', where: 'id = ?', whereArgs: [connection.id]))
@@ -208,7 +216,7 @@ class DatabaseService extends ChangeNotifier {
       'version': connection.updatedAt.millisecondsSinceEpoch,
       'created_at': connection.createdAt.toIso8601String(),
       'updated_at': connection.updatedAt.toIso8601String(),
-      'is_deleted': 0,
+      'is_deleted': connection.isDeleted ? 1 : 0,
     };
 
     if (exists) {
@@ -218,25 +226,17 @@ class DatabaseService extends ChangeNotifier {
       await db.insert('connections', data);
     }
 
-    await _addPendingChange('connection', connection.id,
-        exists ? 'update' : 'create', connection.toJson());
+    if (recordPendingChange) {
+      await _addPendingChange('connection', connection.id,
+          exists ? 'update' : 'create', connection.toJson());
+    }
     notifyListeners();
   }
 
   Future<void> deleteConnection(String id) async {
-    final db = await database;
     final connection = await getConnection(id);
     if (connection != null) {
-      await db.update(
-          'connections',
-          {
-            'is_deleted': 1,
-            'updated_at': DateTime.now().toIso8601String(),
-          },
-          where: 'id = ?',
-          whereArgs: [id]);
-      await _addPendingChange('connection', id, 'delete', connection.toJson());
-      notifyListeners();
+      await saveConnection(connection.copyWith(isDeleted: true));
     }
   }
 
@@ -258,7 +258,7 @@ class DatabaseService extends ChangeNotifier {
     return Place.fromJson(jsonDecode(results.first['data'] as String));
   }
 
-  Future<void> savePlace(Place place) async {
+  Future<void> savePlace(Place place, {bool recordPendingChange = true}) async {
     final db = await database;
     final exists =
         (await db.query('places', where: 'id = ?', whereArgs: [place.id]))
@@ -279,8 +279,10 @@ class DatabaseService extends ChangeNotifier {
       await db.insert('places', data);
     }
 
-    await _addPendingChange(
-        'place', place.id, exists ? 'update' : 'create', place.toJson());
+    if (recordPendingChange) {
+      await _addPendingChange(
+          'place', place.id, exists ? 'update' : 'create', place.toJson());
+    }
     notifyListeners();
   }
 
@@ -323,7 +325,7 @@ class DatabaseService extends ChangeNotifier {
     return Event.fromJson(jsonDecode(results.first['data'] as String));
   }
 
-  Future<void> saveEvent(Event event) async {
+  Future<void> saveEvent(Event event, {bool recordPendingChange = true}) async {
     final db = await database;
     final exists =
         (await db.query('events', where: 'id = ?', whereArgs: [event.id]))
@@ -345,8 +347,10 @@ class DatabaseService extends ChangeNotifier {
       await db.insert('events', data);
     }
 
-    await _addPendingChange(
-        'event', event.id, exists ? 'update' : 'create', event.toJson());
+    if (recordPendingChange) {
+      await _addPendingChange(
+          'event', event.id, exists ? 'update' : 'create', event.toJson());
+    }
     notifyListeners();
   }
 
@@ -375,7 +379,7 @@ class DatabaseService extends ChangeNotifier {
     return EventObject.fromJson(jsonDecode(results.first['data'] as String));
   }
 
-  Future<void> saveObject(EventObject object) async {
+  Future<void> saveObject(EventObject object, {bool recordPendingChange = true}) async {
     final db = await database;
     final exists =
         (await db.query('objects', where: 'id = ?', whereArgs: [object.id]))
@@ -396,8 +400,10 @@ class DatabaseService extends ChangeNotifier {
       await db.insert('objects', data);
     }
 
-    await _addPendingChange(
-        'object', object.id, exists ? 'update' : 'create', object.toJson());
+    if (recordPendingChange) {
+      await _addPendingChange(
+          'object', object.id, exists ? 'update' : 'create', object.toJson());
+    }
     notifyListeners();
   }
 

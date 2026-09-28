@@ -85,8 +85,11 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                     if (person.phoneNumber != null)
                       _buildInfoTile(Icons.phone, 'Phone', person.phoneNumber!),
                     if (person.birthday != null)
-                      _buildInfoTile(Icons.cake, 'Birthday',
-                          _formatDate(person.birthday!)),
+                      _buildInfoTile(
+                          Icons.cake, 'Birthday', person.displayBirthday!),
+                    if (person.deathDate != null)
+                      _buildInfoTile(Icons.event_busy, 'Date of death',
+                          person.displayDeathDate!),
                     if (person.company != null)
                       _buildInfoTile(
                           Icons.business, 'Company', person.company!),
