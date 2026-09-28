@@ -1,0 +1,92 @@
+import 'relationship_type.dart';
+
+/// English display text for the relationship logic in this package. Deliberately the
+/// only place in `lib/relationships` that contains user-facing strings: `relationship_type.dart`,
+/// `family_graph.dart` and `graph_layout.dart` return only typed values, so a later
+/// localisation pass only has to replace this class (and its sibling text classes added
+/// alongside later steps), never the logic that computes what to say.
+class RelationshipText {
+  const RelationshipText._();
+
+  /// Short display label for a known type, e.g. for a dropdown item or a group header.
+  static String label(RelationshipType type) {
+    switch (type) {
+      case RelationshipType.parent:
+        return 'Parent';
+      case RelationshipType.child:
+        return 'Child';
+      case RelationshipType.grandparent:
+        return 'Grandparent';
+      case RelationshipType.grandchild:
+        return 'Grandchild';
+      case RelationshipType.stepParent:
+        return 'Step-parent';
+      case RelationshipType.stepChild:
+        return 'Step-child';
+      case RelationshipType.adoptiveParent:
+        return 'Adoptive parent';
+      case RelationshipType.adoptedChild:
+        return 'Adopted child';
+      case RelationshipType.godparent:
+        return 'Godparent';
+      case RelationshipType.godchild:
+        return 'Godchild';
+      case RelationshipType.guardian:
+        return 'Guardian';
+      case RelationshipType.ward:
+        return 'Ward';
+      case RelationshipType.mentor:
+        return 'Mentor';
+      case RelationshipType.mentee:
+        return 'Mentee';
+      case RelationshipType.spouse:
+        return 'Spouse';
+      case RelationshipType.partner:
+        return 'Partner';
+      case RelationshipType.exPartner:
+        return 'Ex-partner';
+      case RelationshipType.sibling:
+        return 'Sibling';
+      case RelationshipType.halfSibling:
+        return 'Half-sibling';
+      case RelationshipType.friend:
+        return 'Friend';
+      case RelationshipType.colleague:
+        return 'Colleague';
+      case RelationshipType.neighbour:
+        return 'Neighbour';
+      case RelationshipType.acquaintance:
+        return 'Acquaintance';
+      case RelationshipType.otherRelative:
+        return 'Other relative';
+      case RelationshipType.other:
+        return 'Other';
+    }
+  }
+
+  /// Label for a raw stored string that may or may not be part of the known
+  /// vocabulary (see [RelationshipKind]): the known [label] when recognised, otherwise
+  /// the raw value itself with its first letter capitalised (e.g. the legacy `family`
+  /// value reads as "Family").
+  static String labelForRaw(String raw) {
+    final type = RelationshipType.tryParse(raw);
+    if (type != null) return label(type);
+    if (raw.isEmpty) return raw;
+    return raw[0].toUpperCase() + raw.substring(1);
+  }
+
+  /// Full sentence describing a connection, in the app's one reading rule: "person1 is
+  /// the &lt;type&gt; of person2.", e.g. `sentence('Anna', 'Bert', RelationshipType.parent)`
+  /// -> "Anna is the parent of Bert." Used as the add/edit-connection dialog's live
+  /// preview and for shortest-path descriptions (`FamilyGraph.shortestPath`).
+  static String sentence(String person1Name, String person2Name, RelationshipType type) {
+    return '$person1Name is the ${label(type).toLowerCase()} of $person2Name.';
+  }
+
+  /// Same as [sentence] but for a possibly-unknown/legacy raw type string (see
+  /// [labelForRaw]) - used when displaying an existing connection whose stored value
+  /// predates the typed vocabulary.
+  static String sentenceForRaw(String person1Name, String person2Name, String raw) {
+    return '$person1Name is the ${labelForRaw(raw).toLowerCase()} of $person2Name.';
+  }
+}
