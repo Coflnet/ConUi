@@ -64,4 +64,27 @@ public class SyncControllerStorageTests
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Conflict), $"body: {body}");
         Assert.That(body, Does.Contain("\"slug\":\"version_conflict\""));
     }
+
+    [Test]
+    public async Task GetAllEntries_ReturnsUnauthorized_WithCommonErrorShape_WhenSubClaimIsNotAGuid()
+    {
+        // Regression test: every SyncController action starts with
+        // `if (userId == null) return Unauthorized();` for a validly-signed token whose "sub"
+        // claim doesn't parse as a Guid ([Authorize] alone lets such a token through - it only
+        // checks signature/issuer/audience/expiry). That used to be a bare Unauthorized(), which
+        // [ApiController] turns into ASP.NET's ProblemDetails body instead of this API's
+        // {"slug","message"} shape. GetAllEntries is one representative endpoint; all twelve
+        // actions share the exact same one-line check.
+        await using var factory = new TestWebApplicationFactory();
+        using var client = await factory.StartAsync();
+        var token = TestAuthHelper.MintTokenWithSub(factory, sub: "not-a-guid");
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var response = await client.GetAsync("/api/sync/all");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized), $"body: {body}");
+        Assert.That(body, Does.Contain("\"slug\":\"unauthorized\""), $"body: {body}");
+        Assert.That(body, Does.Not.Contain("\"traceId\""), $"body: {body}");
+    }
 }

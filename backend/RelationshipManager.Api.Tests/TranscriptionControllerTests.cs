@@ -117,6 +117,27 @@ public class TranscriptionControllerTests
     }
 
     [Test]
+    public async Task Segment_Returns401_WithCommonErrorShape_WhenSubClaimIsNotAGuid()
+    {
+        // Regression test: same bug/fix as SyncController and AuthController.GetCurrentUser -
+        // `if (userId == null) return Unauthorized();` used to be bare, so [ApiController] turned
+        // it into ASP.NET's ProblemDetails body instead of this API's {"slug","message"} shape.
+        var factory = new TestWebApplicationFactory();
+        factory.TranscriptionService.IsConfigured = true;
+        await using var f = factory;
+        using var client = await factory.StartAsync();
+        var token = TestAuthHelper.MintTokenWithSub(factory, sub: "not-a-guid");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await client.PostAsync("/api/transcription/segment", WavContent());
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized), $"body: {body}");
+        Assert.That(body, Does.Contain("\"slug\":\"unauthorized\""), $"body: {body}");
+        Assert.That(body, Does.Not.Contain("\"traceId\""), $"body: {body}");
+    }
+
+    [Test]
     public async Task Segment_Returns502_WhenUpstreamFails()
     {
         var (factory, client, _) = await StartAuthedAsync(f =>

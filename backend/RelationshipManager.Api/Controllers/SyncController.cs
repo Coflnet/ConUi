@@ -29,7 +29,7 @@ public class SyncController : ControllerBase
     public async Task<ActionResult<SyncResponse>> GetUpdates([FromBody] SyncRequest request)
     {
         var userId = GetUserId();
-        if (userId == null) return Unauthorized();
+        if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
         var response = await _syncService.GetUpdatesAsync(userId.Value, request);
         return Ok(response);
@@ -42,7 +42,7 @@ public class SyncController : ControllerBase
     public async Task<ActionResult<List<SyncEntry>>> GetAllEntries()
     {
         var userId = GetUserId();
-        if (userId == null) return Unauthorized();
+        if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
         var entries = await _syncService.GetAllEntriesAsync(userId.Value);
         return Ok(entries);
@@ -55,7 +55,7 @@ public class SyncController : ControllerBase
     public async Task<ActionResult<BlobUploadResponse>> GetUploadUrl([FromBody] BlobUploadRequest request)
     {
         var userId = GetUserId();
-        if (userId == null) return Unauthorized();
+        if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
         try
         {
@@ -80,7 +80,7 @@ public class SyncController : ControllerBase
     public async Task<ActionResult<BlobDownloadResponse>> GetDownloadUrl(string blobType, string blobId)
     {
         var userId = GetUserId();
-        if (userId == null) return Unauthorized();
+        if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
         try
         {
@@ -106,7 +106,7 @@ public class SyncController : ControllerBase
     public async Task<ActionResult> CommitUpload([FromBody] CommitEntry commit)
     {
         var userId = GetUserId();
-        if (userId == null) return Unauthorized();
+        if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
         await _syncService.CommitUploadAsync(userId.Value, commit);
         return Ok();
@@ -119,7 +119,7 @@ public class SyncController : ControllerBase
     public async Task<ActionResult> BatchCommit([FromBody] BatchCommitRequest request)
     {
         var userId = GetUserId();
-        if (userId == null) return Unauthorized();
+        if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
         await _syncService.BatchCommitAsync(userId.Value, request);
         return Ok();
@@ -132,7 +132,7 @@ public class SyncController : ControllerBase
     public async Task<ActionResult> DeleteEntry(string blobType, string blobId)
     {
         var userId = GetUserId();
-        if (userId == null) return Unauthorized();
+        if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
         await _syncService.DeleteEntryAsync(userId.Value, blobType, blobId);
         return Ok();
@@ -145,7 +145,7 @@ public class SyncController : ControllerBase
     public async Task<ActionResult<UserDevice>> RegisterDevice([FromBody] DeviceRegistrationRequest request)
     {
         var userId = GetUserId();
-        if (userId == null) return Unauthorized();
+        if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
         var device = await _syncService.RegisterDeviceAsync(userId.Value, request);
         return Ok(device);
@@ -158,7 +158,7 @@ public class SyncController : ControllerBase
     public async Task<ActionResult<List<UserDevice>>> GetDevices()
     {
         var userId = GetUserId();
-        if (userId == null) return Unauthorized();
+        if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
         var devices = await _syncService.GetUserDevicesAsync(userId.Value);
         return Ok(devices);
@@ -171,7 +171,7 @@ public class SyncController : ControllerBase
     public async Task<ActionResult<StorageInfoResponse>> GetStorageInfo()
     {
         var userId = GetUserId();
-        if (userId == null) return Unauthorized();
+        if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
         var info = await _syncService.GetStorageInfoAsync(userId.Value);
         return Ok(info);
@@ -185,7 +185,7 @@ public class SyncController : ControllerBase
     public async Task<ActionResult> ProxyUpload(string blobType, string blobId, [FromQuery] long version)
     {
         var userId = GetUserId();
-        if (userId == null) return Unauthorized();
+        if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
         try
         {
@@ -224,7 +224,7 @@ public class SyncController : ControllerBase
     public async Task<ActionResult> ProxyDownload(string blobType, string blobId)
     {
         var userId = GetUserId();
-        if (userId == null) return Unauthorized();
+        if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
         try
         {

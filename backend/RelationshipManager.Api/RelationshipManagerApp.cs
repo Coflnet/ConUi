@@ -8,7 +8,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Microsoft.IdentityModel.JsonWebTokens;
 
 namespace RelationshipManager.Api;
@@ -23,6 +22,16 @@ public static class RelationshipManagerApp
 {
     /// <summary>Placeholder JWT secret shipped in appsettings.json for local development only.</summary>
     public const string DevJwtSecretPlaceholder = "super-secret-key-for-development-only-32chars!";
+
+    /// <summary>
+    /// Matches the camelCase naming policy <c>AddControllers()</c> applies by default to every
+    /// MVC JSON response (so <see cref="Errors.ApiError"/> serializes as <c>{"slug","message"}</c>
+    /// there). The <see cref="Errors.ApiError"/> written directly below (outside MVC, from
+    /// <c>MapFallback</c>) needs the same options explicitly - a bare <c>JsonSerializer.Serialize</c>
+    /// call has no naming policy and would otherwise emit PascalCase (<c>{"Slug","Message"}</c>),
+    /// which is what made that one response's JSON shape drift from every other error response.
+    /// </summary>
+    private static readonly JsonSerializerOptions ApiErrorJsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     /// <param name="args">Command-line args, forwarded to <see cref="WebApplication.CreateBuilder(WebApplicationOptions)"/>.</param>
     /// <param name="configureBuilder">Hook to override configuration/services before the app is built (used by tests).</param>
@@ -203,15 +212,39 @@ public static class RelationshipManagerApp
 
         if (indexHtmlExists)
         {
-            var noCacheFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "index.html", "flutter_bootstrap.js", "flutter_service_worker.js", "version.json"
-            };
-            // A content hash in the filename (Flutter/most bundlers use a long hex digest) is what
-            // makes long-term caching safe - anything else only gets the no-cache treatment above,
-            // or the framework's normal (uncached) static file defaults.
-            var hashedFileNamePattern = new Regex("[0-9a-f]{8,}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
+            // Every static file defaults to Cache-Control: no-cache. This does NOT disable
+            // caching - the static file middleware still sets ETag/Last-Modified, so a
+            // conditional GET (If-None-Match/If-Modified-Since) gets a cheap 304 - it just forces
+            // a revalidation round-trip instead of letting a cache serve a file unconditionally.
+            // That matters here because production sits behind Cloudflare, which - for any static
+            // file answered with *no* Cache-Control header at all - caches it by extension for
+            // hours at the edge regardless of what changed at origin. `flutter build web
+            // --release` output (index.html, flutter.js, flutter_bootstrap.js,
+            // flutter_service_worker.js, main.dart.js, version.json, manifest.json, favicon.png,
+            // icons/*, assets/**, canvaskit/**, plus this project's sqlite3.wasm and
+            // sqflite_sw.js) never puts a content hash in a file name - every file keeps the same
+            // name across builds - so without an explicit no-cache header, a deployment could
+            // leave users on a stale main.dart.js (or an old canvaskit/assets file) served
+            // alongside a freshly deployed index.html.
+            //
+            // A previous version of this rule only sent no-cache for four named files and gave
+            // everything else the framework's default (no Cache-Control header at all) unless its
+            // name matched an "8+ hex characters" pattern, which then got a year-long immutable
+            // cache. That hashed-caching branch is removed rather than kept: this app only ever
+            // serves Flutter's build output, which - as above - never produces hashed names, so
+            // the branch could never legitimately fire. It could only misfire on a
+            // developer-named asset that happens to contain 8+ hex characters (e.g. an asset
+            // shipped as `assets/deadbeefcafe.png`), which would then be cached "immutable" for a
+            // year and never update even when the file's content changes. If this project starts
+            // shipping genuinely content-hashed assets, reintroduce long-term caching with a
+            // stricter pattern (e.g. requiring the hash as its own `.`-delimited path segment,
+            // like `name.<hash>.ext`) rather than a bare run of hex characters.
+            //
+            // Deliberately no response compression (e.g. Microsoft.AspNetCore.ResponseCompression)
+            // is added here or anywhere else in this app: Cloudflare and nginx in front of it
+            // already compress the response on the way out. Adding it here too would be redundant
+            // CPU work, and compressing API responses ourselves over HTTPS is also how you end up
+            // with a BREACH-style compression oracle if it's ever added without checking - don't.
             var contentTypeProvider = new FileExtensionContentTypeProvider();
             contentTypeProvider.Mappings[".wasm"] = "application/wasm";
 
@@ -220,15 +253,7 @@ public static class RelationshipManagerApp
                 ContentTypeProvider = contentTypeProvider,
                 OnPrepareResponse = ctx =>
                 {
-                    var fileName = Path.GetFileName(ctx.File.Name);
-                    if (noCacheFileNames.Contains(fileName))
-                    {
-                        ctx.Context.Response.Headers.CacheControl = "no-cache";
-                    }
-                    else if (hashedFileNamePattern.IsMatch(fileName))
-                    {
-                        ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
-                    }
+                    ctx.Context.Response.Headers.CacheControl = "no-cache";
                 }
             });
         }
@@ -253,7 +278,7 @@ public static class RelationshipManagerApp
             {
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
                 context.Response.ContentType = "application/json";
-                await context.Response.WriteAsync(JsonSerializer.Serialize(new ApiError("not_found", "The requested resource was not found.")));
+                await context.Response.WriteAsync(JsonSerializer.Serialize(new ApiError("not_found", "The requested resource was not found."), ApiErrorJsonOptions));
                 return;
             }
 

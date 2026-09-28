@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using RelationshipManager.Api.Auth;
 
@@ -33,8 +34,17 @@ public class AuthControllerTests
         using var client = await factory.StartAsync();
 
         var response = await client.PostAsJsonAsync("/api/auth/dev", new { userId = "someone" });
+        var body = await response.Content.ReadAsStringAsync();
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+
+        // Regression test: this endpoint used to answer with a bare `return NotFound();`, which
+        // [ApiController]'s automatic client-error handling turns into ASP.NET's own
+        // ProblemDetails body (title/status/traceId) instead of this API's uniform
+        // {"slug","message"} shape used by every other error response.
+        Assert.That(body, Does.Contain("\"slug\":\"not_found\""), $"body: {body}");
+        Assert.That(body, Does.Not.Contain("\"traceId\""), $"body: {body}");
+        Assert.That(body, Does.Not.Contain("\"title\""), $"body: {body}");
     }
 
     [Test]
@@ -87,6 +97,45 @@ public class AuthControllerTests
         var response = await client.PostAsJsonAsync("/api/auth/firebase", new { firebaseToken = "not-a-real-token" });
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+    }
+
+    [Test]
+    public async Task GetCurrentUser_ReturnsUnauthorized_WithCommonErrorShape_WhenSubClaimIsNotAGuid()
+    {
+        // Regression test: GetCurrentUser's `if (userId == null) return Unauthorized();` branch
+        // (reachable with a validly-signed token whose "sub" claim doesn't parse as a Guid - JWT
+        // bearer auth itself only checks signature/issuer/audience/expiry) used to be a bare
+        // Unauthorized(), which [ApiController] turns into ASP.NET's ProblemDetails body instead
+        // of this API's {"slug","message"} shape.
+        await using var factory = new TestWebApplicationFactory();
+        using var client = await factory.StartAsync();
+        var token = TestAuthHelper.MintTokenWithSub(factory, sub: "not-a-guid");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await client.GetAsync("/api/auth/me");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized), $"body: {body}");
+        Assert.That(body, Does.Contain("\"slug\":\"unauthorized\""), $"body: {body}");
+        Assert.That(body, Does.Not.Contain("\"traceId\""), $"body: {body}");
+    }
+
+    [Test]
+    public async Task GetCurrentUser_ReturnsNotFound_WithCommonErrorShape_WhenUserDoesNotExist()
+    {
+        // Regression test: same bug as above but for the `if (user == null) return NotFound();`
+        // branch - reachable with a validly-signed token for a user id that was never created.
+        await using var factory = new TestWebApplicationFactory();
+        using var client = await factory.StartAsync();
+        var token = TestAuthHelper.MintTokenWithSub(factory, sub: Guid.NewGuid().ToString());
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await client.GetAsync("/api/auth/me");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound), $"body: {body}");
+        Assert.That(body, Does.Contain("\"slug\":\"not_found\""), $"body: {body}");
+        Assert.That(body, Does.Not.Contain("\"traceId\""), $"body: {body}");
     }
 
     [Test]
