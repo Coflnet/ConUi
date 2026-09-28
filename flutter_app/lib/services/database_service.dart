@@ -4,18 +4,35 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:sqflite_common/sqflite.dart' as sqflite_common;
 import '../models/models.dart';
+import 'db_migrations.dart';
+import 'recording_file_store.dart';
 
 class DatabaseService extends ChangeNotifier {
-  static sqflite_common.Database? _database;
+  /// Optional overrides for tests: an explicit [DatabaseFactory] (e.g. the
+  /// native FFI factory pointed at an in-memory database) and/or a custom
+  /// database path. When left null the service picks the same factory and
+  /// path the app has always used, so production behaviour is unchanged.
+  final sqflite_common.DatabaseFactory? _injectedFactory;
+  final String _path;
+
+  DatabaseService({
+    sqflite_common.DatabaseFactory? factory,
+    String path = 'relationship_manager.db',
+  })  : _injectedFactory = factory,
+        _path = path;
+
+  sqflite_common.Database? _database;
   bool _initialized = false;
-  static bool _factoryInitialized = false;
-  static sqflite_common.DatabaseFactory? _factory;
+  bool _factoryInitialized = false;
+  sqflite_common.DatabaseFactory? _factory;
 
   bool get isInitialized => _initialized;
 
-  static Future<void> _initFactory() async {
+  Future<void> _initFactory() async {
     if (!_factoryInitialized) {
-      if (kIsWeb) {
+      if (_injectedFactory != null) {
+        _factory = _injectedFactory;
+      } else if (kIsWeb) {
         // Initialize web database factory with IndexedDB backend
         _factory = databaseFactoryFfiWebNoWebWorker;
       } else {
@@ -44,129 +61,34 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<sqflite_common.Database> _initDatabase() async {
-    String path = 'relationship_manager.db';
-
     return await _factory!.openDatabase(
-      path,
+      _path,
       options: sqflite_common.OpenDatabaseOptions(
-        version: 1,
+        version: latestDbVersion,
         onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
       ),
     );
   }
 
+  // A fresh install starts at an empty database, so every migration runs in
+  // order to build the schema up from nothing.
   Future<void> _onCreate(sqflite_common.Database db, int version) async {
-    // Persons table
-    await db.execute('''
-      CREATE TABLE persons (
-        id TEXT PRIMARY KEY,
-        data TEXT NOT NULL,
-        version INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        is_deleted INTEGER DEFAULT 0
-      )
-    ''');
+    for (final migration in dbMigrations) {
+      await migration.up(db);
+    }
+  }
 
-    // Connections table
-    await db.execute('''
-      CREATE TABLE connections (
-        id TEXT PRIMARY KEY,
-        person1_id TEXT NOT NULL,
-        person2_id TEXT NOT NULL,
-        relationship_type TEXT NOT NULL,
-        origin_event_id TEXT,
-        data TEXT NOT NULL,
-        version INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        is_deleted INTEGER DEFAULT 0,
-        FOREIGN KEY (person1_id) REFERENCES persons(id),
-        FOREIGN KEY (person2_id) REFERENCES persons(id),
-        FOREIGN KEY (origin_event_id) REFERENCES events(id)
-      )
-    ''');
-
-    // Places table
-    await db.execute('''
-      CREATE TABLE places (
-        id TEXT PRIMARY KEY,
-        data TEXT NOT NULL,
-        version INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        is_deleted INTEGER DEFAULT 0
-      )
-    ''');
-
-    // Events table
-    await db.execute('''
-      CREATE TABLE events (
-        id TEXT PRIMARY KEY,
-        month_key TEXT NOT NULL,
-        data TEXT NOT NULL,
-        version INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        is_deleted INTEGER DEFAULT 0
-      )
-    ''');
-
-    // Objects table
-    await db.execute('''
-      CREATE TABLE objects (
-        id TEXT PRIMARY KEY,
-        data TEXT NOT NULL,
-        version INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        is_deleted INTEGER DEFAULT 0
-      )
-    ''');
-
-    // Files table
-    await db.execute('''
-      CREATE TABLE files (
-        id TEXT PRIMARY KEY,
-        entity_type TEXT NOT NULL,
-        entity_id TEXT NOT NULL,
-        file_name TEXT NOT NULL,
-        file_path TEXT NOT NULL,
-        mime_type TEXT NOT NULL,
-        size INTEGER NOT NULL,
-        version INTEGER DEFAULT 0,
-        created_at TEXT NOT NULL
-      )
-    ''');
-
-    // Pending changes for offline sync
-    await db.execute('''
-      CREATE TABLE pending_changes (
-        id TEXT PRIMARY KEY,
-        entity_type TEXT NOT NULL,
-        entity_id TEXT NOT NULL,
-        operation TEXT NOT NULL,
-        data TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        synced INTEGER DEFAULT 0
-      )
-    ''');
-
-    // Sync index
-    await db.execute('''
-      CREATE TABLE sync_index (
-        id INTEGER PRIMARY KEY,
-        data TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    ''');
-
-    // Create indexes
-    await db.execute('CREATE INDEX idx_events_month ON events(month_key)');
-    await db.execute(
-        'CREATE INDEX idx_files_entity ON files(entity_type, entity_id)');
-    await db
-        .execute('CREATE INDEX idx_pending_synced ON pending_changes(synced)');
+  // An upgraded install already has everything up to oldVersion; only run
+  // the migrations after that, in order, so it ends up with the exact same
+  // schema a fresh install would get.
+  Future<void> _onUpgrade(
+      sqflite_common.Database db, int oldVersion, int newVersion) async {
+    for (final migration in dbMigrations) {
+      if (migration.version > oldVersion && migration.version <= newVersion) {
+        await migration.up(db);
+      }
+    }
   }
 
   // ==================== PERSONS ====================
@@ -187,7 +109,12 @@ class DatabaseService extends ChangeNotifier {
     return Person.fromJson(jsonDecode(results.first['data'] as String));
   }
 
-  Future<void> savePerson(Person person) async {
+  /// [recordPendingChange] should stay true for any locally-originated
+  /// change (the normal case). The sync download path passes false: a
+  /// person/place/object/connection/event just downloaded from the backend
+  /// must not be queued to be uploaded straight back to it - see
+  /// SyncService._downloadAndApplyBlob.
+  Future<void> savePerson(Person person, {bool recordPendingChange = true}) async {
     final db = await database;
     final exists =
         (await db.query('persons', where: 'id = ?', whereArgs: [person.id]))
@@ -208,8 +135,10 @@ class DatabaseService extends ChangeNotifier {
       await db.insert('persons', data);
     }
 
-    await _addPendingChange(
-        'person', person.id, exists ? 'update' : 'create', person.toJson());
+    if (recordPendingChange) {
+      await _addPendingChange(
+          'person', person.id, exists ? 'update' : 'create', person.toJson());
+    }
     notifyListeners();
   }
 
@@ -270,7 +199,8 @@ class DatabaseService extends ChangeNotifier {
         .toList();
   }
 
-  Future<void> saveConnection(Connection connection) async {
+  Future<void> saveConnection(Connection connection,
+      {bool recordPendingChange = true}) async {
     final db = await database;
     final exists = (await db
             .query('connections', where: 'id = ?', whereArgs: [connection.id]))
@@ -286,7 +216,7 @@ class DatabaseService extends ChangeNotifier {
       'version': connection.updatedAt.millisecondsSinceEpoch,
       'created_at': connection.createdAt.toIso8601String(),
       'updated_at': connection.updatedAt.toIso8601String(),
-      'is_deleted': 0,
+      'is_deleted': connection.isDeleted ? 1 : 0,
     };
 
     if (exists) {
@@ -296,25 +226,17 @@ class DatabaseService extends ChangeNotifier {
       await db.insert('connections', data);
     }
 
-    await _addPendingChange('connection', connection.id,
-        exists ? 'update' : 'create', connection.toJson());
+    if (recordPendingChange) {
+      await _addPendingChange('connection', connection.id,
+          exists ? 'update' : 'create', connection.toJson());
+    }
     notifyListeners();
   }
 
   Future<void> deleteConnection(String id) async {
-    final db = await database;
     final connection = await getConnection(id);
     if (connection != null) {
-      await db.update(
-          'connections',
-          {
-            'is_deleted': 1,
-            'updated_at': DateTime.now().toIso8601String(),
-          },
-          where: 'id = ?',
-          whereArgs: [id]);
-      await _addPendingChange('connection', id, 'delete', connection.toJson());
-      notifyListeners();
+      await saveConnection(connection.copyWith(isDeleted: true));
     }
   }
 
@@ -336,7 +258,7 @@ class DatabaseService extends ChangeNotifier {
     return Place.fromJson(jsonDecode(results.first['data'] as String));
   }
 
-  Future<void> savePlace(Place place) async {
+  Future<void> savePlace(Place place, {bool recordPendingChange = true}) async {
     final db = await database;
     final exists =
         (await db.query('places', where: 'id = ?', whereArgs: [place.id]))
@@ -357,8 +279,10 @@ class DatabaseService extends ChangeNotifier {
       await db.insert('places', data);
     }
 
-    await _addPendingChange(
-        'place', place.id, exists ? 'update' : 'create', place.toJson());
+    if (recordPendingChange) {
+      await _addPendingChange(
+          'place', place.id, exists ? 'update' : 'create', place.toJson());
+    }
     notifyListeners();
   }
 
@@ -401,7 +325,7 @@ class DatabaseService extends ChangeNotifier {
     return Event.fromJson(jsonDecode(results.first['data'] as String));
   }
 
-  Future<void> saveEvent(Event event) async {
+  Future<void> saveEvent(Event event, {bool recordPendingChange = true}) async {
     final db = await database;
     final exists =
         (await db.query('events', where: 'id = ?', whereArgs: [event.id]))
@@ -423,8 +347,10 @@ class DatabaseService extends ChangeNotifier {
       await db.insert('events', data);
     }
 
-    await _addPendingChange(
-        'event', event.id, exists ? 'update' : 'create', event.toJson());
+    if (recordPendingChange) {
+      await _addPendingChange(
+          'event', event.id, exists ? 'update' : 'create', event.toJson());
+    }
     notifyListeners();
   }
 
@@ -453,7 +379,7 @@ class DatabaseService extends ChangeNotifier {
     return EventObject.fromJson(jsonDecode(results.first['data'] as String));
   }
 
-  Future<void> saveObject(EventObject object) async {
+  Future<void> saveObject(EventObject object, {bool recordPendingChange = true}) async {
     final db = await database;
     final exists =
         (await db.query('objects', where: 'id = ?', whereArgs: [object.id]))
@@ -474,8 +400,10 @@ class DatabaseService extends ChangeNotifier {
       await db.insert('objects', data);
     }
 
-    await _addPendingChange(
-        'object', object.id, exists ? 'update' : 'create', object.toJson());
+    if (recordPendingChange) {
+      await _addPendingChange(
+          'object', object.id, exists ? 'update' : 'create', object.toJson());
+    }
     notifyListeners();
   }
 
@@ -561,6 +489,88 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
+  // ==================== LOCAL RECORDINGS ====================
+  // Local-only bookkeeping about recordings' bytes on this device. Not part
+  // of the synced Event/AttachedFile data - see LocalRecordingState's doc
+  // comment for what each row means and the deletion rule.
+
+  Future<void> saveLocalRecording(LocalRecordingState recording) async {
+    final db = await database;
+    await db.insert(
+      'local_recordings',
+      recording.toRow(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<LocalRecordingState?> getLocalRecording(String id) async {
+    final db = await database;
+    final results =
+        await db.query('local_recordings', where: 'id = ?', whereArgs: [id]);
+    if (results.isEmpty) return null;
+    return LocalRecordingState.fromRow(results.first);
+  }
+
+  Future<List<LocalRecordingState>> getLocalRecordingsByState(
+      RecordingLifecycleState state) async {
+    final db = await database;
+    final results = await db.query('local_recordings',
+        where: 'state = ?', whereArgs: [state.name]);
+    return results.map(LocalRecordingState.fromRow).toList();
+  }
+
+  Future<List<LocalRecordingState>> getLocalRecordingsForEvent(
+      String eventId) async {
+    final db = await database;
+    final results = await db.query('local_recordings',
+        where: 'event_id = ?', whereArgs: [eventId]);
+    return results.map(LocalRecordingState.fromRow).toList();
+  }
+
+  /// Recordings that exist on this device but aren't attached to any
+  /// story: finished captures whose eventId was never set, either because
+  /// the quick-add sheet that started them was dismissed before Save, or
+  /// because RecordingRecoveryService found them abandoned at start-up
+  /// after a crash. Excludes rows still mid-recording (state ==
+  /// [RecordingLifecycleState.recording]) - those aren't abandoned, they're
+  /// just in progress. Surfaced by the map's "N recordings aren't attached
+  /// to a story" banner.
+  Future<List<LocalRecordingState>> getOrphanedRecordings() async {
+    final db = await database;
+    final results = await db.query(
+      'local_recordings',
+      where: 'event_id IS NULL AND state != ?',
+      whereArgs: [RecordingLifecycleState.recording.name],
+    );
+    return results.map(LocalRecordingState.fromRow).toList();
+  }
+
+  /// Removes just the bookkeeping row, without touching any bytes in a
+  /// RecordingFileStore. Used when a recording never produced any bytes
+  /// worth keeping (e.g. recovery found an empty orphaned entry). For an
+  /// actual recording, use [deleteRecordingPermanently] instead so its
+  /// bytes are deleted too.
+  Future<void> deleteLocalRecordingRow(String id) async {
+    final db = await database;
+    await db.delete('local_recordings', where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// Permanently deletes a recording: its bytes in [store] AND its local
+  /// bookkeeping row.
+  ///
+  /// IMPORTANT deletion rule: call this only after the user has explicitly
+  /// confirmed deleting that specific recording (e.g. a "Delete recording"
+  /// confirmation dialog), or when emptying a soft-deleted event that still
+  /// owns it. Soft-deleting an event (`Event.isDeleted = true` /
+  /// [deleteEvent]) must NEVER by itself reach this method - the audio has
+  /// to stay recoverable for as long as the soft-deleted event could still
+  /// be restored.
+  Future<void> deleteRecordingPermanently(
+      String recordingId, RecordingFileStore store) async {
+    await store.delete(recordingId);
+    await deleteLocalRecordingRow(recordingId);
+  }
+
   // ==================== BULK OPERATIONS ====================
 
   Future<void> bulkSavePersons(List<Person> persons) async {
@@ -621,6 +631,10 @@ class DatabaseService extends ChangeNotifier {
     await db.delete('files');
     await db.delete('pending_changes');
     await db.delete('sync_index');
+    // Bookkeeping rows only; actual recording bytes in a RecordingFileStore
+    // are intentionally left alone here - see deleteRecordingPermanently's
+    // doc comment for why this must never be an implicit side effect.
+    await db.delete('local_recordings');
     notifyListeners();
   }
 }

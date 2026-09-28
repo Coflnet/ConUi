@@ -12,13 +12,34 @@ class SyncService extends ChangeNotifier {
   final AuthService _auth;
   final EncryptionService _encryption = EncryptionService();
 
+  /// Injectable so tests can intercept the direct-to-storage blob PUT/GET
+  /// calls (these go straight to a presigned S3-style URL, not through
+  /// AuthService, so they need their own client to mock). Defaults to a
+  /// plain client, so production behaviour is unchanged.
+  final http.Client _http;
+
   bool _isSyncing = false;
   String? _lastError;
   DateTime? _lastSyncTime;
 
-  SyncService(this._db, this._auth);
+  /// True when the user is signed in but the encryption key hasn't been
+  /// derived yet (e.g. right after an app restart, before they've
+  /// re-entered their password) - see the class doc comment. While this is
+  /// true, sync is skipped entirely rather than ever risking an
+  /// unencrypted upload.
+  bool _needsEncryptionPassword = false;
+  bool get needsEncryptionPassword => _needsEncryptionPassword;
+
+  SyncService(this._db, this._auth, {http.Client? httpClient})
+      : _http = httpClient ?? http.Client();
 
   bool get isSyncing => _isSyncing;
+
+  /// True whenever sync can't run because the user isn't signed in (e.g.
+  /// they chose "Continue without account"). syncOnOpen/syncOnClose already
+  /// no-op in that case; this just gives the UI something to show instead
+  /// of silence.
+  bool get needsSignIn => !_auth.isAuthenticated;
   String? get lastError => _lastError;
   DateTime? get lastSyncTime => _lastSyncTime;
 
@@ -33,11 +54,34 @@ class SyncService extends ChangeNotifier {
   void initializeEncryption(String password) {
     final salt = _auth.encryptionSalt ?? _auth.userId ?? 'default-salt';
     _encryption.initializeWithPassword(password, salt);
+    _needsEncryptionPassword = false;
+    _safeNotifyListeners();
+  }
+
+  /// Guard shared by [syncOnOpen] and [syncOnClose]: sync only ever runs
+  /// with a working encryption key. Data is encrypted on this device before
+  /// it is ever written to a blob that leaves it (see _uploadPersonBlob and
+  /// friends), so if the key isn't available yet - most commonly right
+  /// after an app restart, when the token was restored from storage but the
+  /// user hasn't re-entered their password this session - sync must be
+  /// skipped rather than either uploading plaintext or failing to decrypt
+  /// what it downloads. [needsEncryptionPassword] exposes this so the UI
+  /// can prompt for the password instead of the sync just silently doing
+  /// nothing forever.
+  bool _requireEncryptionOrSkip() {
+    if (_encryption.isInitialized) {
+      _needsEncryptionPassword = false;
+      return true;
+    }
+    _needsEncryptionPassword = true;
+    _safeNotifyListeners();
+    return false;
   }
 
   // Sync on app open
   Future<void> syncOnOpen() async {
     if (!_auth.isAuthenticated || _isSyncing) return;
+    if (!_requireEncryptionOrSkip()) return;
 
     _isSyncing = true;
     _lastError = null;
@@ -82,6 +126,7 @@ class SyncService extends ChangeNotifier {
   // Sync on app close - upload pending changes
   Future<void> syncOnClose() async {
     if (!_auth.isAuthenticated || _isSyncing) return;
+    if (!_requireEncryptionOrSkip()) return;
 
     _isSyncing = true;
     _lastError = null;
@@ -171,9 +216,10 @@ class SyncService extends ChangeNotifier {
       if (person == null) return false;
 
       final jsonData = jsonEncode(person.toJson());
-      final encryptedData = _encryption.isInitialized
-          ? _encryption.encryptString(jsonData)
-          : jsonData;
+      // _requireEncryptionOrSkip() guarantees this is always initialized
+      // before any of these upload helpers run - see its doc comment for
+      // why data must never fall back to being uploaded as plain jsonData.
+      final encryptedData = _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
       // Get upload URL
@@ -191,7 +237,7 @@ class SyncService extends ChangeNotifier {
       final s3Key = uploadData['s3Key'];
 
       // Upload to S3
-      final s3Response = await http.put(
+      final s3Response = await _http.put(
         Uri.parse(uploadUrl),
         headers: {'Content-Type': 'application/octet-stream'},
         body: utf8.encode(encryptedData),
@@ -222,9 +268,10 @@ class SyncService extends ChangeNotifier {
       if (place == null) return false;
 
       final jsonData = jsonEncode(place.toJson());
-      final encryptedData = _encryption.isInitialized
-          ? _encryption.encryptString(jsonData)
-          : jsonData;
+      // _requireEncryptionOrSkip() guarantees this is always initialized
+      // before any of these upload helpers run - see its doc comment for
+      // why data must never fall back to being uploaded as plain jsonData.
+      final encryptedData = _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
       final uploadResponse = await _auth.authenticatedPost('/api/sync/upload', {
@@ -240,7 +287,7 @@ class SyncService extends ChangeNotifier {
       final uploadUrl = uploadData['uploadUrl'];
       final s3Key = uploadData['s3Key'];
 
-      final s3Response = await http.put(
+      final s3Response = await _http.put(
         Uri.parse(uploadUrl),
         headers: {'Content-Type': 'application/octet-stream'},
         body: utf8.encode(encryptedData),
@@ -270,9 +317,10 @@ class SyncService extends ChangeNotifier {
       if (object == null) return false;
 
       final jsonData = jsonEncode(object.toJson());
-      final encryptedData = _encryption.isInitialized
-          ? _encryption.encryptString(jsonData)
-          : jsonData;
+      // _requireEncryptionOrSkip() guarantees this is always initialized
+      // before any of these upload helpers run - see its doc comment for
+      // why data must never fall back to being uploaded as plain jsonData.
+      final encryptedData = _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
       final uploadResponse = await _auth.authenticatedPost('/api/sync/upload', {
@@ -288,7 +336,7 @@ class SyncService extends ChangeNotifier {
       final uploadUrl = uploadData['uploadUrl'];
       final s3Key = uploadData['s3Key'];
 
-      final s3Response = await http.put(
+      final s3Response = await _http.put(
         Uri.parse(uploadUrl),
         headers: {'Content-Type': 'application/octet-stream'},
         body: utf8.encode(encryptedData),
@@ -318,9 +366,10 @@ class SyncService extends ChangeNotifier {
       if (connection == null) return false;
 
       final jsonData = jsonEncode(connection.toJson());
-      final encryptedData = _encryption.isInitialized
-          ? _encryption.encryptString(jsonData)
-          : jsonData;
+      // _requireEncryptionOrSkip() guarantees this is always initialized
+      // before any of these upload helpers run - see its doc comment for
+      // why data must never fall back to being uploaded as plain jsonData.
+      final encryptedData = _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
       final uploadResponse = await _auth.authenticatedPost('/api/sync/upload', {
@@ -336,7 +385,7 @@ class SyncService extends ChangeNotifier {
       final uploadUrl = uploadData['uploadUrl'];
       final s3Key = uploadData['s3Key'];
 
-      final s3Response = await http.put(
+      final s3Response = await _http.put(
         Uri.parse(uploadUrl),
         headers: {'Content-Type': 'application/octet-stream'},
         body: utf8.encode(encryptedData),
@@ -350,7 +399,7 @@ class SyncService extends ChangeNotifier {
         's3Key': s3Key,
         'checksum': checksum,
         'size': encryptedData.length,
-        'isDeleted': false,
+        'isDeleted': connection.isDeleted,
       });
 
       return true;
@@ -367,9 +416,10 @@ class SyncService extends ChangeNotifier {
       final monthlyEvents = MonthlyEvents(monthKey: monthKey, events: events);
 
       final jsonData = jsonEncode(monthlyEvents.toJson());
-      final encryptedData = _encryption.isInitialized
-          ? _encryption.encryptString(jsonData)
-          : jsonData;
+      // _requireEncryptionOrSkip() guarantees this is always initialized
+      // before any of these upload helpers run - see its doc comment for
+      // why data must never fall back to being uploaded as plain jsonData.
+      final encryptedData = _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
       final uploadResponse = await _auth.authenticatedPost('/api/sync/upload', {
@@ -385,7 +435,7 @@ class SyncService extends ChangeNotifier {
       final uploadUrl = uploadData['uploadUrl'];
       final s3Key = uploadData['s3Key'];
 
-      final s3Response = await http.put(
+      final s3Response = await _http.put(
         Uri.parse(uploadUrl),
         headers: {'Content-Type': 'application/octet-stream'},
         body: utf8.encode(encryptedData),
@@ -413,9 +463,10 @@ class SyncService extends ChangeNotifier {
     try {
       final index = await _db.getSyncIndex() ?? SyncIndex();
       final jsonData = jsonEncode(index.toJson());
-      final encryptedData = _encryption.isInitialized
-          ? _encryption.encryptString(jsonData)
-          : jsonData;
+      // _requireEncryptionOrSkip() guarantees this is always initialized
+      // before any of these upload helpers run - see its doc comment for
+      // why data must never fall back to being uploaded as plain jsonData.
+      final encryptedData = _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
       final uploadResponse = await _auth.authenticatedPost('/api/sync/upload', {
@@ -431,7 +482,7 @@ class SyncService extends ChangeNotifier {
       final uploadUrl = uploadData['uploadUrl'];
       final s3Key = uploadData['s3Key'];
 
-      final s3Response = await http.put(
+      final s3Response = await _http.put(
         Uri.parse(uploadUrl),
         headers: {'Content-Type': 'application/octet-stream'},
         body: utf8.encode(encryptedData),
@@ -465,32 +516,35 @@ class SyncService extends ChangeNotifier {
       final data = jsonDecode(response.body);
       final downloadUrl = data['downloadUrl'];
 
-      final blobResponse = await http.get(Uri.parse(downloadUrl));
+      final blobResponse = await _http.get(Uri.parse(downloadUrl));
       if (blobResponse.statusCode != 200) return;
 
       final encryptedData = blobResponse.body;
-      final jsonData = _encryption.isInitialized
-          ? _encryption.decryptString(encryptedData)
-          : encryptedData;
+      // Same guarantee as above: encryption is always initialized here.
+      final jsonData = _encryption.decryptString(encryptedData);
 
       final parsedData = jsonDecode(jsonData);
 
       switch (entry.blobType) {
+        // recordPendingChange: false on every case below - this data just
+        // came FROM the backend, so re-queuing it as a pending change would
+        // upload it straight back next sync (see DatabaseService.savePerson's
+        // doc comment).
         case 'person':
           final person = Person.fromJson(parsedData);
-          await _db.savePerson(person);
+          await _db.savePerson(person, recordPendingChange: false);
           break;
         case 'place':
           final place = Place.fromJson(parsedData);
-          await _db.savePlace(place);
+          await _db.savePlace(place, recordPendingChange: false);
           break;
         case 'object':
           final object = EventObject.fromJson(parsedData);
-          await _db.saveObject(object);
+          await _db.saveObject(object, recordPendingChange: false);
           break;
         case 'connection':
           final connection = Connection.fromJson(parsedData);
-          await _db.saveConnection(connection);
+          await _db.saveConnection(connection, recordPendingChange: false);
           break;
         case 'event_month':
           final monthlyEvents = MonthlyEvents.fromJson(parsedData);

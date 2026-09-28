@@ -83,6 +83,13 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _continueWithoutAccount() async {
+    final authService = context.read<AuthService>();
+    await authService.continueWithoutAccount();
+    // No navigation call needed: main.dart's root Consumer<AuthService>
+    // rebuilds into HomeScreen as soon as continuedWithoutAccount is true.
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -198,6 +205,20 @@ class _LoginScreenState extends State<LoginScreen> {
                           )
                         : const Icon(Icons.login),
                     label: Text(_isLoading ? 'Logging in...' : 'Login'),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: _isLoading ? null : _continueWithoutAccount,
+                    child: const Text('Continue without account'),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Recording and local data work without an account. '
+                    'Sync and live transcription need sign-in later.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey,
+                        ),
+                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 16),
                   Text(

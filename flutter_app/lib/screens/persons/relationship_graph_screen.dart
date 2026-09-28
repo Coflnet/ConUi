@@ -349,9 +349,9 @@ class _NodeBubble extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontWeight: FontWeight.w600, color: foreground),
               ),
-              if (person?.birthday != null)
+              if (person?.lifeDatesLabel != null)
                 Text(
-                  'b. ${person!.birthday!.year}',
+                  person!.lifeDatesLabel!,
                   style: TextStyle(fontSize: 11, color: foreground.withValues(alpha: 0.7)),
                 ),
             ],

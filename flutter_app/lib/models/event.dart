@@ -1,3 +1,4 @@
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 enum EventType {
@@ -12,13 +13,62 @@ enum EventType {
   other,
 }
 
+/// How precisely [Event.dateTime] is actually known. Many family stories
+/// only carry a year ("that was around 1952") or a month; forcing a full
+/// timestamp on those would fabricate precision that was never told to us.
+enum DatePrecision { year, month, day, time }
+
+DatePrecision _datePrecisionFromName(String? name) => DatePrecision.values
+    .firstWhere((p) => p.name == name, orElse: () => DatePrecision.time);
+
+/// Formats [date] to match how precisely it's actually known: "1952",
+/// "June 1952", "Jun 12, 1952" or, with full time precision, "Jun 12, 1952
+/// 3:45 PM". Shared by [Event.displayDate] and [Person]'s birthday/death
+/// date display, which use the same [DatePrecision] vocabulary.
+String formatDateWithPrecision(DateTime date, DatePrecision precision) {
+  switch (precision) {
+    case DatePrecision.year:
+      return DateFormat.y().format(date);
+    case DatePrecision.month:
+      return DateFormat.yMMMM().format(date);
+    case DatePrecision.day:
+      return DateFormat.yMMMd().format(date);
+    case DatePrecision.time:
+      return DateFormat.yMMMd().add_jm().format(date);
+  }
+}
+
 class AttachedFile {
+  /// Marks an [AttachedFile] as an audio recording captured inside this
+  /// app (as opposed to e.g. an imported photo or document). See
+  /// [AttachedFile.kind].
+  static const String kindRecording = 'recording';
+
   final String id;
   String fileName;
   String filePath;
   String mimeType;
   int size;
   DateTime addedAt;
+
+  /// Playback length in milliseconds. Only meaningful for audio/video
+  /// files; null for anything else or when unknown. Optional and additive
+  /// so JSON written by older app versions (without this field) still
+  /// parses.
+  int? durationMs;
+
+  /// SHA-256 of the file's bytes, hex-encoded, computed once the file is
+  /// final (see RecordingFileStore). Used to detect corruption and to
+  /// avoid re-uploading identical bytes. Optional and additive, like
+  /// [durationMs].
+  String? sha256;
+
+  /// What kind of attachment this is. Currently only [kindRecording] is a
+  /// meaningful value (an audio recording captured in-app via
+  /// RecorderController); everything else (imported photos, documents,
+  /// audio picked from the file system, ...) leaves this null. Optional
+  /// and additive, like [durationMs].
+  String? kind;
 
   AttachedFile({
     String? id,
@@ -27,6 +77,9 @@ class AttachedFile {
     required this.mimeType,
     required this.size,
     DateTime? addedAt,
+    this.durationMs,
+    this.sha256,
+    this.kind,
   })  : id = id ?? const Uuid().v4(),
         addedAt = addedAt ?? DateTime.now();
 
@@ -37,6 +90,9 @@ class AttachedFile {
         'mimeType': mimeType,
         'size': size,
         'addedAt': addedAt.toIso8601String(),
+        if (durationMs != null) 'durationMs': durationMs,
+        if (sha256 != null) 'sha256': sha256,
+        if (kind != null) 'kind': kind,
       };
 
   factory AttachedFile.fromJson(Map<String, dynamic> json) => AttachedFile(
@@ -46,22 +102,43 @@ class AttachedFile {
         mimeType: json['mimeType'],
         size: json['size'],
         addedAt: DateTime.parse(json['addedAt']),
+        durationMs: json['durationMs'] as int?,
+        sha256: json['sha256'] as String?,
+        kind: json['kind'] as String?,
       );
 
   bool get isImage => mimeType.startsWith('image/');
   bool get isAudio => mimeType.startsWith('audio/');
   bool get isVideo => mimeType.startsWith('video/');
+  bool get isRecording => kind == kindRecording;
 }
 
 class Event {
   final String id;
   String title;
+
+  /// Free-text notes about the story. When this event has a recording
+  /// ([files] contains an [AttachedFile] with `kind == AttachedFile.
+  /// kindRecording`), this field also holds that recording's transcript -
+  /// live-transcribed or produced by "transcribe later" - which the user
+  /// can freely correct here. There is intentionally no separate
+  /// transcript field: the description IS the (editable) transcript once a
+  /// recording exists, and plain notes otherwise.
   String? description;
   EventType type;
   DateTime dateTime;
+
+  /// How precisely [dateTime] is known; see [DatePrecision]. Defaults to
+  /// [DatePrecision.time] so existing data (which always had a full
+  /// timestamp) keeps behaving exactly as before.
+  DatePrecision datePrecision;
   DateTime? endDateTime;
   String? placeId;
   List<String> participantIds;
+
+  /// Attachments for this event. A recording (kind ==
+  /// AttachedFile.kindRecording) belongs to exactly one event - this one -
+  /// for its whole life; recordings are not shared between events.
   List<AttachedFile> files;
   List<String> objectIds;
   DateTime createdAt;
@@ -74,6 +151,7 @@ class Event {
     this.description,
     this.type = EventType.other,
     required this.dateTime,
+    this.datePrecision = DatePrecision.time,
     this.endDateTime,
     this.placeId,
     List<String>? participantIds,
@@ -94,12 +172,29 @@ class Event {
     return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}';
   }
 
+  /// Human-readable date, formatted to match how precisely the date is
+  /// actually known: "1952", "June 1952", "Jun 12, 1952" or, with full
+  /// time precision, "Jun 12, 1952 3:45 PM".
+  String get displayDate => formatDateWithPrecision(dateTime, datePrecision);
+
+  /// Sorts events by date, most imprecise-safe: compares [dateTime]
+  /// first (so chronological order is always respected regardless of
+  /// precision), then falls back to more-precise-first when the
+  /// timestamps are exactly equal (e.g. two "year only" stories both
+  /// normalized to Jan 1st).
+  static int compareByDate(Event a, Event b) {
+    final byDate = a.dateTime.compareTo(b.dateTime);
+    if (byDate != 0) return byDate;
+    return b.datePrecision.index.compareTo(a.datePrecision.index);
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,
         'description': description,
         'type': type.name,
         'dateTime': dateTime.toIso8601String(),
+        'datePrecision': datePrecision.name,
         'endDateTime': endDateTime?.toIso8601String(),
         'placeId': placeId,
         'participantIds': participantIds,
@@ -119,6 +214,7 @@ class Event {
           orElse: () => EventType.other,
         ),
         dateTime: DateTime.parse(json['dateTime']),
+        datePrecision: _datePrecisionFromName(json['datePrecision'] as String?),
         endDateTime: json['endDateTime'] != null
             ? DateTime.parse(json['endDateTime'])
             : null,
@@ -139,6 +235,7 @@ class Event {
     String? description,
     EventType? type,
     DateTime? dateTime,
+    DatePrecision? datePrecision,
     DateTime? endDateTime,
     String? placeId,
     List<String>? participantIds,
@@ -152,6 +249,7 @@ class Event {
       description: description ?? this.description,
       type: type ?? this.type,
       dateTime: dateTime ?? this.dateTime,
+      datePrecision: datePrecision ?? this.datePrecision,
       endDateTime: endDateTime ?? this.endDateTime,
       placeId: placeId ?? this.placeId,
       participantIds: participantIds ?? this.participantIds,
