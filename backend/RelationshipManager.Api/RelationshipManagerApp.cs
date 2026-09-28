@@ -1,0 +1,283 @@
+using RelationshipManager.Api.Services;
+using RelationshipManager.Api.Auth;
+using RelationshipManager.Api.Data;
+using RelationshipManager.Api.Errors;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using Microsoft.IdentityModel.JsonWebTokens;
+
+namespace RelationshipManager.Api;
+
+/// <summary>
+/// Builds the application. This is called from Program.cs's top-level statements, and also
+/// directly by the test project, which hosts the same app on a real (loopback) Kestrel server
+/// instead of WebApplicationFactory's in-memory TestServer - see
+/// RelationshipManager.Api.Tests/TestWebApplicationFactory.cs for why.
+/// </summary>
+public static class RelationshipManagerApp
+{
+    /// <summary>Placeholder JWT secret shipped in appsettings.json for local development only.</summary>
+    public const string DevJwtSecretPlaceholder = "super-secret-key-for-development-only-32chars!";
+
+    /// <param name="args">Command-line args, forwarded to <see cref="WebApplication.CreateBuilder(WebApplicationOptions)"/>.</param>
+    /// <param name="configureBuilder">Hook to override configuration/services before the app is built (used by tests).</param>
+    /// <param name="environmentName">
+    /// Overrides the ASPNETCORE_ENVIRONMENT value. Must be set here rather than via
+    /// <c>configureBuilder</c>: once <see cref="WebApplication.CreateBuilder(WebApplicationOptions)"/> has run,
+    /// the unified WebApplicationBuilder no longer allows changing the environment.
+    /// </param>
+    /// <param name="contentRootPath">
+    /// Overrides the content root (where wwwroot is looked up from). Same restriction as
+    /// <paramref name="environmentName"/> - used by tests to exercise the wwwroot/index.html
+    /// static-file/SPA-fallback behaviour with a throwaway directory.
+    /// </param>
+    public static WebApplication Build(string[] args, Action<WebApplicationBuilder>? configureBuilder = null, string? environmentName = null, string? contentRootPath = null)
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            Args = args,
+            EnvironmentName = environmentName,
+            ContentRootPath = contentRootPath
+        });
+        configureBuilder?.Invoke(builder);
+
+        // Add services to the container. AddApplicationPart is explicit (rather than relying on
+        // MVC's default entry-assembly discovery) because that discovery keys off
+        // Assembly.GetEntryAssembly(), which under `dotnet test` is the VSTest host, not this
+        // assembly - without it, controllers silently fail to register when tests build the app
+        // directly via RelationshipManagerApp.Build instead of running Program.Main.
+        builder.Services.AddControllers()
+            .AddApplicationPart(typeof(RelationshipManagerApp).Assembly);
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen(c =>
+        {
+            c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+            {
+                Title = "RelationshipManager API",
+                Version = "v1"
+            });
+            c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Description = "JWT Authorization header using the Bearer scheme",
+                In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+                Name = "Authorization",
+                Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+                Scheme = "Bearer"
+            });
+            c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+            {
+                {
+                    new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                    {
+                        Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                        {
+                            Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                            Id = "Bearer"
+                        }
+                    },
+                    Array.Empty<string>()
+                }
+            });
+        });
+
+        // Cassandra/ScyllaDB - the session is only opened the first time something actually queries it.
+        // TryAdd (not Add) so that configureBuilder can pre-register fakes for these interfaces
+        // (as the test project does) without a real implementation being layered on top of them.
+        builder.Services.TryAddSingleton<ICassandraConnection, CassandraConnection>();
+        builder.Services.TryAddSingleton<IUserStore, CassandraUserStore>();
+        builder.Services.TryAddSingleton<ISyncStore, CassandraSyncStore>();
+
+        // S3 Service - lazy, optional. See Services/S3Service.cs.
+        builder.Services.TryAddSingleton<IS3Service, S3Service>();
+
+        // Transcription - optional (Transcription:BaseUrl), via IHttpClientFactory.
+        builder.Services.AddHttpClient("transcription");
+        builder.Services.TryAddSingleton<ITranscriptionService, TranscriptionService>();
+        builder.Services.TryAddSingleton<PerUserConcurrencyLimiter>();
+
+        // Firebase: only initialize when a service account is actually configured, so
+        // /api/auth/firebase can answer 503 instead of trusting an unverified token when it's
+        // not (see IFirebaseTokenVerifier). GoogleCredential.GetApplicationDefault() reads
+        // GOOGLE_APPLICATION_CREDENTIALS itself; we only check it exists first so a missing/typo'd
+        // path fails fast with a clear log line instead of a cryptic credentials error.
+        var googleCredentialsPath = System.Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS");
+        if (!string.IsNullOrEmpty(googleCredentialsPath) && FirebaseAdmin.FirebaseApp.DefaultInstance == null)
+        {
+            if (File.Exists(googleCredentialsPath))
+            {
+                FirebaseAdmin.FirebaseApp.Create(new FirebaseAdmin.AppOptions
+                {
+                    Credential = Google.Apis.Auth.OAuth2.GoogleCredential.GetApplicationDefault()
+                });
+            }
+            else
+            {
+                Console.Error.WriteLine($"GOOGLE_APPLICATION_CREDENTIALS is set to '{googleCredentialsPath}', but that file does not exist. Firebase sign-in stays disabled.");
+            }
+        }
+        builder.Services.TryAddSingleton<IFirebaseTokenVerifier, FirebaseTokenVerifier>();
+
+        // JWT secret: refuse to start outside Development with a missing, too-short, or placeholder secret.
+        var jwtSecret = builder.Configuration["jwt:secret"];
+        if (!builder.Environment.IsDevelopment())
+        {
+            if (string.IsNullOrEmpty(jwtSecret) || jwtSecret.Length < 32 || jwtSecret == DevJwtSecretPlaceholder)
+            {
+                Console.Error.WriteLine(
+                    "Configuration error: 'jwt:secret' is missing, shorter than 32 characters, or still set to " +
+                    "the development placeholder. Set a unique secret via the jwt:secret configuration key " +
+                    "(Jwt__Secret environment variable) before starting outside Development.");
+                throw new InvalidOperationException("jwt:secret is not configured securely for this environment.");
+            }
+        }
+        else if (string.IsNullOrEmpty(jwtSecret))
+        {
+            jwtSecret = DevJwtSecretPlaceholder;
+        }
+
+        var issuer = builder.Configuration["jwt:issuer"] ?? "relationship-manager";
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));
+
+        JsonWebTokenHandler.DefaultInboundClaimTypeMap.Clear();
+        builder.Services
+            .AddAuthorization()
+            .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(options =>
+            {
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidateAudience = true,
+                    ValidateIssuerSigningKey = true,
+                    ValidIssuer = issuer,
+                    ValidAudience = issuer,
+                    IssuerSigningKey = key
+                };
+            });
+
+        builder.Services.AddSingleton<AuthService>();
+        builder.Services.AddSingleton<SyncService>();
+
+        // CORS: origins come from Cors:AllowedOrigins. Empty means no cross-origin access. In
+        // Development, localhost on any port is also allowed so `flutter run -d chrome` works.
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+        var isDevelopment = builder.Environment.IsDevelopment();
+        builder.Services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(policy =>
+            {
+                policy.AllowAnyMethod().AllowAnyHeader();
+                if (isDevelopment)
+                {
+                    policy.SetIsOriginAllowed(origin => IsLocalhostOrigin(origin) || allowedOrigins.Contains(origin));
+                }
+                else if (allowedOrigins.Length > 0)
+                {
+                    policy.WithOrigins(allowedOrigins);
+                }
+                // else: no origins configured -> no cross-origin access allowed.
+            });
+        });
+
+        var app = builder.Build();
+
+        if (app.Environment.IsDevelopment())
+        {
+            app.UseSwagger();
+            app.UseSwaggerUI();
+        }
+
+        app.UseCors();
+
+        // Serve the compiled Flutter web app from wwwroot when the production image has one
+        // baked in. When wwwroot/index.html is missing (e.g. local API-only development), the
+        // API behaves exactly as before - no static file middleware or SPA fallback is registered.
+        var webRootPath = app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+        var indexHtmlPath = Path.Combine(webRootPath, "index.html");
+        var indexHtmlExists = File.Exists(indexHtmlPath);
+
+        if (indexHtmlExists)
+        {
+            var noCacheFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "index.html", "flutter_bootstrap.js", "flutter_service_worker.js", "version.json"
+            };
+            // A content hash in the filename (Flutter/most bundlers use a long hex digest) is what
+            // makes long-term caching safe - anything else only gets the no-cache treatment above,
+            // or the framework's normal (uncached) static file defaults.
+            var hashedFileNamePattern = new Regex("[0-9a-f]{8,}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+            var contentTypeProvider = new FileExtensionContentTypeProvider();
+            contentTypeProvider.Mappings[".wasm"] = "application/wasm";
+
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                ContentTypeProvider = contentTypeProvider,
+                OnPrepareResponse = ctx =>
+                {
+                    var fileName = Path.GetFileName(ctx.File.Name);
+                    if (noCacheFileNames.Contains(fileName))
+                    {
+                        ctx.Context.Response.Headers.CacheControl = "no-cache";
+                    }
+                    else if (hashedFileNamePattern.IsMatch(fileName))
+                    {
+                        ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+                    }
+                }
+            });
+        }
+
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.MapControllers();
+
+        // Unmatched /api, /health and /swagger paths stay a JSON 404 (not index.html); every
+        // other unmatched path gets the SPA's index.html when it exists, so client-side routing
+        // works on a hard refresh. Written by hand (not WriteAsJsonAsync/Results.Json) because
+        // that hits a PipeWriter.UnflushedBytes bug under this environment's TestServer - see
+        // RelationshipManager.Api.Tests/TestWebApplicationFactory.cs.
+        app.MapFallback(async context =>
+        {
+            var path = context.Request.Path.Value ?? "";
+            var isReservedPath = path.StartsWith("/api", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith("/health", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase);
+
+            if (isReservedPath)
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(JsonSerializer.Serialize(new ApiError("not_found", "The requested resource was not found.")));
+                return;
+            }
+
+            if (indexHtmlExists)
+            {
+                context.Response.ContentType = "text/html";
+                context.Response.Headers.CacheControl = "no-cache";
+                await context.Response.SendFileAsync(indexHtmlPath);
+            }
+            else
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+            }
+        });
+
+        return app;
+    }
+
+    private static bool IsLocalhostOrigin(string origin)
+    {
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+        return uri.Host is "localhost" or "127.0.0.1" or "::1";
+    }
+}
