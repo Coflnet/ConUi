@@ -338,6 +338,11 @@ void main() {
   });
 
   group('FamilyGraph.shortestPath()', () {
+    // The narrative text built from a path (e.g. "Anna is the parent of
+    // Bert.") is covered by RelationshipText.pathDescription()'s own tests
+    // in relationship_text_test.dart, since building it needs an
+    // AppLocalizations - this file stays Flutter-free (see the class doc
+    // comment on FamilyGraph) and only checks the structural result.
     test('a direct edge is a one-hop path', () {
       final graph = FamilyGraph.build(
         persons: [person('anna', name: 'Anna'), person('bert', name: 'Bert')],
@@ -345,7 +350,7 @@ void main() {
       );
       final path = graph.shortestPath('anna', 'bert')!;
       expect(path.personIds, ['anna', 'bert']);
-      expect(path.description, 'Anna is the parent of Bert.');
+      expect(path.edges.single.id, 'r1');
     });
 
     test('chains a multi-hop path into one narrative, matching the reading rule per hop', () {
@@ -362,7 +367,7 @@ void main() {
       );
       final path = graph.shortestPath('anna', 'clara')!;
       expect(path.personIds, ['anna', 'bert', 'clara']);
-      expect(path.description, 'Anna is the parent of Bert, Bert is the spouse of Clara.');
+      expect(path.edges.map((e) => e.id), ['r1', 'r2']);
     });
 
     test('describes the reverse direction correctly for a directed hop', () {
@@ -371,7 +376,8 @@ void main() {
         connections: [connection('r1', 'anna', 'bert', 'parent')],
       );
       final path = graph.shortestPath('bert', 'anna')!;
-      expect(path.description, 'Bert is the child of Anna.');
+      expect(path.personIds, ['bert', 'anna']);
+      expect(path.edges.single.kindFrom('bert').known, RelationshipType.child);
     });
 
     test('returns null when the two persons are not connected', () {

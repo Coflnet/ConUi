@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../relationships/relationship_text.dart';
 import '../../relationships/relationship_type.dart';
@@ -78,8 +79,10 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).toString();
     return AlertDialog(
-      title: const Text('Edit Connection'),
+      title: Text(l10n.connectionDialogEditTitle),
       content: SizedBox(
         width: 400,
         child: SingleChildScrollView(
@@ -87,12 +90,12 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('With ${widget.otherPerson.name}',
+              Text(l10n.connectionDialogWith(widget.otherPerson.name),
                   style: Theme.of(context).textTheme.titleMedium),
               if (!_originalKind.isKnown) ...[
                 const SizedBox(height: 4),
                 Text(
-                  'Currently stored as "${RelationshipText.labelForRaw(_originalKind.raw)}" - pick a type below to migrate it.',
+                  l10n.relCurrentlyStoredAsRaw(RelationshipText.labelForRaw(l10n, _originalKind.raw)),
                   style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
                 ),
               ],
@@ -101,20 +104,20 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<RelationshipType>(
-                      decoration:
-                          InputDecoration(labelText: '${widget.viewedPerson.name} is the ...'),
+                      decoration: InputDecoration(
+                          labelText: l10n.connectionDialogPersonIsThe(widget.viewedPerson.name)),
                       // ignore: deprecated_member_use
                       value: _type,
                       items: RelationshipType.values
-                          .map((t) =>
-                              DropdownMenuItem(value: t, child: Text(RelationshipText.label(t))))
+                          .map((t) => DropdownMenuItem(
+                              value: t, child: Text(RelationshipText.label(l10n, t))))
                           .toList(),
                       onChanged: (t) => setState(() => _type = t ?? _type),
                     ),
                   ),
                   if (_type.isDirected)
                     IconButton(
-                      tooltip: 'Swap direction',
+                      tooltip: l10n.connectionDialogSwapDirection,
                       icon: const Icon(Icons.swap_vert),
                       onPressed: () => setState(() => _type = inverseOf(_type)),
                     ),
@@ -129,15 +132,16 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  RelationshipText.sentence(widget.viewedPerson.name, widget.otherPerson.name, _type),
+                  RelationshipText.sentence(
+                      l10n, widget.viewedPerson.name, widget.otherPerson.name, _type),
                   style: const TextStyle(fontStyle: FontStyle.italic),
                 ),
               ),
               const SizedBox(height: 16),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Start Date'),
-                subtitle: Text(DateFormat.yMMMd().format(_startDate)),
+                title: Text(l10n.connectionDialogStartDate),
+                subtitle: Text(DateFormat.yMMMd(locale).format(_startDate)),
                 trailing: const Icon(Icons.calendar_today),
                 onTap: () async {
                   final date = await showDatePicker(
@@ -151,8 +155,10 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('End Date'),
-                subtitle: Text(_endDate == null ? 'None (ongoing)' : DateFormat.yMMMd().format(_endDate!)),
+                title: Text(l10n.connectionDialogEndDate),
+                subtitle: Text(_endDate == null
+                    ? l10n.connectionDialogEndDateOngoing
+                    : DateFormat.yMMMd(locale).format(_endDate!)),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -177,9 +183,9 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
               const SizedBox(height: 8),
               TextField(
                 controller: _descriptionController,
-                decoration: const InputDecoration(
-                  labelText: 'Description',
-                  hintText: 'Optional notes about this connection',
+                decoration: InputDecoration(
+                  labelText: l10n.connectionDialogDescription,
+                  hintText: l10n.connectionDialogDescriptionHint,
                 ),
                 maxLines: 2,
               ),
@@ -190,7 +196,7 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(l10n.commonCancel),
         ),
         FilledButton(
           onPressed: _isSaving ? null : _save,
@@ -200,7 +206,7 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Save'),
+              : Text(l10n.commonSave),
         ),
       ],
     );

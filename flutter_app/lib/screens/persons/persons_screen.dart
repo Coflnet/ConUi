@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../services/database_service.dart';
 import 'person_detail_screen.dart';
@@ -75,6 +76,7 @@ class _PersonsScreenState extends State<PersonsScreen> {
             .toList();
 
     filteredPersons.sort((a, b) => a.name.compareTo(b.name));
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       body: Column(
@@ -101,7 +103,7 @@ class _PersonsScreenState extends State<PersonsScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : filteredPersons.isEmpty
-                    ? _buildEmptyState()
+                    ? _buildEmptyState(l10n)
                     : RefreshIndicator(
                         onRefresh: _loadPersons,
                         child: ListView.builder(
@@ -115,7 +117,7 @@ class _PersonsScreenState extends State<PersonsScreen> {
                                 child: OutlinedButton.icon(
                                   onPressed: _addPerson,
                                   icon: const Icon(Icons.person_add),
-                                  label: const Text('Add Person'),
+                                  label: Text(l10n.personsAdd),
                                 ),
                               );
                             }
@@ -133,12 +135,12 @@ class _PersonsScreenState extends State<PersonsScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addPerson,
         icon: const Icon(Icons.add),
-        label: const Text('Add Person'),
+        label: Text(l10n.personsAdd),
       ),
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(AppLocalizations l10n) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -151,8 +153,8 @@ class _PersonsScreenState extends State<PersonsScreen> {
           const SizedBox(height: 16),
           Text(
             _searchQuery.isEmpty
-                ? 'No people yet'
-                : 'No people match your search',
+                ? l10n.personsEmptyTitle
+                : l10n.personsEmptySearchTitle,
             style: TextStyle(
               fontSize: 18,
               color: Colors.grey[600],
@@ -161,7 +163,7 @@ class _PersonsScreenState extends State<PersonsScreen> {
           if (_searchQuery.isEmpty) ...[
             const SizedBox(height: 8),
             Text(
-              'Add your first contact to get started',
+              l10n.personsEmptySubtitle,
               style: TextStyle(color: Colors.grey[500]),
             ),
           ],

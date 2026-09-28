@@ -64,24 +64,29 @@ class Person {
         createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
 
-  /// [birthday] formatted to match [birthdayPrecision], or null if unknown.
-  String? get displayBirthday =>
-      birthday == null ? null : formatDateWithPrecision(birthday!, birthdayPrecision);
+  /// [birthday] formatted to match [birthdayPrecision] (in [locale] if
+  /// given - see [formatDateWithPrecision]), or null if unknown.
+  String? displayBirthday([String? locale]) =>
+      birthday == null ? null : formatDateWithPrecision(birthday!, birthdayPrecision, locale);
 
-  /// [deathDate] formatted to match [deathDatePrecision], or null if unknown
-  /// (or the person is presumed alive).
-  String? get displayDeathDate =>
-      deathDate == null ? null : formatDateWithPrecision(deathDate!, deathDatePrecision);
+  /// [deathDate] formatted to match [deathDatePrecision] (in [locale] if
+  /// given), or null if unknown (or the person is presumed alive).
+  String? displayDeathDate([String? locale]) =>
+      deathDate == null ? null : formatDateWithPrecision(deathDate!, deathDatePrecision, locale);
 
   /// A compact life-dates label for tight spaces (e.g. graph nodes):
-  /// "1950 - 2020" with both dates known, "b. 1950" or "d. 2020" with only
-  /// one, or null with neither.
-  String? get lifeDatesLabel {
-    final b = displayBirthday;
-    final d = displayDeathDate;
+  /// "1950 - 2020" with both dates known, "$bornPrefix 1950" or "$diedPrefix
+  /// 2020" with only one, or null with neither. [bornPrefix]/[diedPrefix]
+  /// default to the English "b."/"d." abbreviations; a caller with an
+  /// [AppLocalizations] (this model stays Flutter-free, see
+  /// `relationship_text.dart`'s doc comment for why) should pass its own
+  /// localized ones instead.
+  String? lifeDatesLabel({String? locale, String bornPrefix = 'b.', String diedPrefix = 'd.'}) {
+    final b = displayBirthday(locale);
+    final d = displayDeathDate(locale);
     if (b != null && d != null) return '$b - $d';
-    if (b != null) return 'b. $b';
-    if (d != null) return 'd. $d';
+    if (b != null) return '$bornPrefix $b';
+    if (d != null) return '$diedPrefix $d';
     return null;
   }
 

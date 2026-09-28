@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/screens/persons/persons_screen.dart';
 import 'package:relationship_manager/services/database_service.dart';
@@ -17,7 +18,11 @@ Future<void> _pumpPersonsScreen(WidgetTester tester, DatabaseService db) async {
   await tester.pumpWidget(
     ChangeNotifierProvider<DatabaseService>.value(
       value: db,
-      child: const MaterialApp(home: PersonsScreen()),
+      child: const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: PersonsScreen(),
+      ),
     ),
   );
   await tester.pumpAndSettle();

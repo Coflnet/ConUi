@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/relationships/relationship_type.dart';
 import 'package:relationship_manager/screens/persons/add_connection_dialog.dart';
@@ -24,6 +25,8 @@ Future<void> _pumpDialogHost(
     ChangeNotifierProvider<DatabaseService>.value(
       value: db,
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Builder(
           builder: (context) => Scaffold(
             body: Center(

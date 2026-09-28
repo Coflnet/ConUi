@@ -1,7 +1,6 @@
 import 'dart:collection';
 
 import '../models/person.dart';
-import 'relationship_text.dart';
 import 'relationship_type.dart';
 
 /// Display grouping for a person's neighbours (see [FamilyGraph.groupedNeighbors]).
@@ -166,18 +165,17 @@ class GraphTraversal {
   });
 }
 
-/// The shortest chain of edges connecting two persons, with a human-readable narrative
-/// built by chaining [RelationshipText.sentenceFragment]/[RelationshipText.sentenceFragmentForRaw]
-/// per hop, e.g. "Anna is the parent of Bert, Bert is the spouse of Clara."
+/// The shortest chain of edges connecting two persons. [personIds] and [edges] are
+/// enough to build a human-readable narrative by chaining a sentence per hop (see
+/// `RelationshipText.pathDescription`, which does that) - this class itself stays free
+/// of user-facing strings, like the rest of this package (see the file doc comment).
 class RelationshipPath {
   final List<String> personIds;
   final List<GraphEdge> edges;
-  final String description;
 
   const RelationshipPath({
     required this.personIds,
     required this.edges,
-    required this.description,
   });
 }
 
@@ -427,23 +425,9 @@ class FamilyGraph {
     final orderedPersonIds = pathPersonIds.reversed.toList();
     final orderedEdges = pathEdges.reversed.toList();
 
-    final fragments = <String>[];
-    for (var i = 0; i < orderedEdges.length; i++) {
-      final edge = orderedEdges[i];
-      final sourceId = orderedPersonIds[i];
-      final targetId = orderedPersonIds[i + 1];
-      final kind = edge.kindFrom(sourceId);
-      final sourceName = personById(sourceId)?.name ?? sourceId;
-      final targetName = personById(targetId)?.name ?? targetId;
-      fragments.add(kind.isKnown
-          ? RelationshipText.sentenceFragment(sourceName, targetName, kind.known!)
-          : RelationshipText.sentenceFragmentForRaw(sourceName, targetName, kind.raw));
-    }
-
     return RelationshipPath(
       personIds: orderedPersonIds,
       edges: orderedEdges,
-      description: '${fragments.join(', ')}.',
     );
   }
 }

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../relationships/family_graph.dart';
 import '../../relationships/graph_layout.dart';
@@ -45,6 +46,7 @@ class _RelationshipGraphScreenState extends State<RelationshipGraphScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Consumer<DatabaseService>(
       builder: (context, db, _) {
         return FutureBuilder<List<Object>>(
@@ -53,7 +55,7 @@ class _RelationshipGraphScreenState extends State<RelationshipGraphScreen> {
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               return Scaffold(
-                appBar: AppBar(title: const Text('Family Graph')),
+                appBar: AppBar(title: Text(l10n.graphScreenTitle)),
                 body: const Center(child: CircularProgressIndicator()),
               );
             }
@@ -65,8 +67,8 @@ class _RelationshipGraphScreenState extends State<RelationshipGraphScreen> {
 
             if (centerPerson == null) {
               return Scaffold(
-                appBar: AppBar(title: const Text('Family Graph')),
-                body: const Center(child: Text('Person not found')),
+                appBar: AppBar(title: Text(l10n.graphScreenTitle)),
+                body: Center(child: Text(l10n.graphScreenPersonNotFound)),
               );
             }
 
@@ -80,23 +82,26 @@ class _RelationshipGraphScreenState extends State<RelationshipGraphScreen> {
 
             return Scaffold(
               appBar: AppBar(
-                title: Text("${centerPerson.name}'s family graph"),
+                title: Text(l10n.graphScreenPersonName(centerPerson.name)),
                 actions: [
                   IconButton(
                     icon: Icon(_showTextAlternative ? Icons.account_tree_outlined : Icons.list_alt),
-                    tooltip: _showTextAlternative ? 'Show graph' : 'Show as list',
+                    tooltip: _showTextAlternative
+                        ? l10n.graphScreenShowGraph
+                        : l10n.graphScreenShowAsList,
                     onPressed: () => setState(() => _showTextAlternative = !_showTextAlternative),
                   ),
                 ],
               ),
               body: Column(
                 children: [
-                  _buildDepthControl(),
-                  if (traversal.truncated) _buildTruncatedBanner(context),
+                  _buildDepthControl(l10n),
+                  if (traversal.truncated) _buildTruncatedBanner(context, l10n),
                   Expanded(
                     child: _showTextAlternative
-                        ? _buildTextAlternative(graph, layout)
-                        : _buildGraphView(context, db, graph, layout, allPersons, allConnections),
+                        ? _buildTextAlternative(l10n, graph, layout)
+                        : _buildGraphView(
+                            context, l10n, db, graph, layout, allPersons, allConnections),
                   ),
                 ],
               ),
@@ -107,12 +112,12 @@ class _RelationshipGraphScreenState extends State<RelationshipGraphScreen> {
     );
   }
 
-  Widget _buildDepthControl() {
+  Widget _buildDepthControl(AppLocalizations l10n) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          const Text('Depth'),
+          Text(l10n.graphScreenDepth),
           const SizedBox(width: 12),
           for (var d = 1; d <= 4; d++)
             Padding(
@@ -128,15 +133,14 @@ class _RelationshipGraphScreenState extends State<RelationshipGraphScreen> {
     );
   }
 
-  Widget _buildTruncatedBanner(BuildContext context) {
+  Widget _buildTruncatedBanner(BuildContext context, AppLocalizations l10n) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       color: scheme.errorContainer,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Text(
-        'Showing the first $_defaultNodeLimit people reached - more exist. '
-        'Reduce the depth or center on someone else to explore further.',
+        l10n.graphScreenTruncatedBanner(_defaultNodeLimit),
         style: TextStyle(color: scheme.onErrorContainer, fontSize: 12),
       ),
     );
@@ -144,6 +148,7 @@ class _RelationshipGraphScreenState extends State<RelationshipGraphScreen> {
 
   Widget _buildGraphView(
     BuildContext context,
+    AppLocalizations l10n,
     DatabaseService db,
     FamilyGraph graph,
     GraphLayout layout,
@@ -153,7 +158,7 @@ class _RelationshipGraphScreenState extends State<RelationshipGraphScreen> {
     // traverse() always includes the centered person, so a lone person with no edges
     // still yields exactly one node - treat that the same as "nothing to show" too.
     if (layout.nodes.length <= 1) {
-      return const Center(child: Text('No relationships to show yet.'));
+      return Center(child: Text(l10n.graphScreenNoRelationships));
     }
 
     final xs = layout.nodes.map((n) => n.x);
@@ -204,7 +209,7 @@ class _RelationshipGraphScreenState extends State<RelationshipGraphScreen> {
                     person: graph.personById(node.id),
                     isCenter: node.id == _centerPersonId,
                     onTap: () => _showNodeActions(
-                        context, db, graph, node.id, allPersons, allConnections),
+                        context, l10n, db, graph, node.id, allPersons, allConnections),
                   ),
                 );
               }),
@@ -214,22 +219,23 @@ class _RelationshipGraphScreenState extends State<RelationshipGraphScreen> {
     );
   }
 
-  Widget _buildTextAlternative(FamilyGraph graph, GraphLayout layout) {
+  Widget _buildTextAlternative(AppLocalizations l10n, FamilyGraph graph, GraphLayout layout) {
     if (layout.edges.isEmpty) {
-      return const Center(child: Text('No relationships to show yet.'));
+      return Center(child: Text(l10n.graphScreenNoRelationships));
     }
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: layout.edges.length,
       itemBuilder: (context, index) {
         final edge = layout.edges[index];
-        final sourceName = graph.personById(edge.sourceId)?.name ?? 'Unknown';
-        final targetName = graph.personById(edge.targetId)?.name ?? 'Unknown';
+        final sourceName = graph.personById(edge.sourceId)?.name ?? l10n.graphScreenUnknownPerson;
+        final targetName = graph.personById(edge.targetId)?.name ?? l10n.graphScreenUnknownPerson;
         return ListTile(
           dense: true,
           leading: Icon(_iconFor(edge.kind)),
           title: Text(
-            RelationshipText.graphEdgeSentence(sourceName, targetName, edge.kind, edge.isDerived),
+            RelationshipText.graphEdgeSentence(
+                l10n, sourceName, targetName, edge.kind, edge.isDerived),
           ),
         );
       },
@@ -251,6 +257,7 @@ class _RelationshipGraphScreenState extends State<RelationshipGraphScreen> {
 
   void _showNodeActions(
     BuildContext context,
+    AppLocalizations l10n,
     DatabaseService db,
     FamilyGraph graph,
     String personId,
@@ -272,7 +279,7 @@ class _RelationshipGraphScreenState extends State<RelationshipGraphScreen> {
             const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.center_focus_strong_outlined),
-              title: const Text('Center graph on this person'),
+              title: Text(l10n.graphScreenCenterOnPerson),
               enabled: personId != _centerPersonId,
               onTap: () {
                 Navigator.pop(sheetContext);
@@ -281,7 +288,7 @@ class _RelationshipGraphScreenState extends State<RelationshipGraphScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.person_outline),
-              title: const Text('Open person'),
+              title: Text(l10n.graphScreenOpenPerson),
               onTap: () {
                 Navigator.pop(sheetContext);
                 Navigator.push(
@@ -292,7 +299,7 @@ class _RelationshipGraphScreenState extends State<RelationshipGraphScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.link),
-              title: Text('Add relationship from ${person.name}'),
+              title: Text(l10n.graphScreenAddRelationshipFrom(person.name)),
               onTap: () async {
                 Navigator.pop(sheetContext);
                 final events = await db.getEvents();
@@ -323,9 +330,15 @@ class _NodeBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
-    final name = person?.name ?? 'Unknown';
+    final name = person?.name ?? l10n.graphScreenUnknownPerson;
     final foreground = isCenter ? scheme.onPrimaryContainer : scheme.onSurface;
+    final lifeDates = person?.lifeDatesLabel(
+      locale: l10n.localeName,
+      bornPrefix: l10n.personBornPrefix,
+      diedPrefix: l10n.personDiedPrefix,
+    );
 
     return Material(
       color: isCenter ? scheme.primaryContainer : scheme.surfaceContainerHigh,
@@ -349,9 +362,9 @@ class _NodeBubble extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontWeight: FontWeight.w600, color: foreground),
               ),
-              if (person?.lifeDatesLabel != null)
+              if (lifeDates != null)
                 Text(
-                  person!.lifeDatesLabel!,
+                  lifeDates,
                   style: TextStyle(fontSize: 11, color: foreground.withValues(alpha: 0.7)),
                 ),
             ],

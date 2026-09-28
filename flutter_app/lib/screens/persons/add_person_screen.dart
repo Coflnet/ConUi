@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../services/database_service.dart';
 
@@ -160,20 +162,26 @@ class _AddPersonScreenState extends State<AddPersonScreen> {
     await db.savePerson(person);
 
     if (mounted) {
+      final l10n = AppLocalizations.of(context);
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(
-                '${person.name} ${_isEditing ? "updated" : "added"} successfully')),
+            content: Text(l10n.addPersonSavedSnackbar(
+                person.name,
+                _isEditing
+                    ? l10n.addPersonSavedActionUpdated
+                    : l10n.addPersonSavedActionAdded))),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).toString();
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditing ? 'Edit Person' : 'Add Person'),
+        title: Text(_isEditing ? l10n.addPersonTitleEdit : l10n.addPersonTitleNew),
         actions: [
           TextButton(
             onPressed: _isSaving ? null : _save,
@@ -183,7 +191,7 @@ class _AddPersonScreenState extends State<AddPersonScreen> {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Save'),
+                : Text(l10n.commonSave),
           ),
         ],
       ),
@@ -194,14 +202,14 @@ class _AddPersonScreenState extends State<AddPersonScreen> {
           children: [
             TextFormField(
               controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Name *',
-                prefixIcon: Icon(Icons.person),
+              decoration: InputDecoration(
+                labelText: l10n.addPersonNameLabel,
+                prefixIcon: const Icon(Icons.person),
               ),
               textCapitalization: TextCapitalization.words,
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
-                  return 'Please enter a name';
+                  return l10n.addPersonNameRequired;
                 }
                 return null;
               },
@@ -209,27 +217,27 @@ class _AddPersonScreenState extends State<AddPersonScreen> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _aliasesController,
-              decoration: const InputDecoration(
-                labelText: 'Aliases/Nicknames',
-                prefixIcon: Icon(Icons.label),
-                helperText: 'Separate multiple aliases with commas',
+              decoration: InputDecoration(
+                labelText: l10n.addPersonAliasesLabel,
+                prefixIcon: const Icon(Icons.label),
+                helperText: l10n.addPersonAliasesHelper,
               ),
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _emailController,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                prefixIcon: Icon(Icons.email),
+              decoration: InputDecoration(
+                labelText: l10n.addPersonEmailLabel,
+                prefixIcon: const Icon(Icons.email),
               ),
               keyboardType: TextInputType.emailAddress,
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _phoneController,
-              decoration: const InputDecoration(
-                labelText: 'Phone',
-                prefixIcon: Icon(Icons.phone),
+              decoration: InputDecoration(
+                labelText: l10n.addPersonPhoneLabel,
+                prefixIcon: const Icon(Icons.phone),
               ),
               keyboardType: TextInputType.phone,
             ),
@@ -237,9 +245,9 @@ class _AddPersonScreenState extends State<AddPersonScreen> {
             ListTile(
               leading: const Icon(Icons.cake),
               title: Text(_birthday == null
-                  ? 'Birthday'
-                  : '${_birthday!.day}/${_birthday!.month}/${_birthday!.year}'),
-              subtitle: const Text('Tap to select'),
+                  ? l10n.addPersonBirthdayLabel
+                  : DateFormat.yMd(locale).format(_birthday!)),
+              subtitle: Text(l10n.addPersonTapToSelect),
               onTap: _selectBirthday,
               trailing: _birthday != null
                   ? IconButton(
@@ -256,9 +264,9 @@ class _AddPersonScreenState extends State<AddPersonScreen> {
             ListTile(
               leading: const Icon(Icons.event_busy),
               title: Text(_deathDate == null
-                  ? 'Date of death'
-                  : '${_deathDate!.day}/${_deathDate!.month}/${_deathDate!.year}'),
-              subtitle: const Text('Optional - tap to select'),
+                  ? l10n.addPersonDeathDateLabel
+                  : DateFormat.yMd(locale).format(_deathDate!)),
+              subtitle: Text(l10n.addPersonDeathDateOptional),
               onTap: _selectDeathDate,
               trailing: _deathDate != null
                   ? IconButton(
@@ -274,36 +282,36 @@ class _AddPersonScreenState extends State<AddPersonScreen> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _companyController,
-              decoration: const InputDecoration(
-                labelText: 'Company',
-                prefixIcon: Icon(Icons.business),
+              decoration: InputDecoration(
+                labelText: l10n.addPersonCompanyLabel,
+                prefixIcon: const Icon(Icons.business),
               ),
               textCapitalization: TextCapitalization.words,
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _jobTitleController,
-              decoration: const InputDecoration(
-                labelText: 'Job Title',
-                prefixIcon: Icon(Icons.work),
+              decoration: InputDecoration(
+                labelText: l10n.addPersonJobTitleLabel,
+                prefixIcon: const Icon(Icons.work),
               ),
               textCapitalization: TextCapitalization.words,
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _addressController,
-              decoration: const InputDecoration(
-                labelText: 'Address',
-                prefixIcon: Icon(Icons.location_on),
+              decoration: InputDecoration(
+                labelText: l10n.addPersonAddressLabel,
+                prefixIcon: const Icon(Icons.location_on),
               ),
               maxLines: 2,
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _notesController,
-              decoration: const InputDecoration(
-                labelText: 'Notes',
-                prefixIcon: Icon(Icons.note),
+              decoration: InputDecoration(
+                labelText: l10n.addPersonNotesLabel,
+                prefixIcon: const Icon(Icons.note),
               ),
               maxLines: 4,
             ),

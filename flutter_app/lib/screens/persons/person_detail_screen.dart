@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../relationships/family_graph.dart';
 import '../../relationships/relationship_text.dart';
@@ -24,6 +25,8 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).toString();
     return Consumer<DatabaseService>(
       builder: (context, db, _) {
         return FutureBuilder<Person?>(
@@ -32,7 +35,7 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return Scaffold(
-                appBar: AppBar(title: const Text('Loading...')),
+                appBar: AppBar(title: Text(l10n.personDetailLoading)),
                 body: const Center(child: CircularProgressIndicator()),
               );
             }
@@ -40,8 +43,8 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
             final person = snapshot.data;
             if (person == null) {
               return Scaffold(
-                appBar: AppBar(title: const Text('Not Found')),
-                body: const Center(child: Text('Person not found')),
+                appBar: AppBar(title: Text(l10n.personDetailNotFoundTitle)),
+                body: Center(child: Text(l10n.personDetailNotFound)),
               );
             }
 
@@ -51,7 +54,7 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                 actions: [
                   IconButton(
                     icon: const Icon(Icons.account_tree_outlined),
-                    tooltip: 'Show family graph',
+                    tooltip: l10n.personDetailShowFamilyGraph,
                     onPressed: () => Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -77,46 +80,46 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                     _buildHeader(context, person),
                     const SizedBox(height: 24),
                     if (person.aliases.isNotEmpty) ...[
-                      _buildSection('Aliases', person.aliases.join(', ')),
+                      _buildSection(l10n.personDetailAliasesHeading, person.aliases.join(', ')),
                       const SizedBox(height: 16),
                     ],
                     if (person.email != null)
-                      _buildInfoTile(Icons.email, 'Email', person.email!),
+                      _buildInfoTile(Icons.email, l10n.personDetailEmailLabel, person.email!),
                     if (person.phoneNumber != null)
-                      _buildInfoTile(Icons.phone, 'Phone', person.phoneNumber!),
+                      _buildInfoTile(Icons.phone, l10n.personDetailPhoneLabel, person.phoneNumber!),
                     if (person.birthday != null)
-                      _buildInfoTile(
-                          Icons.cake, 'Birthday', person.displayBirthday!),
+                      _buildInfoTile(Icons.cake, l10n.personDetailBirthdayLabel,
+                          person.displayBirthday(locale)!),
                     if (person.deathDate != null)
-                      _buildInfoTile(Icons.event_busy, 'Date of death',
-                          person.displayDeathDate!),
+                      _buildInfoTile(Icons.event_busy, l10n.personDetailDeathDateLabel,
+                          person.displayDeathDate(locale)!),
                     if (person.company != null)
                       _buildInfoTile(
-                          Icons.business, 'Company', person.company!),
+                          Icons.business, l10n.personDetailCompanyLabel, person.company!),
                     if (person.jobTitle != null)
-                      _buildInfoTile(Icons.work, 'Job Title', person.jobTitle!),
+                      _buildInfoTile(Icons.work, l10n.personDetailJobTitleLabel, person.jobTitle!),
                     if (person.address != null)
                       _buildInfoTile(
-                          Icons.location_on, 'Address', person.address!),
+                          Icons.location_on, l10n.personDetailAddressLabel, person.address!),
                     if (person.notes != null) ...[
                       const SizedBox(height: 24),
-                      _buildSection('Notes', person.notes!),
+                      _buildSection(l10n.personDetailNotesHeading, person.notes!),
                     ],
                     if (person.customAttributes.isNotEmpty) ...[
                       const SizedBox(height: 24),
-                      _buildCustomAttributes(person.customAttributes),
+                      _buildCustomAttributes(l10n, person.customAttributes),
                     ],
                     const SizedBox(height: 24),
-                    _buildConnectionsSection(context, db, person),
+                    _buildConnectionsSection(context, l10n, db, person),
                     const SizedBox(height: 24),
-                    _buildEventsSection(context, db, person),
+                    _buildEventsSection(context, l10n, db, person),
                   ],
                 ),
               ),
               floatingActionButton: FloatingActionButton.extended(
                 onPressed: () => _addConnection(context, db, person),
                 icon: const Icon(Icons.link),
-                label: const Text('Add Connection'),
+                label: Text(l10n.personDetailAddConnection),
               ),
             );
           },
@@ -202,13 +205,13 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
     );
   }
 
-  Widget _buildCustomAttributes(Map<String, String> attributes) {
+  Widget _buildCustomAttributes(AppLocalizations l10n, Map<String, String> attributes) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Custom Attributes',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        Text(
+          l10n.personDetailCustomAttributesHeading,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         const SizedBox(height: 8),
         ...attributes.entries.map((e) => Padding(
@@ -226,7 +229,7 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
   }
 
   Widget _buildConnectionsSection(
-      BuildContext context, DatabaseService db, Person person) {
+      BuildContext context, AppLocalizations l10n, DatabaseService db, Person person) {
     return FutureBuilder<List<Object>>(
       future: Future.wait([db.getPersons(), db.getConnections()]),
       builder: (context, snapshot) {
@@ -243,15 +246,15 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Connections',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            Text(
+              l10n.personDetailConnectionsHeading,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             for (final group in nonEmptyGroups) ...[
               Padding(
                 padding: const EdgeInsets.only(top: 12, bottom: 4),
                 child: Text(
-                  RelationshipText.groupLabel(group),
+                  RelationshipText.groupLabel(l10n, group),
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: Theme.of(context).colorScheme.primary,
@@ -259,7 +262,7 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                 ),
               ),
               ...grouped[group]!.map(
-                  (entry) => _buildConnectionTile(context, db, person, entry, graph)),
+                  (entry) => _buildConnectionTile(context, l10n, db, person, entry, graph)),
             ],
           ],
         );
@@ -267,23 +270,24 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
     );
   }
 
-  Widget _buildConnectionTile(BuildContext context, DatabaseService db,
+  Widget _buildConnectionTile(BuildContext context, AppLocalizations l10n, DatabaseService db,
       Person person, PersonRelationshipView entry, FamilyGraph graph) {
     final neighbor = graph.personById(entry.neighborId);
-    final neighborName = neighbor?.name ?? 'Unknown';
+    final neighborName = neighbor?.name ?? l10n.personDetailUnknownNeighbor;
     final roleLabel = entry.kind.isKnown
-        ? RelationshipText.roleOfLabel(entry.kind.known!, neighborName)
-        : RelationshipText.roleOfLabelForRaw(entry.kind.raw, neighborName);
+        ? RelationshipText.roleOfLabel(l10n, entry.kind.known!, neighborName)
+        : RelationshipText.roleOfLabelForRaw(l10n, entry.kind.raw, neighborName);
 
     return ListTile(
       leading: CircleAvatar(
         child: Text(neighborName.isNotEmpty ? neighborName[0].toUpperCase() : '?'),
       ),
       title: Text(neighborName),
-      subtitle: Text(entry.isDerived ? '$roleLabel · derived' : roleLabel),
+      subtitle:
+          Text(entry.isDerived ? l10n.personDetailDerivedSuffix(roleLabel) : roleLabel),
       trailing: entry.isDerived
           ? Tooltip(
-              message: 'Derived from shared parents - not an editable connection',
+              message: l10n.personDetailDerivedTooltip,
               child: Icon(Icons.auto_awesome,
                   size: 20, color: Theme.of(context).colorScheme.outline),
             )
@@ -298,7 +302,7 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete_outline, size: 20),
-                  onPressed: () => _deleteConnection(context, db, entry),
+                  onPressed: () => _deleteConnection(context, l10n, db, entry),
                 ),
               ],
             ),
@@ -326,17 +330,17 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
     if (saved == true && mounted) setState(() => _refreshKey++);
   }
 
-  void _deleteConnection(
-      BuildContext context, DatabaseService db, PersonRelationshipView entry) {
+  void _deleteConnection(BuildContext context, AppLocalizations l10n, DatabaseService db,
+      PersonRelationshipView entry) {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete Connection'),
-        content: const Text('Are you sure you want to delete this connection?'),
+        title: Text(l10n.personDetailDeleteConnectionTitle),
+        content: Text(l10n.personDetailDeleteConnectionBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           TextButton(
             onPressed: () async {
@@ -344,7 +348,7 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
               if (dialogContext.mounted) Navigator.pop(dialogContext);
               if (mounted) setState(() => _refreshKey++);
             },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            child: Text(l10n.commonDelete, style: const TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -362,15 +366,16 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
   }
 
   void _deletePerson(BuildContext context, DatabaseService db, Person person) {
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Person'),
-        content: Text('Are you sure you want to delete ${person.name}?'),
+        title: Text(l10n.personDetailDeleteTitle),
+        content: Text(l10n.personDetailDeleteBody(person.name)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           TextButton(
             onPressed: () async {
@@ -380,7 +385,7 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                 Navigator.pop(context); // Go back to list
               }
             },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            child: Text(l10n.commonDelete, style: const TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -407,7 +412,8 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
   }
 
   Widget _buildEventsSection(
-      BuildContext context, DatabaseService db, Person person) {
+      BuildContext context, AppLocalizations l10n, DatabaseService db, Person person) {
+    final locale = Localizations.localeOf(context).toString();
     return FutureBuilder<List<Event>>(
       future: db.getEvents(),
       builder: (context, snapshot) {
@@ -427,14 +433,14 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Stories (${personEvents.length})',
+              l10n.personDetailStoriesHeading(personEvents.length),
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             const SizedBox(height: 8),
             ...personEvents.map((event) => ListTile(
                   leading: const Icon(Icons.event),
                   title: Text(event.title),
-                  subtitle: Text(event.displayDate),
+                  subtitle: Text(event.displayDate(locale)),
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(

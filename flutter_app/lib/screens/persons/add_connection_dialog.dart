@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../relationships/relationship_text.dart';
 import '../../relationships/relationship_type.dart';
@@ -109,8 +110,10 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).toString();
     return AlertDialog(
-      title: const Text('Add Connection'),
+      title: Text(l10n.connectionDialogAddTitle),
       content: SizedBox(
         width: 400,
         child: SingleChildScrollView(
@@ -120,15 +123,15 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
             children: [
               DropdownButtonFormField<String>(
                 key: const Key('add-connection-person-dropdown'),
-                decoration: const InputDecoration(labelText: 'Connect with *'),
+                decoration: InputDecoration(labelText: l10n.connectionDialogConnectWith),
                 // ignore: deprecated_member_use
                 value: _creatingNewPerson ? _createNewPersonSentinel : _selectedPerson?.id,
                 items: [
                   ...widget.otherPersons.map(
                       (p) => DropdownMenuItem(value: p.id, child: Text(p.name))),
-                  const DropdownMenuItem(
+                  DropdownMenuItem(
                     value: _createNewPersonSentinel,
-                    child: Text('+ Add new person…'),
+                    child: Text(l10n.connectionDialogAddNewPerson),
                   ),
                 ],
                 onChanged: (value) => setState(() {
@@ -146,7 +149,7 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
                 TextField(
                   controller: _newPersonNameController,
                   autofocus: true,
-                  decoration: const InputDecoration(labelText: "New person's name"),
+                  decoration: InputDecoration(labelText: l10n.connectionDialogNewPersonName),
                   textCapitalization: TextCapitalization.words,
                   onChanged: (_) => setState(() {}),
                 ),
@@ -154,11 +157,13 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
               const SizedBox(height: 16),
               DropdownButtonFormField<RelationshipType>(
                 key: const Key('add-connection-type-dropdown'),
-                decoration: InputDecoration(labelText: '${widget.viewedPerson.name} is the ...'),
+                decoration: InputDecoration(
+                    labelText: l10n.connectionDialogPersonIsThe(widget.viewedPerson.name)),
                 // ignore: deprecated_member_use
                 value: _type,
                 items: RelationshipType.values
-                    .map((t) => DropdownMenuItem(value: t, child: Text(RelationshipText.label(t))))
+                    .map((t) =>
+                        DropdownMenuItem(value: t, child: Text(RelationshipText.label(l10n, t))))
                     .toList(),
                 onChanged: (t) => setState(() => _type = t ?? _type),
               ),
@@ -171,7 +176,7 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  RelationshipText.sentence(widget.viewedPerson.name, _otherPersonName, _type),
+                  RelationshipText.sentence(l10n, widget.viewedPerson.name, _otherPersonName, _type),
                   key: const Key('add-connection-sentence-preview'),
                   style: const TextStyle(fontStyle: FontStyle.italic),
                 ),
@@ -179,15 +184,15 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
               if (_isDuplicate) ...[
                 const SizedBox(height: 8),
                 Text(
-                  'This relationship already seems to exist.',
+                  l10n.connectionDialogAlreadyExists,
                   style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
                 ),
               ],
               const SizedBox(height: 16),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Start Date'),
-                subtitle: Text(DateFormat.yMMMd().format(_startDate)),
+                title: Text(l10n.connectionDialogStartDate),
+                subtitle: Text(DateFormat.yMMMd(locale).format(_startDate)),
                 trailing: const Icon(Icons.calendar_today),
                 onTap: () async {
                   final date = await showDatePicker(
@@ -202,8 +207,8 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
               const SizedBox(height: 8),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Link to Origin Event'),
-                subtitle: const Text('Optional: the event that started this connection'),
+                title: Text(l10n.connectionDialogLinkEvent),
+                subtitle: Text(l10n.connectionDialogLinkEventSubtitle),
                 value: _linkEvent,
                 onChanged: (v) => setState(() {
                   _linkEvent = v;
@@ -215,42 +220,42 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
               ),
               if (_linkEvent && !_createNewEvent) ...[
                 DropdownButtonFormField<Event?>(
-                  decoration: const InputDecoration(labelText: 'Select Event'),
+                  decoration: InputDecoration(labelText: l10n.connectionDialogSelectEvent),
                   // ignore: deprecated_member_use
                   value: _selectedEvent,
                   items: [
-                    const DropdownMenuItem<Event?>(value: null, child: Text('None')),
+                    DropdownMenuItem<Event?>(value: null, child: Text(l10n.commonNone)),
                     ...widget.events.map((e) => DropdownMenuItem(
                           value: e,
-                          child: Text('${e.title} (${DateFormat.yMMMd().format(e.dateTime)})'),
+                          child: Text('${e.title} (${DateFormat.yMMMd(locale).format(e.dateTime)})'),
                         )),
                   ],
                   onChanged: (e) => setState(() => _selectedEvent = e),
                 ),
                 TextButton(
                   onPressed: () => setState(() => _createNewEvent = true),
-                  child: const Text('Or create new event'),
+                  child: Text(l10n.connectionDialogOrCreateNewEvent),
                 ),
               ],
               if (_linkEvent && _createNewEvent) ...[
                 TextField(
                   controller: _newEventTitleController,
-                  decoration: const InputDecoration(
-                    labelText: 'New Event Title',
-                    hintText: 'e.g., First met at conference',
+                  decoration: InputDecoration(
+                    labelText: l10n.connectionDialogNewEventTitle,
+                    hintText: l10n.connectionDialogNewEventTitleHint,
                   ),
                 ),
                 TextButton(
                   onPressed: () => setState(() => _createNewEvent = false),
-                  child: const Text('Cancel new event'),
+                  child: Text(l10n.connectionDialogCancelNewEvent),
                 ),
               ],
               const SizedBox(height: 16),
               TextField(
                 controller: _descriptionController,
-                decoration: const InputDecoration(
-                  labelText: 'Description',
-                  hintText: 'Optional notes about this connection',
+                decoration: InputDecoration(
+                  labelText: l10n.connectionDialogDescription,
+                  hintText: l10n.connectionDialogDescriptionHint,
                 ),
                 maxLines: 2,
               ),
@@ -261,7 +266,7 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(l10n.commonCancel),
         ),
         FilledButton(
           onPressed: _canSave ? _save : null,
@@ -271,7 +276,7 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Add'),
+              : Text(l10n.commonAdd),
         ),
       ],
     );

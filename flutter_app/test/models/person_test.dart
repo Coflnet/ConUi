@@ -56,8 +56,8 @@ void main() {
         deathDatePrecision: DatePrecision.day,
       );
 
-      expect(person.displayBirthday, '1950');
-      expect(person.displayDeathDate, contains('2020'));
+      expect(person.displayBirthday(), '1950');
+      expect(person.displayDeathDate(), contains('2020'));
     });
 
     test('lifeDatesLabel combines both dates when both are known', () {
@@ -68,24 +68,24 @@ void main() {
         deathDate: DateTime(2020),
         deathDatePrecision: DatePrecision.year,
       );
-      expect(person.lifeDatesLabel, '1950 - 2020');
+      expect(person.lifeDatesLabel(), '1950 - 2020');
     });
 
     test('lifeDatesLabel shows "b." with only a birthday', () {
       final person =
           Person(name: 'x', birthday: DateTime(1950), birthdayPrecision: DatePrecision.year);
-      expect(person.lifeDatesLabel, 'b. 1950');
+      expect(person.lifeDatesLabel(), 'b. 1950');
     });
 
     test('lifeDatesLabel shows "d." with only a death date', () {
       final person =
           Person(name: 'x', deathDate: DateTime(2020), deathDatePrecision: DatePrecision.year);
-      expect(person.lifeDatesLabel, 'd. 2020');
+      expect(person.lifeDatesLabel(), 'd. 2020');
     });
 
     test('lifeDatesLabel is null with neither date known', () {
       final person = Person(name: 'x');
-      expect(person.lifeDatesLabel, isNull);
+      expect(person.lifeDatesLabel(), isNull);
     });
   });
 
