@@ -99,6 +99,29 @@ void main() {
     expect(ids, containsAll(['finished', 'unfinished']));
   });
 
+  // Regression: RecordingPlayer used to build a base64 data: URI from the
+  // whole file, which is impractical for a long recording. openPlaybackSource
+  // must instead hand back the real file path so playback reads straight off
+  // disk - no giant string ever gets built.
+  test('openPlaybackSource returns the finalized file path', () async {
+    const id = 'rec-playback';
+    await store.beginRecording(id);
+    await store.appendChunk(id, _pcmChunk(0, 500));
+    await store.finalizeRecording(id);
+
+    final source = await store.openPlaybackSource(id);
+
+    expect(source.objectUrl, isNull);
+    expect(source.filePath, '${tempDir.path}/recordings/$id.wav');
+    expect(File(source.filePath!).existsSync(), isTrue);
+    // Releasing a file-backed source is a no-op and must not throw.
+    source.release();
+  });
+
+  test('openPlaybackSource throws for an unknown id', () async {
+    expect(() => store.openPlaybackSource('missing'), throwsStateError);
+  });
+
   group('crash recovery', () {
     test(
         'a recording abandoned without finalize keeps its bytes and can be repaired',

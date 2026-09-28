@@ -162,6 +162,13 @@ class NativeRecordingFileStore implements RecordingFileStore {
   }
 
   @override
+  Future<PlaybackSource> openPlaybackSource(String id) async {
+    final file = await _resolveExisting(id);
+    if (file == null) throw StateError('No recording found for "$id"');
+    return PlaybackSource.file(file.path);
+  }
+
+  @override
   Future<List<String>> listIds() async {
     final dir = await _recordingsDir();
     if (!await dir.exists()) return [];

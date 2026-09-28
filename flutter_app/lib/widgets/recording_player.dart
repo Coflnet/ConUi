@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 
@@ -10,11 +8,13 @@ import '../services/recording_file_store.dart';
 /// [RecordingFileStore], with play/pause, seek and duration - on Android
 /// and web alike.
 ///
-/// audioplayers' `BytesSource` only supports Android, so this instead hands
-/// the player a `data:` URI built from the bytes - every platform's
-/// underlying media stack (and every browser's `<audio>` element) already
-/// knows how to play those, which is what makes this work across Android
-/// and web without any platform-specific code here.
+/// This plays from [RecordingFileStore.openPlaybackSource]: the local file
+/// on native (via `DeviceFileSource`), or a `blob:` object URL on web (via
+/// `UrlSource`) - never a base64 `data:` URI built from the whole file,
+/// which for a long recording (~115 MB of WAV for an hour) becomes a
+/// ~150 MB string that fails or freezes both native platforms and
+/// browsers. The source is released (revoking the web object URL) in
+/// [dispose].
 class RecordingPlayer extends StatefulWidget {
   final AttachedFile file;
   final RecordingFileStore store;
@@ -32,6 +32,7 @@ class RecordingPlayerState extends State<RecordingPlayer> {
   bool _isPlaying = false;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
+  PlaybackSource? _source;
 
   @override
   void initState() {
@@ -61,9 +62,12 @@ class RecordingPlayerState extends State<RecordingPlayer> {
 
   Future<void> _load() async {
     try {
-      final bytes = await widget.store.readBytes(widget.file.id);
-      final dataUri = 'data:audio/wav;base64,${base64Encode(bytes)}';
-      await _player.setSourceUrl(dataUri);
+      final source = await widget.store.openPlaybackSource(widget.file.id);
+      _source = source;
+      final playerSource = source.filePath != null
+          ? DeviceFileSource(source.filePath!)
+          : UrlSource(source.objectUrl!);
+      await _player.setSource(playerSource);
       if (mounted) setState(() => _loading = false);
     } catch (e) {
       if (mounted) {
@@ -89,6 +93,9 @@ class RecordingPlayerState extends State<RecordingPlayer> {
 
   @override
   void dispose() {
+    // On web this revokes the blob: object URL; on native it's a no-op.
+    // See PlaybackSource's doc comment.
+    _source?.release();
     _player.dispose();
     super.dispose();
   }

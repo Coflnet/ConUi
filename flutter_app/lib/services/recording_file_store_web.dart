@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:js_interop';
 import 'dart:typed_data';
 
 import 'package:idb_shim/idb_browser.dart';
+import 'package:web/web.dart' as web;
 
 import 'recording_file_store.dart';
 import 'wav.dart';
@@ -146,6 +148,25 @@ class WebRecordingFileStore implements RecordingFileStore {
       await store.delete(key);
     }
     await txn.completed;
+  }
+
+  /// Builds a `blob:` object URL straight from the stored chunks (plus a
+  /// synthesized header), never assembling a base64 `data:` URI - see
+  /// [RecordingFileStore.openPlaybackSource]'s doc comment for why that
+  /// matters for long recordings. Each chunk becomes its own [BlobPart] so
+  /// the bytes are never even concatenated into one Dart buffer here; the
+  /// browser assembles them lazily.
+  @override
+  Future<PlaybackSource> openPlaybackSource(String id) async {
+    final chunks = await _orderedChunks(id);
+    if (chunks.isEmpty) throw StateError('No recording found for "$id"');
+    final dataLength = chunks.fold<int>(0, (sum, c) => sum + c.length);
+    final header = WavHeader.build(dataLength: dataLength, format: WavFormat.standard);
+
+    final parts = <JSAny>[header.toJS, for (final chunk in chunks) chunk.toJS];
+    final blob = web.Blob(parts.toJS, web.BlobPropertyBag(type: 'audio/wav'));
+    final url = web.URL.createObjectURL(blob);
+    return PlaybackSource.objectUrl(url, () => web.URL.revokeObjectURL(url));
   }
 
   @override

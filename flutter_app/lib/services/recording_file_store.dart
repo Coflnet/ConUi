@@ -79,6 +79,42 @@ abstract class RecordingFileStore {
 
   /// Every recording id currently stored, finished or not.
   Future<List<String>> listIds();
+
+  /// Opens a source a player can hand straight to the platform's media
+  /// stack, without ever materializing the whole file as a base64 `data:`
+  /// URI (a one-hour recording is ~115 MB of WAV, which becomes a ~150 MB
+  /// string - too slow/large for some platforms/browsers to handle as a
+  /// URI). On native this is the local file path; on web it's a `blob:`
+  /// object URL built from the stored chunks.
+  ///
+  /// Callers MUST call [PlaybackSource.release] once they're done with it
+  /// (e.g. from `State.dispose`) - on web this revokes the object URL so
+  /// its memory can be freed; on native it's a no-op.
+  Future<PlaybackSource> openPlaybackSource(String id);
+}
+
+/// Where a [RecordingPlayer] should read a recording's audio from. Exactly
+/// one of [filePath] (native) or [objectUrl] (web) is set - see
+/// [RecordingFileStore.openPlaybackSource].
+class PlaybackSource {
+  final String? filePath;
+  final String? objectUrl;
+  final void Function()? _onRelease;
+
+  const PlaybackSource.file(String path)
+      : filePath = path,
+        objectUrl = null,
+        _onRelease = null;
+
+  PlaybackSource.objectUrl(String url, void Function() onRelease)
+      : filePath = null,
+        objectUrl = url,
+        _onRelease = onRelease;
+
+  /// Releases any resources this source holds - on web, revokes the
+  /// `blob:` object URL. Safe to call more than once; safe to call on a
+  /// native (file-backed) source, where it's a no-op.
+  void release() => _onRelease?.call();
 }
 
 /// Creates the [RecordingFileStore] implementation for the current

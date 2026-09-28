@@ -101,8 +101,15 @@ void main() {
     // doc comment) surfaces asynchronously around here; drain it so it
     // doesn't fail the test.
     tester.takeException();
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
-    await tester.pump();
+    // RecordingPlayer now plays from a DeviceFileSource (see the class doc
+    // comment) instead of a data: URI; with no real platform behind it,
+    // audioplayers never emits an onPrepared event, so its internal 30s
+    // "prepared" wait (AudioPlayer._completePrepared) is genuinely pending
+    // rather than just needing a moment - flush it with a fake-clock pump
+    // (not runAsync, which only drives real time) so it times out, is
+    // caught by RecordingPlayer's own error handling, and doesn't leave a
+    // dangling Timer for the test binding to complain about.
+    await tester.pump(const Duration(seconds: 31));
     tester.takeException();
 
     expect(find.text('Grandma at the lake'), findsOneWidget);
