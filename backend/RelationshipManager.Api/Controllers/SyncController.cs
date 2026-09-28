@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RelationshipManager.Api.Errors;
 using RelationshipManager.Api.Models;
 using RelationshipManager.Api.Services;
 
@@ -63,7 +64,12 @@ public class SyncController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            return Conflict(new { error = "version_conflict", message = ex.Message });
+            return Conflict(new ApiError("version_conflict", ex.Message));
+        }
+        catch (S3UnavailableException ex)
+        {
+            _logger.LogWarning(ex, "Blob storage unavailable while creating an upload URL");
+            return StorageUnavailable();
         }
     }
 
@@ -76,13 +82,21 @@ public class SyncController : ControllerBase
         var userId = GetUserId();
         if (userId == null) return Unauthorized();
 
-        var response = await _syncService.GetDownloadUrlAsync(userId.Value, blobType, blobId);
-        if (response == null)
+        try
         {
-            return NotFound();
-        }
+            var response = await _syncService.GetDownloadUrlAsync(userId.Value, blobType, blobId);
+            if (response == null)
+            {
+                return NotFound(new ApiError("not_found", "Blob not found"));
+            }
 
-        return Ok(response);
+            return Ok(response);
+        }
+        catch (S3UnavailableException ex)
+        {
+            _logger.LogWarning(ex, "Blob storage unavailable while creating a download URL");
+            return StorageUnavailable();
+        }
     }
 
     /// <summary>
@@ -188,13 +202,18 @@ public class SyncController : ControllerBase
             await _s3Service.UploadAsync(key, Request.Body);
 
             _logger.LogInformation("Proxy uploaded blob {BlobType}/{BlobId} for user {UserId}", blobType, blobId, userId);
-            
+
             return Ok(new { key, message = "Upload successful" });
+        }
+        catch (S3UnavailableException ex)
+        {
+            _logger.LogWarning(ex, "Blob storage unavailable during proxy upload for {BlobType}/{BlobId}", blobType, blobId);
+            return StorageUnavailable();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in proxy upload for {BlobType}/{BlobId}", blobType, blobId);
-            return StatusCode(500, new { error = "upload_failed", message = ex.Message });
+            return StatusCode(500, new ApiError("upload_failed", "The upload could not be completed."));
         }
     }
 
@@ -211,18 +230,23 @@ public class SyncController : ControllerBase
         {
             var key = $"{userId}/{blobType}/{blobId}";
             var stream = await _s3Service.DownloadAsync(key);
-            
+
             if (stream == null)
             {
-                return NotFound(new { error = "not_found", message = "Blob not found" });
+                return NotFound(new ApiError("not_found", "Blob not found"));
             }
 
             return File(stream, "application/octet-stream");
         }
+        catch (S3UnavailableException ex)
+        {
+            _logger.LogWarning(ex, "Blob storage unavailable during proxy download for {BlobType}/{BlobId}", blobType, blobId);
+            return StorageUnavailable();
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in proxy download for {BlobType}/{BlobId}", blobType, blobId);
-            return StatusCode(500, new { error = "download_failed", message = ex.Message });
+            return StatusCode(500, new ApiError("download_failed", "The download could not be completed."));
         }
     }
 
@@ -235,4 +259,7 @@ public class SyncController : ControllerBase
         }
         return null;
     }
+
+    private ObjectResult StorageUnavailable()
+        => StatusCode(StatusCodes.Status503ServiceUnavailable, new ApiError("storage_unavailable", "Blob storage is not available right now."));
 }

@@ -38,7 +38,9 @@ services:
       timeout: 20s
       retries: 3
 
-  # Initialize MinIO bucket
+  # Initialize MinIO bucket. The backend also creates the bucket itself on first use, but doing
+  # it here means it (and the "no public access" policy below) already exist before the first
+  # request.
   minio-init:
     image: minio/mc:latest
     container_name: relationship-minio-init
@@ -53,57 +55,6 @@ services:
       echo 'Bucket created successfully';
       "
 
-  # Initialize ScyllaDB keyspace and tables
-  scylla-init:
-    image: scylladb/scylla:5.4
-    container_name: relationship-scylla-init
-    depends_on:
-      scylladb:
-        condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      sleep 10;
-      cqlsh scylladb -e \"
-        CREATE KEYSPACE IF NOT EXISTS relationship_manager
-        WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
-        
-        USE relationship_manager;
-        
-        CREATE TABLE IF NOT EXISTS users (
-          id TEXT PRIMARY KEY,
-          email TEXT,
-          encryption_key_salt TEXT,
-          created_at TIMESTAMP,
-          last_login TIMESTAMP
-        );
-        
-        CREATE INDEX IF NOT EXISTS users_email_idx ON users (email);
-        
-        CREATE TABLE IF NOT EXISTS sync_entries (
-          user_id TEXT,
-          blob_type TEXT,
-          blob_id TEXT,
-          version BIGINT,
-          checksum TEXT,
-          size BIGINT,
-          updated_at TIMESTAMP,
-          PRIMARY KEY ((user_id), blob_type, blob_id)
-        );
-        
-        CREATE TABLE IF NOT EXISTS blob_versions (
-          user_id TEXT,
-          blob_type TEXT,
-          blob_id TEXT,
-          version BIGINT,
-          checksum TEXT,
-          size BIGINT,
-          created_at TIMESTAMP,
-          PRIMARY KEY ((user_id, blob_type, blob_id), version)
-        ) WITH CLUSTERING ORDER BY (version DESC);
-      \";
-      echo 'ScyllaDB initialized successfully';
-      "
-
   # ASP.NET Backend API
   backend:
     build:
@@ -111,25 +62,29 @@ services:
       dockerfile: Dockerfile
     container_name: relationship-backend
     ports:
-      - "5000:8080"
+      - "5000:8000"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:8080
-      - Cassandra__ContactPoints__0=scylladb
-      - Cassandra__Port=9042
-      - Cassandra__Keyspace=relationship_manager
-      - Cassandra__Username=cassandra
-      - Cassandra__Password=cassandra
-      - S3__ServiceUrl=http://minio:9000
-      - S3__AccessKey=minioadmin
-      - S3__SecretKey=minioadmin123
-      - S3__BucketName=relationship-blobs
-      - S3__UseHttp=true
-      - Jwt__Issuer=RelationshipManager
-      - Jwt__Secret=DevSecretKeyThatIsAtLeast32CharactersLong!
+      - ASPNETCORE_URLS=http://+:8000
+      # Cassandra: the app connects without a keyspace, creates it if missing with this
+      # replication, then switches to it - it owns its own schema, so nothing besides the
+      # keyspace needs to be pre-created.
+      - CASSANDRA__HOSTS=scylladb
+      - CASSANDRA__KEYSPACE=relationship_manager
+      - CASSANDRA__USER=cassandra
+      - CASSANDRA__PASSWORD=cassandra
+      - CASSANDRA__REPLICATION_CLASS=SimpleStrategy
+      - CASSANDRA__REPLICATION_FACTOR=1
+      - S3__ENDPOINT=http://minio:9000
+      - S3__ACCESS_KEY=minioadmin
+      - S3__SECRET_KEY=minioadmin123
+      - S3__BUCKET=relationship-blobs
+      - S3__USE_PATH_STYLE=true
+      - jwt__issuer=relationship-manager
+      - jwt__secret=DevSecretKeyThatIsAtLeast32CharactersLong!
     depends_on:
-      scylla-init:
-        condition: service_completed_successfully
+      scylladb:
+        condition: service_healthy
       minio-init:
         condition: service_completed_successfully
 
