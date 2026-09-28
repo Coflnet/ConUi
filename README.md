@@ -90,33 +90,33 @@ dotnet test RelationshipManager.sln
 
 ## Configuration
 
-Every key below can be set via `appsettings*.json` or the matching environment variable (`__` for nesting, e.g. `CASSANDRA__HOSTS`). Booleans accept `true`/`false`.
+Every key below can be set via `appsettings*.json` or the matching environment variable (`__` for nesting, e.g. `CASSANDRA__HOSTS`). Booleans accept `true`/`false`. The `Environment Variable` column is the exact spelling a Kubernetes chart (or any other env-var-only deployment) needs to use - verified against each key's actual binding site in code, not just derived mechanically, since .NET's env var provider is case-insensitive but `docker-compose.yml`'s existing usage (the source of truth for the casing already running today) mixes `jwt__issuer`/`jwt__secret` (lowercase, matching the `jwt:issuer`/`jwt:secret` config keys) with `CASSANDRA__*`/`S3__*` (uppercase, matching those config keys).
 
-| Key | Purpose | Default |
-| --- | --- | --- |
-| `ASPNETCORE_ENVIRONMENT` | `Development` relaxes JWT-secret and CORS checks and enables Swagger; anything else is treated as production-like. | unset (→ Production) |
-| `ASPNETCORE_URLS` | Address(es) Kestrel listens on. | `http://+:8000` in the container |
-| `jwt:issuer` / `jwt:secret` | Signs and validates auth tokens. Outside Development the app **refuses to start** if `jwt:secret` is missing, shorter than 32 characters, or still the shipped placeholder. | placeholder in `appsettings.json` (Development only) |
-| `ENABLE_DEV_AUTH` | Enables `POST /api/auth/dev`. Also requires `ASPNETCORE_ENVIRONMENT=Development`; the endpoint is a 404 otherwise. | `false` |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Path to a Firebase/Google service account JSON. When set (and the file exists), `POST /api/auth/firebase` verifies real tokens; otherwise it answers `503 sign_in_not_configured`. | unset |
-| `Cors:AllowedOrigins` | Array of allowed CORS origins. Empty means no cross-origin access at all. In Development, `localhost`/`127.0.0.1`/`::1` on any port are also allowed (for `flutter run -d chrome`). | `[]` |
-| `CASSANDRA:HOSTS` | Comma-separated Cassandra/Scylla contact points. | `localhost` (Development) |
-| `CASSANDRA:KEYSPACE` | Keyspace name; created automatically if it doesn't exist (alphanumeric/underscore only). | `relationship_manager` (Development) |
-| `CASSANDRA:USER` / `CASSANDRA:PASSWORD` | Cassandra credentials. | `cassandra`/`cassandra` (Development) |
-| `CASSANDRA:REPLICATION_CLASS` / `CASSANDRA:REPLICATION_FACTOR` | Replication used only when creating the keyspace. | `NetworkTopologyStrategy`/`3` in code; `SimpleStrategy`/`1` in Development |
-| `CASSANDRA:X509Certificate_PATHS` | Comma-separated client certificate file(s) for TLS. Production Scylla requires this. | unset (TLS off) |
-| `CASSANDRA:X509Certificate_PASSWORD` | Password for the client certificate(s). Required if `X509Certificate_PATHS` is set. | - |
-| `CASSANDRA:X509Certificate_VALIDATION_PATH` | Root CA certificate to pin server validation to, instead of the system trust store. | unset |
-| `S3:ENDPOINT` / `S3:ACCESS_KEY` / `S3:SECRET_KEY` / `S3:BUCKET` | S3-compatible blob storage. S3 is optional: if any of these is blank, or the bucket can't be reached, blob-related endpoints answer `503` instead of failing to start. | MinIO dev values (Development) |
-| `S3:USE_PATH_STYLE` | Path-style S3 addressing (needed for MinIO). | `true` |
-| `Transcription:BaseUrl` | Upstream speech-to-text base URL. Empty disables the feature (`503 transcription_not_configured`). | unset |
-| `Transcription:Api` | `asr-webservice` (onerahmet/openai-whisper-asr-webservice, used in production) or `openai` (`/audio/transcriptions`-compatible). | `asr-webservice` |
-| `Transcription:Model` | Model name, `openai` protocol only. | `whisper-1` |
-| `Transcription:ApiKey` | Bearer token, `openai` protocol only. | unset |
-| `Transcription:TimeoutSeconds` | Upstream call timeout. | `60` |
-| `Transcription:DefaultLanguage` | ISO 639-1 language used when a request doesn't specify one. Empty means auto-detect. | unset |
-| `Transcription:MaxConcurrentPerUser` | Max transcription segments one user can have in flight at once (`429` beyond it). | `2` |
-| `Transcription:MaxSegmentBytes` | Max size of one audio segment, enforced while the body is being streamed in (`413` beyond it). | `5242880` (5 MB) |
+| Key | Environment Variable | Purpose | Default |
+| --- | --- | --- | --- |
+| `ASPNETCORE_ENVIRONMENT` | `ASPNETCORE_ENVIRONMENT` | `Development` relaxes JWT-secret and CORS checks and enables Swagger; anything else is treated as production-like. | unset (→ Production) |
+| `ASPNETCORE_URLS` | `ASPNETCORE_URLS` | Address(es) Kestrel listens on. | `http://+:8000` in the container |
+| `jwt:issuer` / `jwt:secret` | `jwt__issuer` / `jwt__secret` | Signs and validates auth tokens. Outside Development the app **refuses to start** if `jwt:secret` is missing, shorter than 32 characters, or still the shipped placeholder. | placeholder in `appsettings.json` (Development only) |
+| `ENABLE_DEV_AUTH` | `ENABLE_DEV_AUTH` | Enables `POST /api/auth/dev`. Also requires `ASPNETCORE_ENVIRONMENT=Development`; the endpoint is a 404 otherwise. | `false` |
+| `GOOGLE_APPLICATION_CREDENTIALS` | `GOOGLE_APPLICATION_CREDENTIALS` | Path to a Firebase/Google service account JSON. When set (and the file exists), `POST /api/auth/firebase` verifies real tokens; otherwise it answers `503 sign_in_not_configured`. Read directly from the process environment (not through `IConfiguration`), so this is the one key that has no `appsettings*.json` equivalent. | unset |
+| `Cors:AllowedOrigins` | `Cors__AllowedOrigins__0`, `Cors__AllowedOrigins__1`, ... | Array of allowed CORS origins - one env var per index, since `IConfiguration` binds arrays positionally; there is no single-variable/comma-separated form. Empty means no cross-origin access at all. In Development, `localhost`/`127.0.0.1`/`::1` on any port are also allowed (for `flutter run -d chrome`). | `[]` |
+| `CASSANDRA:HOSTS` | `CASSANDRA__HOSTS` | Comma-separated Cassandra/Scylla contact points. | `localhost` (Development) |
+| `CASSANDRA:KEYSPACE` | `CASSANDRA__KEYSPACE` | Keyspace name; created automatically if it doesn't exist (alphanumeric/underscore only). | `relationship_manager` (Development) |
+| `CASSANDRA:USER` / `CASSANDRA:PASSWORD` | `CASSANDRA__USER` / `CASSANDRA__PASSWORD` | Cassandra credentials. | `cassandra`/`cassandra` (Development) |
+| `CASSANDRA:REPLICATION_CLASS` / `CASSANDRA:REPLICATION_FACTOR` | `CASSANDRA__REPLICATION_CLASS` / `CASSANDRA__REPLICATION_FACTOR` | Replication used only when creating the keyspace. | `NetworkTopologyStrategy`/`3` in code; `SimpleStrategy`/`1` in Development |
+| `CASSANDRA:X509Certificate_PATHS` | `CASSANDRA__X509Certificate_PATHS` | Comma-separated client certificate file(s) for TLS. Production Scylla requires this. | unset (TLS off) |
+| `CASSANDRA:X509Certificate_PASSWORD` | `CASSANDRA__X509Certificate_PASSWORD` | Password for the client certificate(s). Required if `X509Certificate_PATHS` is set. | - |
+| `CASSANDRA:X509Certificate_VALIDATION_PATH` | `CASSANDRA__X509Certificate_VALIDATION_PATH` | Root CA certificate to pin server validation to, instead of the system trust store. | unset |
+| `S3:ENDPOINT` / `S3:ACCESS_KEY` / `S3:SECRET_KEY` / `S3:BUCKET` | `S3__ENDPOINT` / `S3__ACCESS_KEY` / `S3__SECRET_KEY` / `S3__BUCKET` | S3-compatible blob storage. S3 is optional: if any of these is blank, or the bucket can't be reached, blob-related endpoints answer `503` instead of failing to start. | MinIO dev values (Development) |
+| `S3:USE_PATH_STYLE` | `S3__USE_PATH_STYLE` | Path-style S3 addressing (needed for MinIO). | `true` |
+| `Transcription:BaseUrl` | `Transcription__BaseUrl` | Upstream speech-to-text base URL. Empty disables the feature (`503 transcription_not_configured`). | unset |
+| `Transcription:Api` | `Transcription__Api` | `asr-webservice` (onerahmet/openai-whisper-asr-webservice, used in production) or `openai` (`/audio/transcriptions`-compatible). | `asr-webservice` |
+| `Transcription:Model` | `Transcription__Model` | Model name, `openai` protocol only. | `whisper-1` |
+| `Transcription:ApiKey` | `Transcription__ApiKey` | Bearer token, `openai` protocol only. | unset |
+| `Transcription:TimeoutSeconds` | `Transcription__TimeoutSeconds` | Upstream call timeout. | `60` |
+| `Transcription:DefaultLanguage` | `Transcription__DefaultLanguage` | ISO 639-1 language used when a request doesn't specify one. Empty means auto-detect. | unset |
+| `Transcription:MaxConcurrentPerUser` | `Transcription__MaxConcurrentPerUser` | Max transcription segments one user can have in flight at once (`429` beyond it). | `2` |
+| `Transcription:MaxSegmentBytes` | `Transcription__MaxSegmentBytes` | Max size of one audio segment, enforced while the body is being streamed in (`413` beyond it). | `5242880` (5 MB) |
 
 ## Live Transcription
 
