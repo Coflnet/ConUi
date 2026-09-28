@@ -86,8 +86,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await syncService.syncOnOpen();
   }
 
+  // Shared between the bottom NavigationBar (narrow) and the side
+  // NavigationRail (wide, see build()) so the five destinations' icons/
+  // labels are declared exactly once.
+  static const _destinations = [
+    (icon: Icons.map_outlined, selected: Icons.map, label: 'Map'),
+    (icon: Icons.people_outline, selected: Icons.people, label: 'People'),
+    (icon: Icons.event_outlined, selected: Icons.event, label: 'Events'),
+    (icon: Icons.place_outlined, selected: Icons.place, label: 'Places'),
+    (icon: Icons.category_outlined, selected: Icons.category, label: 'Objects'),
+  ];
+
+  // About a tablet/small-desktop width: wide enough that a 5-item bottom
+  // bar would spread its labels thin, per the brief.
+  static const _wideLayoutBreakpoint = 840.0;
+
+  void _onDestinationSelected(int index) {
+    setState(() {
+      _selectedIndex = index;
+      if (_isSearching) {
+        _isSearching = false;
+        _searchController.clear();
+        _searchQuery = '';
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isWide = MediaQuery.sizeOf(context).width >= _wideLayoutBreakpoint;
+    final bodyContent = _isSearching && _searchQuery.isNotEmpty
+        ? _buildSearchResults()
+        : IndexedStack(
+            index: _selectedIndex,
+            children: _screens,
+          );
+
     return Scaffold(
       appBar: AppBar(
         title: _isSearching
@@ -152,52 +186,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
-      body: _isSearching && _searchQuery.isNotEmpty
-          ? _buildSearchResults()
-          : IndexedStack(
-              index: _selectedIndex,
-              children: _screens,
+      body: isWide
+          ? Row(
+              children: [
+                NavigationRail(
+                  selectedIndex: _selectedIndex,
+                  onDestinationSelected: _onDestinationSelected,
+                  labelType: NavigationRailLabelType.all,
+                  destinations: [
+                    for (final d in _destinations)
+                      NavigationRailDestination(
+                        icon: Icon(d.icon),
+                        selectedIcon: Icon(d.selected),
+                        label: Text(d.label),
+                      ),
+                  ],
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(child: bodyContent),
+              ],
+            )
+          : bodyContent,
+      bottomNavigationBar: isWide
+          ? null
+          : NavigationBar(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: _onDestinationSelected,
+              destinations: [
+                for (final d in _destinations)
+                  NavigationDestination(
+                    icon: Icon(d.icon),
+                    selectedIcon: Icon(d.selected),
+                    label: d.label,
+                  ),
+              ],
             ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _selectedIndex = index;
-            if (_isSearching) {
-              _isSearching = false;
-              _searchController.clear();
-              _searchQuery = '';
-            }
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.map_outlined),
-            selectedIcon: Icon(Icons.map),
-            label: 'Map',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'People',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.event_outlined),
-            selectedIcon: Icon(Icons.event),
-            label: 'Events',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.place_outlined),
-            selectedIcon: Icon(Icons.place),
-            label: 'Places',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.category_outlined),
-            selectedIcon: Icon(Icons.category),
-            label: 'Objects',
-          ),
-        ],
-      ),
     );
   }
 
