@@ -2,26 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/gen/app_localizations.dart';
 import '../models/models.dart';
 import '../screens/map/location_picker_screen.dart';
 import '../screens/quick_add/quick_add_sheet.dart';
 import '../services/database_service.dart';
 import '../services/recording_file_store.dart';
 import 'recording_player.dart';
-
-class _Strings {
-  static const review = 'Review';
-  static const sheetTitle = 'Recordings not attached to a story';
-  static const attach = 'Attach to a new story';
-  static const delete = 'Delete';
-  static const deleteTitle = 'Delete this recording?';
-  static const deleteBody =
-      'This permanently deletes the audio. This cannot be undone.';
-  static const cancel = 'Cancel';
-
-  static String banner(int count) =>
-      count == 1 ? '1 recording is not attached to a story' : '$count recordings are not attached to a story';
-}
 
 AttachedFile _asAttachedFile(LocalRecordingState r) => AttachedFile(
       id: r.id,
@@ -80,11 +67,12 @@ class RecoveredRecordingsBannerState extends State<RecoveredRecordingsBanner> {
   @override
   Widget build(BuildContext context) {
     if (!_loaded || _orphaned.isEmpty) return const SizedBox.shrink();
+    final l10n = AppLocalizations.of(context);
     return MaterialBanner(
       leading: const Icon(Icons.mic_off_outlined),
-      content: Text(_Strings.banner(_orphaned.length)),
+      content: Text(l10n.recoveredBannerCount(_orphaned.length)),
       actions: [
-        TextButton(onPressed: _openReview, child: const Text(_Strings.review)),
+        TextButton(onPressed: _openReview, child: Text(l10n.recoveredBannerReview)),
       ],
     );
   }
@@ -146,18 +134,19 @@ class _OrphanedRecordingsSheet extends StatelessWidget {
   }
 
   Future<void> _delete(BuildContext context, LocalRecordingState recording) async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text(_Strings.deleteTitle),
-        content: const Text(_Strings.deleteBody),
+        title: Text(l10n.recoveredBannerDeleteTitle),
+        content: Text(l10n.recoveredBannerDeleteBody),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text(_Strings.cancel)),
+              child: Text(l10n.commonCancel)),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text(_Strings.delete, style: TextStyle(color: Colors.red)),
+            child: Text(l10n.commonDelete, style: const TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -170,6 +159,7 @@ class _OrphanedRecordingsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -177,7 +167,7 @@ class _OrphanedRecordingsSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(_Strings.sheetTitle, style: Theme.of(context).textTheme.titleMedium),
+            Text(l10n.recoveredBannerSheetTitle, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             ConstrainedBox(
               constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
@@ -199,12 +189,12 @@ class _OrphanedRecordingsSheet extends StatelessWidget {
                               TextButton.icon(
                                 onPressed: () => _attach(context, recording),
                                 icon: const Icon(Icons.add_location_alt_outlined),
-                                label: const Text(_Strings.attach),
+                                label: Text(l10n.recoveredBannerAttach),
                               ),
                               TextButton.icon(
                                 onPressed: () => _delete(context, recording),
                                 icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                label: const Text(_Strings.delete, style: TextStyle(color: Colors.red)),
+                                label: Text(l10n.commonDelete, style: const TextStyle(color: Colors.red)),
                               ),
                             ],
                           ),

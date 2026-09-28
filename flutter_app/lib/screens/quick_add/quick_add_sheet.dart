@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
+import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/audio_capture.dart';
@@ -15,57 +16,34 @@ import '../../services/recording_file_store.dart';
 import '../../services/transcription_client.dart';
 import '../map/nearby_place.dart';
 
-/// User-facing text for the quick add sheet, kept in one place so a later
-/// localisation pass doesn't have to hunt through the widget's logic.
-class _Strings {
-  static const sheetTitle = 'New story';
-  static const startRecording = 'Start recording';
-  static const stopRecording = 'Stop recording';
-  static const textFieldLabel = 'What happened here?';
-  static const textFieldHint = 'Type, or record and it fills in as you talk';
-  static const transcribeNow = 'Transcribe now';
-  static const transcribing = 'Transcribing…';
-  static const personsLabel = 'Who was there?';
-  static const personSearchHint = 'Type a name';
-  static const addAsNewPerson = 'Add ';
-  static const whenLabel = 'When';
-  static const today = 'Today';
-  static const aYear = 'A year';
-  static const monthAndYear = 'Month and year';
-  static const exactDate = 'Exact date';
-  static const placeNameLabel = 'Place name (optional)';
-  static const placeNameHint = 'Leave blank for a default name';
-  static const titleLabel = 'Title (optional)';
-  static const titleHint = 'Leave blank to use the start of the text';
-  static const save = 'Save story';
-  static const cancel = 'Cancel';
-  static const ok = 'OK';
-  static const which = 'Which';
-  static const discardTitle = 'Discard this story?';
-  static const discardBody = 'What you\'ve entered so far will be lost.';
-  static const discardBodyWithRecording =
-      'The recording will be kept (you can attach it to a story later); everything else will be lost.';
-  static const keepEditing = 'Keep editing';
-  static const discard = 'Discard';
-  static const needsTextOrRecording = 'Add some text or record something first.';
+/// Localized messages shared between anything driving a [RecorderController]
+/// (the quick add sheet, the add/edit story form) - kept in one place so the
+/// two screens read identically instead of drifting apart.
+String messageForTranscriptionReason(AppLocalizations l10n, LiveTranscriptionReason reason) {
+  switch (reason) {
+    case LiveTranscriptionReason.notStarted:
+      return l10n.liveTranscriptionNotStarted;
+    case LiveTranscriptionReason.working:
+      return l10n.liveTranscriptionWorking;
+    case LiveTranscriptionReason.offline:
+      return l10n.liveTranscriptionOffline;
+    case LiveTranscriptionReason.notSignedIn:
+      return l10n.liveTranscriptionNotSignedIn;
+    case LiveTranscriptionReason.notConfigured:
+      return l10n.liveTranscriptionNotConfigured;
+    case LiveTranscriptionReason.failing:
+      return l10n.liveTranscriptionFailing;
+  }
+}
 
-  static String usingNearbyPlace(String name) => 'Use "$name" (nearby)';
-
-  static String messageForTranscriptionReason(LiveTranscriptionReason reason) {
-    switch (reason) {
-      case LiveTranscriptionReason.notStarted:
-        return 'Recording…';
-      case LiveTranscriptionReason.working:
-        return 'Live transcription is working.';
-      case LiveTranscriptionReason.offline:
-        return 'Offline - recording without live transcription.';
-      case LiveTranscriptionReason.notSignedIn:
-        return 'Sign in for live transcription - recording continues without it.';
-      case LiveTranscriptionReason.notConfigured:
-        return 'Live transcription isn\'t available right now.';
-      case LiveTranscriptionReason.failing:
-        return 'Live transcription is having trouble - recording continues.';
-    }
+String messageForMicFailure(AppLocalizations l10n, AudioCaptureFailureReason reason) {
+  switch (reason) {
+    case AudioCaptureFailureReason.permissionDenied:
+      return l10n.micPermissionDenied;
+    case AudioCaptureFailureReason.noMicrophone:
+      return l10n.micNoMicrophone;
+    case AudioCaptureFailureReason.other:
+      return l10n.micOtherError;
   }
 }
 
@@ -252,11 +230,9 @@ class QuickAddSheetState extends State<QuickAddSheet> {
       final result = await _recorder.stop();
       _pendingRecording = result.attachedFile;
       if (mounted && result.failedSegments.isNotEmpty) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                '${result.failedSegments.length} part(s) could not be transcribed live. The audio was kept.'),
-          ),
+          SnackBar(content: Text(l10n.recordingPartsFailedLive(result.failedSegments.length))),
         );
       }
       setState(() {});
@@ -323,11 +299,12 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   }
 
   Future<void> _pickYear() async {
+    final l10n = AppLocalizations.of(context);
     final controller = TextEditingController(text: _date.year.toString());
     final year = await showDialog<int>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('${_Strings.which} year?'),
+        title: Text(l10n.quickAddWhichYear),
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
@@ -335,10 +312,10 @@ class QuickAddSheetState extends State<QuickAddSheet> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(dialogContext), child: const Text(_Strings.cancel)),
+              onPressed: () => Navigator.pop(dialogContext), child: Text(l10n.commonCancel)),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, int.tryParse(controller.text.trim())),
-            child: const Text(_Strings.ok),
+            child: Text(l10n.commonOk),
           ),
         ],
       ),
@@ -352,13 +329,14 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   }
 
   Future<void> _pickMonthAndYear() async {
+    final l10n = AppLocalizations.of(context);
     var month = _date.month;
     var year = _date.year;
     final result = await showDialog<DateTime>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('${_Strings.which} month?'),
+          title: Text(l10n.quickAddWhichMonth),
           content: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -383,10 +361,10 @@ class QuickAddSheetState extends State<QuickAddSheet> {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(dialogContext), child: const Text(_Strings.cancel)),
+                onPressed: () => Navigator.pop(dialogContext), child: Text(l10n.commonCancel)),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, DateTime(year, month)),
-              child: const Text(_Strings.ok),
+              child: Text(l10n.commonOk),
             ),
           ],
         ),
@@ -437,21 +415,22 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     }
     if (!mounted) return true;
 
+    final l10n = AppLocalizations.of(context);
     final discard = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text(_Strings.discardTitle),
+        title: Text(l10n.quickAddDiscardTitle),
         content: Text(_pendingRecording != null
-            ? _Strings.discardBodyWithRecording
-            : _Strings.discardBody),
+            ? l10n.quickAddDiscardBodyWithRecording
+            : l10n.quickAddDiscardBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text(_Strings.keepEditing),
+            child: Text(l10n.quickAddKeepEditing),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text(_Strings.discard, style: TextStyle(color: Colors.red)),
+            child: Text(l10n.quickAddDiscard, style: const TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -459,7 +438,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     return discard ?? false;
   }
 
-  String _deriveTitle(String text, String placeName) {
+  String _deriveTitle(AppLocalizations l10n, String text, String placeName) {
     final explicit = _titleController.text.trim();
     if (explicit.isNotEmpty) return explicit;
 
@@ -470,14 +449,15 @@ class QuickAddSheetState extends State<QuickAddSheet> {
       return firstFew.length < trimmedText.length ? '$firstFew…' : firstFew;
     }
     if (placeName.trim().isNotEmpty) return placeName.trim();
-    return 'Story on ${DateFormat.yMMMd().format(_date)}';
+    return l10n.quickAddDefaultTitle(DateFormat.yMMMd(l10n.localeName).format(_date));
   }
 
   Future<void> _save() async {
+    final l10n = AppLocalizations.of(context);
     final text = _textController.text.trim();
     if (text.isEmpty && _pendingRecording == null) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(_Strings.needsTextOrRecording)));
+          .showSnackBar(SnackBar(content: Text(l10n.quickAddNeedsTextOrRecording)));
       return;
     }
 
@@ -509,7 +489,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
 
     final files = <AttachedFile>[if (_pendingRecording != null) _pendingRecording!];
     final event = Event(
-      title: _deriveTitle(text, place.name),
+      title: _deriveTitle(l10n, text, place.name),
       description: text.isEmpty ? null : text,
       dateTime: _date,
       datePrecision: _datePrecision,
@@ -546,6 +526,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -574,27 +555,27 @@ class QuickAddSheetState extends State<QuickAddSheet> {
                     ),
                   ),
                 ),
-                Text(_Strings.sheetTitle, style: Theme.of(context).textTheme.titleLarge),
+                Text(l10n.quickAddTitle, style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 16),
-                _buildRecordButton(),
+                _buildRecordButton(l10n),
                 const SizedBox(height: 12),
-                _buildTextField(),
+                _buildTextField(l10n),
                 const SizedBox(height: 20),
-                Text(_Strings.personsLabel, style: Theme.of(context).textTheme.labelLarge),
+                Text(l10n.quickAddPersonsLabel, style: Theme.of(context).textTheme.labelLarge),
                 const SizedBox(height: 8),
-                _buildPersonsPicker(),
+                _buildPersonsPicker(l10n),
                 const SizedBox(height: 20),
-                Text(_Strings.whenLabel, style: Theme.of(context).textTheme.labelLarge),
+                Text(l10n.quickAddWhenLabel, style: Theme.of(context).textTheme.labelLarge),
                 const SizedBox(height: 8),
-                _buildDateChoices(),
+                _buildDateChoices(l10n),
                 const SizedBox(height: 20),
-                _buildPlaceField(),
+                _buildPlaceField(l10n),
                 const SizedBox(height: 16),
                 TextField(
                   controller: _titleController,
-                  decoration: const InputDecoration(
-                    labelText: _Strings.titleLabel,
-                    hintText: _Strings.titleHint,
+                  decoration: InputDecoration(
+                    labelText: l10n.quickAddTitleLabel,
+                    hintText: l10n.quickAddTitleHint,
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -606,7 +587,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
                           width: 22,
                           height: 22,
                           child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text(_Strings.save),
+                      : Text(l10n.quickAddSave),
                 ),
               ],
             ),
@@ -616,7 +597,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     );
   }
 
-  Widget _buildRecordButton() {
+  Widget _buildRecordButton(AppLocalizations l10n) {
     final isRecording = _recorder.state == RecorderState.recording;
     final isBusy = _recorder.state == RecorderState.requestingPermission ||
         _recorder.state == RecorderState.finishing;
@@ -625,7 +606,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
       children: [
         Center(
           child: Semantics(
-            label: isRecording ? _Strings.stopRecording : _Strings.startRecording,
+            label: isRecording ? l10n.quickAddStopRecording : l10n.quickAddStartRecording,
             button: true,
             child: GestureDetector(
               onTap: isBusy ? null : _toggleRecording,
@@ -652,7 +633,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
             child: Text(
-              _messageForFailure(_recorder.failure!.reason),
+              messageForMicFailure(l10n, _recorder.failure!.reason),
               style: const TextStyle(color: Colors.red),
               textAlign: TextAlign.center,
             ),
@@ -669,7 +650,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
           ),
           const SizedBox(height: 4),
           Text(
-            _Strings.messageForTranscriptionReason(_recorder.liveTranscriptionReason),
+            messageForTranscriptionReason(l10n, _recorder.liveTranscriptionReason),
             style: Theme.of(context).textTheme.bodySmall,
             textAlign: TextAlign.center,
           ),
@@ -679,22 +660,11 @@ class QuickAddSheetState extends State<QuickAddSheet> {
             padding: const EdgeInsets.only(top: 4),
             child: TextButton(
               onPressed: _isTranscribingNow ? null : _transcribeNow,
-              child: Text(_isTranscribingNow ? _Strings.transcribing : _Strings.transcribeNow),
+              child: Text(_isTranscribingNow ? l10n.quickAddTranscribing : l10n.quickAddTranscribeNow),
             ),
           ),
       ],
     );
-  }
-
-  String _messageForFailure(AudioCaptureFailureReason reason) {
-    switch (reason) {
-      case AudioCaptureFailureReason.permissionDenied:
-        return 'Microphone permission was denied.';
-      case AudioCaptureFailureReason.noMicrophone:
-        return 'No microphone is available on this device.';
-      case AudioCaptureFailureReason.other:
-        return 'Could not start recording.';
-    }
   }
 
   String _formatElapsed(Duration d) {
@@ -706,20 +676,20 @@ class QuickAddSheetState extends State<QuickAddSheet> {
         : '${two(minutes)}:${two(seconds)}';
   }
 
-  Widget _buildTextField() {
+  Widget _buildTextField(AppLocalizations l10n) {
     return TextField(
       controller: _textController,
       minLines: 3,
       maxLines: 8,
-      decoration: const InputDecoration(
-        labelText: _Strings.textFieldLabel,
-        hintText: _Strings.textFieldHint,
-        border: OutlineInputBorder(),
+      decoration: InputDecoration(
+        labelText: l10n.quickAddTextFieldLabel,
+        hintText: l10n.quickAddTextFieldHint,
+        border: const OutlineInputBorder(),
       ),
     );
   }
 
-  Widget _buildPersonsPicker() {
+  Widget _buildPersonsPicker(AppLocalizations l10n) {
     // Keep the user's original capitalisation for display/creation
     // ("Grandma Rose", not "grandma rose"); only the lowercased copy is
     // used for case-insensitive matching against existing persons.
@@ -755,9 +725,9 @@ class QuickAddSheetState extends State<QuickAddSheet> {
         const SizedBox(height: 8),
         TextField(
           controller: _personSearchController,
-          decoration: const InputDecoration(
-            hintText: _Strings.personSearchHint,
-            prefixIcon: Icon(Icons.person_search),
+          decoration: InputDecoration(
+            hintText: l10n.quickAddPersonSearchHint,
+            prefixIcon: const Icon(Icons.person_search),
           ),
           onChanged: (_) => setState(() {}),
           onSubmitted: (value) {
@@ -779,7 +749,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
                 if (query.isNotEmpty && !exactMatch)
                   ActionChip(
                     avatar: const Icon(Icons.add, size: 18),
-                    label: Text('${_Strings.addAsNewPerson}"$rawQuery"'),
+                    label: Text(l10n.quickAddAddNewPerson(rawQuery)),
                     onPressed: () => _addNewPersonName(rawQuery),
                   ),
               ],
@@ -789,7 +759,8 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     );
   }
 
-  Widget _buildDateChoices() {
+  Widget _buildDateChoices(AppLocalizations l10n) {
+    final locale = Localizations.localeOf(context).toString();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -798,23 +769,23 @@ class QuickAddSheetState extends State<QuickAddSheet> {
           runSpacing: 4,
           children: [
             ChoiceChip(
-              label: const Text(_Strings.today),
+              label: Text(l10n.quickAddToday),
               selected: _datePrecision == DatePrecision.day &&
                   _isSameDay(_date, DateTime.now()),
               onSelected: (_) => _pickToday(),
             ),
             ChoiceChip(
-              label: const Text(_Strings.aYear),
+              label: Text(l10n.quickAddAYear),
               selected: _datePrecision == DatePrecision.year,
               onSelected: (_) => _pickYear(),
             ),
             ChoiceChip(
-              label: const Text(_Strings.monthAndYear),
+              label: Text(l10n.quickAddMonthAndYear),
               selected: _datePrecision == DatePrecision.month,
               onSelected: (_) => _pickMonthAndYear(),
             ),
             ChoiceChip(
-              label: const Text(_Strings.exactDate),
+              label: Text(l10n.quickAddExactDate),
               selected: _datePrecision == DatePrecision.day &&
                   !_isSameDay(_date, DateTime.now()),
               onSelected: (_) => _pickExactDate(),
@@ -822,7 +793,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
           ],
         ),
         const SizedBox(height: 4),
-        Text(formatDateWithPrecision(_date, _datePrecision),
+        Text(formatDateWithPrecision(_date, _datePrecision, locale),
             style: Theme.of(context).textTheme.bodySmall),
       ],
     );
@@ -831,7 +802,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
-  Widget _buildPlaceField() {
+  Widget _buildPlaceField(AppLocalizations l10n) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -839,13 +810,13 @@ class QuickAddSheetState extends State<QuickAddSheet> {
           controller: _placeNameController,
           enabled: _useExistingPlace == null,
           decoration: InputDecoration(
-            labelText: _Strings.placeNameLabel,
-            hintText: _Strings.placeNameHint,
+            labelText: l10n.quickAddPlaceNameLabel,
+            hintText: l10n.quickAddPlaceNameHint,
             suffixIcon: _useExistingPlace != null
                 ? IconButton(
                     icon: const Icon(Icons.clear),
                     onPressed: _clearExistingPlaceChoice,
-                    tooltip: 'Use a different place',
+                    tooltip: l10n.quickAddUseDifferentPlace,
                   )
                 : null,
           ),
@@ -855,7 +826,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
             padding: const EdgeInsets.only(top: 8),
             child: ActionChip(
               avatar: const Icon(Icons.place, size: 18),
-              label: Text(_Strings.usingNearbyPlace(_nearbyPlace!.name)),
+              label: Text(l10n.quickAddUsingNearbyPlace(_nearbyPlace!.name)),
               onPressed: _useNearbyPlace,
             ),
           ),

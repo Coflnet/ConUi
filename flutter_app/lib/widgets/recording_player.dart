@@ -1,6 +1,7 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 
+import '../l10n/gen/app_localizations.dart';
 import '../models/models.dart';
 import '../services/recording_file_store.dart';
 
@@ -109,6 +110,7 @@ class RecordingPlayerState extends State<RecordingPlayer> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     if (_loading) {
       return const Padding(
         padding: EdgeInsets.all(16),
@@ -120,7 +122,7 @@ class RecordingPlayerState extends State<RecordingPlayer> {
       return ListTile(
         leading: const Icon(Icons.error_outline, color: Colors.red),
         title: Text(widget.file.fileName),
-        subtitle: const Text('Failed to load recording'),
+        subtitle: Text(l10n.recordingPlayerFailedToLoad),
       );
     }
 
@@ -137,7 +139,7 @@ class RecordingPlayerState extends State<RecordingPlayer> {
                   _isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled),
               iconSize: 40,
               onPressed: _togglePlayPause,
-              tooltip: _isPlaying ? 'Pause' : 'Play',
+              tooltip: _isPlaying ? l10n.recordingPlayerPause : l10n.recordingPlayerPlay,
             ),
             Expanded(
               child: Column(

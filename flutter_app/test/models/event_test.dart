@@ -180,7 +180,7 @@ void main() {
         dateTime: DateTime(1952, 7, 3),
         datePrecision: DatePrecision.year,
       );
-      expect(event.displayDate, '1952');
+      expect(event.displayDate(), '1952');
     });
 
     test('month precision shows month and year', () {
@@ -189,7 +189,7 @@ void main() {
         dateTime: DateTime(1952, 6, 3),
         datePrecision: DatePrecision.month,
       );
-      expect(event.displayDate, 'June 1952');
+      expect(event.displayDate(), 'June 1952');
     });
 
     test('day precision shows a full date without a time', () {
@@ -198,8 +198,8 @@ void main() {
         dateTime: DateTime(1952, 6, 12),
         datePrecision: DatePrecision.day,
       );
-      expect(event.displayDate, contains('1952'));
-      expect(event.displayDate, isNot(contains(':')));
+      expect(event.displayDate(), contains('1952'));
+      expect(event.displayDate(), isNot(contains(':')));
     });
 
     test('time precision (the default) shows date and time', () {
@@ -207,8 +207,8 @@ void main() {
         title: 'x',
         dateTime: DateTime(1952, 6, 12, 15, 45),
       );
-      expect(event.displayDate, contains('1952'));
-      expect(event.displayDate, contains(':'));
+      expect(event.displayDate(), contains('1952'));
+      expect(event.displayDate(), contains(':'));
     });
   });
 

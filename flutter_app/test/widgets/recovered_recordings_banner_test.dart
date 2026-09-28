@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
+import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/services/database_service.dart';
 import 'package:relationship_manager/services/recording_file_store_native.dart';
@@ -42,7 +43,11 @@ void _stubAudioplayersChannel() {
 Widget _wrap(DatabaseService db, Widget child) {
   return ChangeNotifierProvider<DatabaseService>.value(
     value: db,
-    child: MaterialApp(home: Scaffold(body: child)),
+    child: MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(body: child),
+    ),
   );
 }
 

@@ -23,18 +23,21 @@ DatePrecision _datePrecisionFromName(String? name) => DatePrecision.values
 
 /// Formats [date] to match how precisely it's actually known: "1952",
 /// "June 1952", "Jun 12, 1952" or, with full time precision, "Jun 12, 1952
-/// 3:45 PM". Shared by [Event.displayDate] and [Person]'s birthday/death
-/// date display, which use the same [DatePrecision] vocabulary.
-String formatDateWithPrecision(DateTime date, DatePrecision precision) {
+/// 3:45 PM" - in [locale] (e.g. from `Localizations.localeOf(context)`), or
+/// intl's own default locale if omitted (used by callers with no
+/// BuildContext, e.g. plain model unit tests). Shared by [Event.displayDate]
+/// and [Person]'s birthday/death date display, which use the same
+/// [DatePrecision] vocabulary.
+String formatDateWithPrecision(DateTime date, DatePrecision precision, [String? locale]) {
   switch (precision) {
     case DatePrecision.year:
-      return DateFormat.y().format(date);
+      return DateFormat.y(locale).format(date);
     case DatePrecision.month:
-      return DateFormat.yMMMM().format(date);
+      return DateFormat.yMMMM(locale).format(date);
     case DatePrecision.day:
-      return DateFormat.yMMMd().format(date);
+      return DateFormat.yMMMd(locale).format(date);
     case DatePrecision.time:
-      return DateFormat.yMMMd().add_jm().format(date);
+      return DateFormat.yMMMd(locale).add_jm().format(date);
   }
 }
 
@@ -174,8 +177,10 @@ class Event {
 
   /// Human-readable date, formatted to match how precisely the date is
   /// actually known: "1952", "June 1952", "Jun 12, 1952" or, with full
-  /// time precision, "Jun 12, 1952 3:45 PM".
-  String get displayDate => formatDateWithPrecision(dateTime, datePrecision);
+  /// time precision, "Jun 12, 1952 3:45 PM" - in [locale] if given (see
+  /// [formatDateWithPrecision]).
+  String displayDate([String? locale]) =>
+      formatDateWithPrecision(dateTime, datePrecision, locale);
 
   /// Sorts events by date, most imprecise-safe: compares [dateTime]
   /// first (so chronological order is always respected regardless of

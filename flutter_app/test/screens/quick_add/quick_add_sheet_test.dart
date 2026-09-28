@@ -18,6 +18,7 @@ import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
+import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/screens/quick_add/quick_add_sheet.dart';
 import 'package:relationship_manager/services/database_service.dart';
@@ -77,6 +78,8 @@ RecorderController _buildRecorder({
 
 Widget _wrap(DatabaseService db, Widget child) {
   return MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     home: ChangeNotifierProvider<DatabaseService>.value(
       value: db,
       child: Scaffold(body: child),
@@ -476,7 +479,7 @@ void main() {
       await tester.pump();
 
       expect(find.text(
-          'The recording will be kept (you can attach it to a story later); everything else will be lost.'),
+          'The recording stays saved on this device (you can attach it to a story later); everything else will be lost.'),
           findsOneWidget);
 
       await tester.tap(find.text('Discard'));
