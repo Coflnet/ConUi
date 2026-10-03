@@ -826,7 +826,8 @@ class QuickAddSheetState extends State<QuickAddSheet> {
             padding: const EdgeInsets.only(top: 8),
             child: ActionChip(
               avatar: const Icon(Icons.place, size: 18),
-              label: Text(l10n.quickAddUsingNearbyPlace(_nearbyPlace!.name)),
+              label: Text(l10n.quickAddUsingNearbyPlace(_nearbyPlace!.name),
+                  maxLines: 3),
               onPressed: _useNearbyPlace,
             ),
           ),

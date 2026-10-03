@@ -165,7 +165,7 @@ class PlaceSheetState extends State<PlaceSheet> {
                           ),
                           Positioned(
                             right: 8,
-                            bottom: 8,
+                            bottom: 24,
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
