@@ -4,6 +4,67 @@ Written for the next Claude Code session. Read fully before acting. Start the se
 `/run/media/ekwav/Data/dev/Con/ConUi-work/integration` (not in `dev/Connections`, which is a
 stale Angular clone kept only for reference).
 
+## Provisioning request — 2026-10-03
+
+Owner requested provisioning and deployed E2E. Completed live prerequisites:
+- Created and verified separate Keycloak realm `con` / client `con-app`. The
+  existing RFInD and Wald realm representations remained identical. Password
+  reset is disabled until Con SMTP is configured. Generator/verifier includes
+  `basic` subject scope, exact callbacks, public code flow/S256, audience `con-api`.
+- Legacy Scylla keyspace/user `con` already existed with old tables; left untouched.
+  Created isolated `con_stories` keyspace (datacenter1 RF3) and non-superuser
+  `con_stories`, with only CREATE/SELECT/MODIFY on that keyspace. New credentials
+  were tested successfully over TLS through existing local CQL configuration.
+- Created and read-back verified `kv/con/con-backend`, workload policy
+  `con-backend`, and `auth/jwt-talos-eu/role/con-backend`. Leaf contains generated
+  JWT signing secret, dedicated DB credentials and CA PFX/config under `files`.
+  Existing-object checks and CAS-protected writes preserve unrelated fields.
+  Repeatable helper: `ansible/scripts/provision-con-openbao.sh`, executed only
+  within the required `fleet/openbao/scripts/openbao-local-session.sh` flow.
+  Protected eu-cluster predecessor authority minted a nonrenewable 900-second
+  exact-task child. On exit self-revocation returned HTTP403; token artifacts
+  removed. No raw values were displayed. Local credential/config files removed.
+- Created private EU R2 bucket `con-stories` in existing Cloudflare account
+  `fd03721f31d7dccb9201acb6d9840d6d`. No public access was enabled. S3 credentials
+  are NOT provisioned: existing Wrangler OAuth lacks token-management authority.
+
+Deployment is NOT completed; deployed E2E has NOT run. No Git push succeeded.
+Automatic approval review specifically rejected (1) copying the existing Argo
+webhook credential to Coflnet/ConUi Actions `ARGO_WEBHOOK_SECRET`, and (2) pushing
+Con-only Fleet changes to main because the original no-push instruction remains
+an explicit boundary. Async approval questions are pending for the secret copy
+and ConUi/Fleet main pushes. Do not bypass these rejections without approval.
+A third question requests a protected local credential path for either suitable
+Cloudflare token-management authority or Con-only bucket S3 credentials; never
+ask for credential values in chat. No unrelated app credentials may be reused.
+
+Ready local work:
+- Integration `b36056c`: reusable Con-only realm provisioning and owned synthetic
+  user cleanup, 12 tests pass; all callbacks must match regardless of server order.
+- Integration `777c71f`: S3 checks only its preprovisioned bucket (bounded object
+  listing); removes broad ListBuckets/auto-create. Three real SDK HTTP regressions;
+  full backend suite now 105/105 passes.
+- Fresh Fleet worktree `/run/media/ekwav/Data/dev/fleet-work/con-provision`, branch
+  `con-provision`, based on current upstream (older worktree is shallow/outdated).
+  Commits `d49f718a` chart/PSA, `878a3460` exact Con public realm route, `80d8de03`
+  enable OIDC/Scylla/readiness and Con-only database-egress exemption. Seven Con
+  chart tests, 14 Rfind routing tests and relevant Helm lints pass. Other database
+  policy rules/clients compare unchanged. `fleet/con.yaml` deliberately absent;
+  image remains placeholder until the normal scanned ConUi CI promotion.
+- Fleet auth init image remains digest-pinned; CA distribution automatically
+  covers Con. Namespace/registry credential and actual workload rollout remain
+  pending Fleet publication. The identity tunnel launched for provisioning was
+  recorded and stopped after command-line verification. No synthetic users added.
+
+After explicit publication approval: publish Fleet contract first, configure the
+CI webhook secret via memory/stdin, push reviewed ConUi main, verify GitHub plus
+Argo OIDC/mandatory scan/digest promotion, then publish the Con GitRepo registration.
+Provision bucket-only S3 credentials via protected input, exact origin CORS for
+browser GET/PUT, and CAS-patch only S3 config. Enable S3 only after verification.
+Test deployed login, map/story/audio, same-account second-browser sync, account
+isolation, backup/restore and indexed relationships. Cross-user sharing remains
+unimplemented and must not be reported as passing.
+
 ## Shared identity follow-up — 2026-10-03
 
 This section supersedes the earlier missing-authentication/configuration blockers.

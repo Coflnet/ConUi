@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-03",
+  "keycloak": {
+    "realm": "con",
+    "client": "con-app",
+    "verified": true,
+    "smtpConfigured": false
+  },
+  "database": {
+    "keyspace": "con_stories",
+    "role": "con_stories",
+    "permissions": [
+      "CREATE",
+      "SELECT",
+      "MODIFY"
+    ],
+    "legacyConUnchanged": true
+  },
+  "openbao": {
+    "leaf": "kv/con/con-backend",
+    "role": "jwt-talos-eu/con-backend",
+    "childRevocationProven403": true,
+    "tokenArtifactsRemoved": true
+  },
+  "objectStorage": {
+    "bucket": "con-stories",
+    "jurisdiction": "eu",
+    "publicAccess": false,
+    "credentialsProvisioned": false
+  },
+  "deployment": {
+    "pushed": false,
+    "deployedE2eRun": false,
+    "blockedOn": [
+      "explicit CI secret destination approval",
+      "explicit ConUi/Fleet main push approval",
+      "Con-only S3 credentials"
+    ]
+  }
+}
