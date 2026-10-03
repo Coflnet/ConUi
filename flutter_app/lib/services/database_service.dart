@@ -211,14 +211,9 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<List<Connection>> getConnectionsForEvent(String eventId) async {
-    final db = await database;
-    final results = await db.query(
-      'connections',
-      where: 'origin_event_id = ? AND is_deleted = 0',
-      whereArgs: [eventId],
-    );
-    return results
-        .map((row) => Connection.fromJson(jsonDecode(row['data'] as String)))
+    return (await getConnections())
+        .where((connection) => connection.originEventId == eventId ||
+            connection.sourceEventIds.contains(eventId))
         .toList();
   }
 

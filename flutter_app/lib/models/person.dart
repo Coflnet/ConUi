@@ -35,6 +35,7 @@ class Person {
   String? jobTitle;
   String? notes;
   Map<String, String> customAttributes;
+  Map<String, String> storyFacts;
   DateTime createdAt;
   DateTime updatedAt;
   bool isDeleted;
@@ -55,12 +56,14 @@ class Person {
     this.jobTitle,
     this.notes,
     Map<String, String>? customAttributes,
+    Map<String, String>? storyFacts,
     DateTime? createdAt,
     DateTime? updatedAt,
     this.isDeleted = false,
   })  : id = id ?? const Uuid().v4(),
         aliases = aliases ?? [],
         customAttributes = customAttributes ?? {},
+        storyFacts = storyFacts ?? {},
         createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
 
@@ -106,6 +109,7 @@ class Person {
         'jobTitle': jobTitle,
         'notes': notes,
         'customAttributes': customAttributes,
+        'storyFacts': storyFacts,
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
         'isDeleted': isDeleted,
@@ -130,6 +134,7 @@ class Person {
         notes: json['notes'],
         customAttributes:
             Map<String, String>.from(json['customAttributes'] ?? {}),
+        storyFacts: Map<String, String>.from(json['storyFacts'] ?? {}),
         createdAt: DateTime.parse(json['createdAt']),
         updatedAt: DateTime.parse(json['updatedAt']),
         isDeleted: json['isDeleted'] ?? false,
@@ -151,6 +156,7 @@ class Person {
     String? jobTitle,
     String? notes,
     Map<String, String>? customAttributes,
+    Map<String, String>? storyFacts,
     bool? isDeleted,
   }) {
     return Person(
@@ -169,6 +175,7 @@ class Person {
       jobTitle: jobTitle ?? this.jobTitle,
       notes: notes ?? this.notes,
       customAttributes: customAttributes ?? this.customAttributes,
+      storyFacts: storyFacts ?? this.storyFacts,
       createdAt: createdAt,
       updatedAt: DateTime.now(),
       isDeleted: isDeleted ?? this.isDeleted,
@@ -194,12 +201,16 @@ class Connection {
   /// etc. Optional and additive so JSON written before this field existed -
   /// which was always a non-deleted connection - still parses as `false`.
   bool isDeleted;
+  bool isInferred;
+  List<String> sourceEventIds;
 
   Connection({
     String? id,
     required this.person1Id,
     required this.person2Id,
     required this.relationshipType,
+    this.isInferred = false,
+    List<String>? sourceEventIds,
     this.originEventId,
     this.description,
     DateTime? startDate,
@@ -208,6 +219,7 @@ class Connection {
     DateTime? updatedAt,
     this.isDeleted = false,
   })  : id = id ?? const Uuid().v4(),
+        sourceEventIds = sourceEventIds ?? [],
         startDate = startDate ?? DateTime.now(),
         createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
@@ -217,6 +229,8 @@ class Connection {
         'person1Id': person1Id,
         'person2Id': person2Id,
         'relationshipType': relationshipType,
+        'isInferred': isInferred,
+        'sourceEventIds': sourceEventIds,
         'originEventId': originEventId,
         'description': description,
         'startDate': startDate.toIso8601String(),
@@ -231,6 +245,8 @@ class Connection {
         person1Id: json['person1Id'],
         person2Id: json['person2Id'],
         relationshipType: json['relationshipType'],
+        isInferred: json['isInferred'] ?? false,
+        sourceEventIds: List<String>.from(json['sourceEventIds'] ?? []),
         originEventId: json['originEventId'],
         description: json['description'],
         startDate: json['startDate'] != null
@@ -245,6 +261,8 @@ class Connection {
 
   Connection copyWith({
     String? relationshipType,
+    bool? isInferred,
+    List<String>? sourceEventIds,
     String? originEventId,
     String? description,
     DateTime? startDate,
@@ -256,6 +274,8 @@ class Connection {
       person1Id: person1Id,
       person2Id: person2Id,
       relationshipType: relationshipType ?? this.relationshipType,
+      isInferred: isInferred ?? this.isInferred,
+      sourceEventIds: sourceEventIds ?? this.sourceEventIds,
       originEventId: originEventId ?? this.originEventId,
       description: description ?? this.description,
       startDate: startDate ?? this.startDate,

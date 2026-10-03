@@ -2,6 +2,36 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:relationship_manager/models/models.dart';
 
 void main() {
+  test('story facts are additive and preserved by copies', () {
+    final person = Person(name: 'Ada', storyFacts: {'story': 'Bought a car'});
+    expect(Person.fromJson(person.toJson()).storyFacts, person.storyFacts);
+    expect(person.copyWith(name: 'Ada L.').storyFacts, person.storyFacts);
+    expect(person.copyWith(storyFacts: {}).storyFacts, isEmpty);
+    expect(Person.fromJson(person.toJson()..remove('storyFacts')).storyFacts,
+        isEmpty);
+  });
+
+  test('connection provenance is additive and preserved by copies', () {
+    final connection = Connection(
+      person1Id: 'a',
+      person2Id: 'b',
+      relationshipType: 'friend',
+      isInferred: true,
+      sourceEventIds: ['story'],
+    );
+    final restored = Connection.fromJson(connection.toJson());
+    expect(restored.isInferred, isTrue);
+    expect(restored.sourceEventIds, ['story']);
+    expect(connection.copyWith(description: 'Updated').isInferred, isTrue);
+    expect(
+        connection.copyWith(description: 'Updated').sourceEventIds, ['story']);
+    final old = Connection.fromJson(connection.toJson()
+      ..remove('isInferred')
+      ..remove('sourceEventIds'));
+    expect(old.isInferred, isFalse);
+    expect(old.sourceEventIds, isEmpty);
+  });
+
   group('Person deathDate JSON compatibility', () {
     test('old JSON (no death fields) parses with defaults', () {
       final oldJson = {
