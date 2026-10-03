@@ -5,7 +5,7 @@ namespace RelationshipManager.Api.Services;
 
 /// <summary>
 /// Thrown when a caller asks for an S3 operation but S3 is not configured, or the bucket could
-/// not be reached/created. Controllers translate this into a 503 response.
+/// not be reached. Controllers translate this into a 503 response.
 /// </summary>
 public class S3UnavailableException : Exception
 {
@@ -30,7 +30,7 @@ public interface IS3Service
 
 /// <summary>
 /// S3-compatible blob storage client. Nothing here talks to S3 during construction: the client
-/// and the "does the bucket exist" check are both created lazily on first use, so the API can
+/// and the bucket access check are both created lazily on first use, so the API can
 /// start even when S3 is not configured or not reachable. Callers get an
 /// <see cref="S3UnavailableException"/> in that case instead of a crash at start-up.
 /// </summary>
@@ -78,7 +78,7 @@ public class S3Service : IS3Service
     private AmazonS3Client Client => _client?.Value
         ?? throw new S3UnavailableException("S3 is not configured");
 
-    /// <summary>Ensures the bucket exists, at most once, the first time it is actually needed.</summary>
+    /// <summary>Checks access to the preprovisioned bucket, at most once, the first time it is actually needed.</summary>
     private async Task EnsureReadyAsync()
     {
         if (!IsConfigured)
@@ -89,7 +89,7 @@ public class S3Service : IS3Service
         await _bucketEnsureLock.WaitAsync();
         try
         {
-            _bucketEnsureTask ??= EnsureBucketExistsAsync();
+            _bucketEnsureTask ??= CheckBucketAccessAsync();
             await _bucketEnsureTask;
         }
         catch
@@ -104,16 +104,12 @@ public class S3Service : IS3Service
         }
     }
 
-    private async Task EnsureBucketExistsAsync()
+    private async Task CheckBucketAccessAsync()
     {
         try
         {
-            var buckets = await Client.ListBucketsAsync();
-            if (!buckets.Buckets.Any(b => b.BucketName == _bucket))
-            {
-                await Client.PutBucketAsync(new PutBucketRequest { BucketName = _bucket });
-                _logger.LogInformation("Created S3 bucket: {Bucket}", _bucket);
-            }
+            // Object-scoped credentials can list this bucket without permission to list or create buckets.
+            await Client.ListObjectsV2Async(new ListObjectsV2Request { BucketName = _bucket, MaxKeys = 1 });
         }
         catch (Exception ex)
         {
