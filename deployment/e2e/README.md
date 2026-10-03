@@ -59,13 +59,15 @@ The harness uses Flutter's accessibility semantics for the German UI:
   for demonstrated overlapping semantics hit targets. Playback still must
   advance the actual media clock, and relationship creation must show the
   saved result. The friend relationship submit button is `Hinzufügen`.
+- Successful restore returns directly to the map; there is no extra Back
+  action. Backup creation returns to Settings, which the harness waits for.
 - The encryption-lock Snackbar is checked in semantics text because its exact
   text locator did not expose the visible message reliably.
 
 Backups are ZIP files. The restore picker accepts `.zip`; the archive contains
 `manifest.json`, `data.json`, `README.txt`, and `recordings/<id>.wav`. Format version
-1 records each recording's byte count and SHA-256 digest. Independent disposable
-local checks verified the story/recording/relationship workflow, ZIP recording
+1 records each recording's byte count and SHA-256 digest. Hosted and independent
+disposable local checks verified the story/recording/relationship workflow, ZIP recording
 integrity, and fresh-profile restore with actual playback. Hosted completion is
 established only by a successful full run against the deployed release: require
 exit status zero and `result.json` with `completed: true`, then verify temporary

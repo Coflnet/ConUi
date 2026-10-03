@@ -2,7 +2,7 @@
 
 Con reuses the existing RFInD Keycloak server. Its separate `con` realm and
 `con-app` public client follow the existing RFInD/Wald integration pattern.
-These are prepared configuration, not a claim that the realm is deployed.
+The separate realm and client are deployed and real hosted PKCE sign-in passes.
 Existing RFInD and Wald realms, users, themes, storage and signing keys remain
 unchanged. Separate realms do not share user accounts or imply cross-project SSO.
 
@@ -46,9 +46,9 @@ token, and the backend reads the required file through `CON_CONFIG_FILE` before
 validating JWT/storage settings. Missing or malformed configured files fail
 startup. Public OIDC settings are ordinary deployment configuration.
 
-Before an approved rollout, provision persistent Con account/sync storage and
-the scoped OpenBao leaf/role, then create the new realm and enable the chart's
-OIDC setting. Do not import this JSON over an existing realm: first read the
+Persistent Con account storage, the scoped OpenBao leaf/role and chart OIDC gate
+are provisioned. S3 remains disabled pending Con-only credentials. Do not import
+this JSON over an existing realm: first read the
 current objects and patch only required Con fields. Con is registered as a prepared
 consumer in RFInD's `docs/SHARED-IDENTITY.md`.
 Password reset requires SMTP configuration for the Con realm. No live realm,
@@ -92,6 +92,15 @@ admin session in every authenticated operation. Synthetic users carry a unique
 ownership marker. The credential artifact is created exclusively with mode 0600;
 cleanup checks ownership, deletes only the recorded IDs, verifies HTTP 404, then
 removes the artifact. Keep that protected artifact for retry if cleanup fails.
-Public `/auth/realms/con` routing and network policy still require Fleet changes;
+Public `/auth/realms/con` routing and network policy are deployed;
 master/admin remain private. Synthetic identity deletion does not remove any
 Con API account or sync fixture data created by the browser test.
+
+The helper registers the exact admin-only managed `con.e2e` attribute in Con's
+user profile before creating fixtures, preserving all unrelated profile fields.
+Keycloak drops undeclared attributes by default; each created user's marker is
+read-back verified after its recovery artifact is saved. Incompatible existing
+marker configuration stops creation. Strict cleanup still refuses an absent or
+changed marker and retains the protected artifact for audited recovery. The final
+hosted run and a fresh create/cleanup cycle verified user deletion and token
+revocation; see `deployment/con-provisioning.json`.

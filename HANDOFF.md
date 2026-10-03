@@ -4,86 +4,89 @@ Written for the next Claude Code session. Read fully before acting. Start the se
 `/run/media/ekwav/Data/dev/Con/ConUi-work/integration` (not in `dev/Connections`, which is a
 stale Angular clone kept only for reference).
 
-## Live rollout status — 2026-10-03
+## Live rollout and hosted verification — 2026-10-03
 
-Owner approved rollout pushes across all affected repositories and the Argo
-webhook credential copy. The old no-push restriction is superseded for this work.
-- ConUi main `d648f6b728640db9542d062ed0726ceee4425e92` is published. GitHub run
-  `37145347333` and Argo `promote-lmf7f` passed build, OIDC verification, mandatory
-  image scan and digest promotion. Fleet image digest:
-  `sha256:9e9e6fafc7a533393ffaa5bbd085ab5ee8213b7947071cc0a301ac89922c87ee`.
-- Fleet worktree is `dev/fleet-work/con-provision`, branch `con-provision`.
-  Published registration `91e9cc8b`; `a69505e3` renames `fleet/con.yaml` to
-  `fleet/con-app.yaml` after Fleet rejected the former path during checkout.
-  Parent reconciliation recovered; `con/con-con-chart` deployment now exists.
-- Owner explicitly approved copying `rfind-demo/regcred` into `con/regcred`.
-  Copy/readback succeeded through memory only; no credential value displayed.
-  Private images now pull successfully.
-- Owner explicitly approved the Con-only OpenBao proxy rule on TCP10283.
-  Fleet `4e132d5c` adds only namespace `con` / app label `con` to that rule.
-  Live policy verified; init mounted configuration and revoked its token.
-- Backend starts but readiness currently fails on Scylla TLS name mismatch.
-  The observed public server certificate has CN `sky-client` and no SAN.
-  Exact `CASSANDRA:TLS_SERVER_NAME=sky-client` was CAS-patched through the
-  ansible helper, preserving CA and other config. Five-minute narrow child
-  self-revocation proven by HTTP403 and token artifacts removed. Backend
-  support and strict pinned-root chain rebuilding are implemented. Four real
-  leaf-only TLS regressions pass (right identity, wrong name/root, expired leaf);
-  full backend suite passes 109/109. Release E2E still has not run.
-- Argo webhook credential was copied through memory/stdin to ConUi Actions
-  `ARGO_WEBHOOK_SECRET`; metadata verified, no value displayed.
-- Ansible Con storage/helper commit `7a02aa3` is published to main. Unrelated uncommitted
-  infrastructure work was not included. Rfind checkout has unrelated local
-  commits/work; it was not pushed wholesale.
-- Deployed E2E has NOT run. `deployment/e2e/hosted.py` is preparatory only until
-  selectors and workflows pass against the hosted release. No synthetic users
-  have been created for the deployed run.
+This receipt supersedes all historical no-push, approval and readiness blockers below.
+Owner approved rollout pushes across affected repositories, the Argo credential
+copy, `rfind-demo/regcred` into `con/regcred`, and the exact Con-only TCP10283
+OpenBao proxy rule. These approvals are resolved. Never amend or use broad process
+kills; retain the protected people search region and scoped OpenBao flow.
 
-## Provisioning receipt — 2026-10-03
+- Con is Ready at https://con.coflnet.com. Runtime source
+  `cf1f8ea8a0613f0c4074d2c6e1c3a159f635a509` passed GitHub run `37151516502` and
+  Argo `promote-h9q7l`: OIDC verification, mandatory image scan and promotion.
+  Fleet image promotion `47224c97` pins
+  `sha256:4114b3d316450930f22ba806337cc40bb742791a9cfee6afb98b3b70db577631`.
+  Exact `con/con-con-chart` image and observed generation verified after rollout;
+  HTTPS readiness is HTTP200, Cassandra true, S3/transcription false.
+- Fleet checkout is `dev/fleet-work/con-provision`, branch `con-provision`.
+  `fleet/con-app.yaml` registration resolves the reserved `con.yaml` checkout
+  failure. Fleet `4e132d5c` adds only namespace `con` / app label `con` to the
+  existing OpenBao proxy rule. Live rule and successful init/token revocation
+  verified. Registry copy/readback used memory only; no values displayed.
+- Dedicated Keycloak realm `con`, public PKCE client `con-app`, issuer
+  `https://app.rfind.de/auth/realms/con`, audience `con-api`, exact callbacks and
+  `basic` subject scope are live. Browser and actual backend discovery/JWKS work.
+  Shared RFInD/Wald realm representations remain unchanged; Con SMTP/reset is off.
+- Legacy Scylla `con` is untouched. Dedicated `con_stories` keyspace uses
+  datacenter1 RF3; nonsuperuser has CREATE/SELECT/MODIFY only there. Public
+  leaf-only certificate identity `sky-client` is verified against the pinned CA;
+  wrong name/root and expired leaf are rejected by real TLS regressions.
+- Exact OpenBao leaf `kv/con/con-backend`, `con-backend` policy and
+  `auth/jwt-talos-eu/role/con-backend` are live. Workload init mounts memory-only
+  files and proves token revocation. Con config changes use ansible helpers and
+  CAS patches preserving other fields/CA. Protected predecessor authority was
+  used only through `openbao-local-session.sh` to mint narrow nonrenewable child
+  tokens. Every session revoked its child, proved HTTP403 and removed artifacts.
+- Hosted E2E completed successfully on the exact final image: desktop 1440x900
+  and phone 390x844 real PKCE, separate accounts/salts/device visibility, map story
+  creation, participant and separately indexed friend relationship, actual audio
+  clock playback, ZIP/WAV byte-count/SHA-256/header integrity, account/local-audio
+  reload, and fresh-profile restore with playback/relationships. Zero uncaught
+  browser errors. S3-unconfigured HTTP503 and encryption-locked sync feedback verified.
+  Cloud sync, cross-user sharing and native interactive login were not tested.
+- E2E exposed two app defects, now fixed with reproducing regressions: both Save
+  actions wait for recording finalization; Settings checks mounted before reading
+  context in its post-restore sync refresh. Successful restore returns directly
+  to the map and disposes Settings. The harness follows that actual navigation.
+- Temporary identities are deleted with GET404 verification. Keycloak initially
+  dropped the unmanaged ownership attribute; both fixture passwords were proven
+  through real PKCE against the recorded OIDC subject IDs, then an admin-only
+  managed `con.e2e` attribute was added only to Con's profile and markers restored
+  only on those exact identities before unchanged strict cleanup. A fresh marked
+  create/readback/cleanup cycle also passed. Fixture credentials, ownership proof,
+  browser profiles/PID artifacts and own verified Keycloak tunnel are removed.
+  Synthetic E2E API account/device rows remain; no arbitrary application data deleted.
+- Argo credential copy to Actions `ARGO_WEBHOOK_SECRET` is complete, metadata
+  verified without printing values. Ansible Con-only storage commit `7a02aa3` is
+  published. Unrelated ansible/Rfind work was not staged or pushed wholesale.
+- Private EU R2 bucket `con-stories`, public access off, exact Con-origin GET/PUT
+  CORS readback and HTTP204 preflight verified. Durable Con-only S3 credentials
+  remain missing; protected input-file path requested. Never reuse DNS or another
+  application's S3 key. `ansible/scripts/provision-con-storage.sh` CAS-patches
+  only S3 fields from a protected file. S3 stays disabled.
 
-- Separate Keycloak realm `con` / public PKCE client `con-app` verified. Shared
-  RFInD/Wald realm representations unchanged. Password reset remains disabled
-  until Con SMTP exists. Includes `basic` subject scope, exact callbacks,
-  S256 and audience `con-api`. Public discovery returns HTTP200 with exact
-  issuer `https://app.rfind.de/auth/realms/con`. Python urllib gets HTTP403 on
-  the same public route; browser/.NET verification still requires live E2E.
-- Legacy Scylla `con` data/user untouched. Isolated `con_stories` keyspace uses
-  datacenter1 RF3; dedicated nonsuperuser has CREATE/SELECT/MODIFY only there.
-  Credentials tested over TLS with the public CA.
-- OpenBao `kv/con/con-backend`, policy `con-backend`, and role
-  `auth/jwt-talos-eu/role/con-backend` provisioned and read-back verified.
-  Leaf contains generated JWT signing secret, dedicated database credentials,
-  and CA PFX/config under `files`. Existing objects are verified; changes use
-  CAS patches preserving unrelated fields. Repeatable helper:
-  `ansible/scripts/provision-con-openbao.sh`.
-- Protected eu-cluster predecessor authority was used only through
-  `fleet/openbao/scripts/openbao-local-session.sh` to mint a nonrenewable
-  900-second task child. Self-revocation proven by HTTP403; token artifacts and
-  local credential/config files removed. No raw secret values displayed.
-- Private EU R2 bucket `con-stories` exists, public access off. Durable
-  bucket-only S3 credentials remain unavailable; a protected input-file path
-  was requested. Do not reuse the DNS API token or another application's key.
-  Exact-origin GET/PUT CORS is applied and verified by readback and HTTP204
-  preflight. `ansible/scripts/provision-con-storage.sh` prepares CAS-protected
-  S3 configuration from a protected Con-only credential file. S3 remains
-  disabled; cloud sync and cross-user sharing are not verified.
-- Namespace/CA distribution and public identity route are provisioned. Con TLS
-  certificate is Ready; public HTTPS returns 503 while Scylla readiness fails.
-  Workload readiness is not verified.
-  Rfind's pre-existing Modified drift was not changed.
+Final checks: five consecutive Flutter gate passes (452 in runs 1–3; 453 including
+Settings regression in runs 4–5), two diagnostic RSS tests skipped by default;
+109 backend, 16 realm/provisioning and 3 storage-helper tests pass. Analyzer has
+nine unchanged baseline findings; final web release and debug APK build successfully.
+Docker test stage runs the same plain `flutter test` gate. People-screen build/search
+suffix remains byte-identical to `69a5c97`. Final follow-ups change only operations
+scripts and receipts, not Docker inputs; `[skip ci]` retains the already scanned,
+E2E-tested runtime. Runtime changes require normal scan/promotion.
 
-Latest checks before rollout: 450 Flutter gate tests pass, two memory-tagged RSS
-checks skipped by default; 109 backend and 12 realm/provisioning tests pass.
-Analyzer has nine baseline findings; web release and debug APK builds passed.
-CI then independently passed the image test/build/scan gate. Con chart seven
-and Rfind chart fifteen tests passed, with relevant Helm lints.
+Safe durable evidence: `dev/Con/ConUi-work/review-deployed-2026-10-03`, including
+`hosted-e2e.json`, synthetic ZIP, deployment/cleanup receipts and final check logs.
+Credentials, browser profiles and raw OAuth URLs/tokens are excluded.
 
-Next: publish the TLS server-name fix through normal scanned CI; verify
-readiness/public API, create owned synthetic users through a narrow
-OpenBao child, run the hosted browser harness, then clean users and artifacts.
-For real cloud-sync E2E, first provision Con-only S3 credentials and exact-origin
-CORS, CAS-patch only S3 fields and enable the chart gate. Cross-user sharing and
-non-recording attachment transfer remain unimplemented.
+Next: obtain protected Con-only R2 credentials, CAS-patch S3 fields, enable the
+Con chart gate and matching narrow endpoint egress, then test encrypted cloud
+sync. Cross-user sharing and non-recording attachment transfer remain unimplemented.
+Owner decisions on original duplicate add controls and rotating `tab`/`ane`
+Scylla passwords remain outside this rollout's resolved approvals.
+
+The remaining sections are historical snapshots; their no-push/unprovisioned
+statements do not describe the current rollout.
 
 ## Shared identity follow-up — 2026-10-03
 

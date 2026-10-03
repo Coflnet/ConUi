@@ -4,7 +4,8 @@
     "realm": "con",
     "client": "con-app",
     "verified": true,
-    "smtpConfigured": false
+    "smtpConfigured": false,
+    "fixtureMarkerManaged": true
   },
   "database": {
     "keyspace": "con_stories",
@@ -32,26 +33,61 @@
   },
   "deployment": {
     "pushed": true,
-    "deployedE2eRun": false,
+    "deployedE2eRun": true,
     "blockedOn": [
-      "Scylla TLS server-name support pending release",
-      "Con-only S3 credentials for cloud sync"
+      "Con-only S3 credentials for cloud sync",
+      "Cross-user sharing and non-recording attachment transfer unimplemented"
     ],
-    "fleetPublishedCommit": "4e132d5c07ae98d0423c77647bccdcfe6f0cf3bb",
+    "fleetPublishedCommit": "e54e673f982dc8e863739baa4e1c5ffd686c2348",
     "ciWebhookSecretConfigured": true,
     "publicConIssuerVerified": true,
     "namespaceCreated": true,
-    "sourcePublishedCommit": "d648f6b728640db9542d062ed0726ceee4425e92",
-    "githubRun": 37145347333,
-    "argoWorkflow": "promote-lmf7f",
+    "sourcePublishedCommit": "cf1f8ea8a0613f0c4074d2c6e1c3a159f635a509",
+    "githubRun": 37151516502,
+    "argoWorkflow": "promote-h9q7l",
     "imageScanPassed": true,
     "workload": "con/con-con-chart",
-    "workloadReady": false,
-    "workloadStatus": "Running; Scylla TLS name mismatch",
+    "workloadReady": true,
+    "workloadStatus": "Ready; exact promoted image verified",
     "tlsCertificateReady": true,
-    "publicHttpsStatus": 503,
+    "publicHttpsStatus": 200,
     "registryCredentialCopied": true,
     "openbaoProxyAccessApproved": true,
-    "openbaoInitTokenRevoked": true
+    "openbaoInitTokenRevoked": true,
+    "deployedE2ePassed": true,
+    "fleetImagePromotionCommit": "47224c97df34a5395e3b3ed59525c260b2a1223b",
+    "imageDigest": "sha256:4114b3d316450930f22ba806337cc40bb742791a9cfee6afb98b3b70db577631"
+  },
+  "e2e": {
+    "completed": true,
+    "cloud_sync": "not_verified_s3_unconfigured",
+    "desktop_pkce": true,
+    "mobile_pkce_account_isolation": true,
+    "s3_expected_503": true,
+    "sync_encryption_locked": true,
+    "story_recording_relationship_playback": true,
+    "reload_preserved_account_recording": true,
+    "fresh_profile_restore_playback_relationship": true,
+    "uncaught_errors": 0,
+    "syntheticIdentityCleanupVerified404": true,
+    "credentialArtifactsRemoved": true,
+    "nativeInteractiveLoginVerified": false,
+    "syntheticApiRowsRetained": true
+  },
+  "checks": {
+    "flutterGateRuns": [
+      452,
+      452,
+      452,
+      453,
+      453
+    ],
+    "diagnosticMemorySkipped": 2,
+    "backendPassed": 109,
+    "keycloakPassed": 16,
+    "storageHelperPassed": 3,
+    "baselineAnalyzeIssues": 9,
+    "webReleaseBuilt": true,
+    "debugApkBuilt": true
   }
 }
