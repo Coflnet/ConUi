@@ -21,6 +21,9 @@ class FakeHttp:
         self.client = realm('https://con.coflnet.com')['clients'][0]
         self.users = {}
         self.fail = None
+        self.profile = {'attributes': [{'name': 'username', 'validations': {'length': {'min': 3}}}],
+                        'groups': [{'name': 'existing', 'displayHeader': 'Preserve'}]}
+        self.drop_managed_marker = False
 
     def call(self, method, path, **kwargs):
         self.calls.append((method, path, kwargs))
@@ -42,9 +45,16 @@ class FakeHttp:
             return 200, [{'id': 'client-id'}], None
         if path == '/admin/realms/con/clients/client-id':
             return 200, copy.deepcopy(self.client), None
+        if path == '/admin/realms/con/users/profile':
+            if method == 'PUT':
+                self.profile = copy.deepcopy(kwargs['body'])
+                return 204, None, None
+            return 200, copy.deepcopy(self.profile), None
         if path == '/admin/realms/con/users':
             uid = f'00000000-0000-0000-0000-{len(self.users) + 1:012d}'
             self.users[uid] = copy.deepcopy(kwargs['body'])
+            if self.drop_managed_marker or not any(a['name'] == p.MARKER for a in self.profile['attributes']):
+                self.users[uid]['attributes'].pop(p.MARKER, None)
             return 201, None, 'http://localhost/auth/admin/realms/con/users/' + uid
         if '/users/' in path:
             uid = path.rsplit('/', 1)[1]
@@ -97,6 +107,57 @@ class ProvisionTests(unittest.TestCase):
                     p.run(http, copy.deepcopy(BOOTSTRAP), 'provision')
                 self.assertEqual(http.calls[-1][1], '/realms/master/protocol/openid-connect/logout')
                 self.assertFalse(any(m != 'GET' and path.startswith('/admin/') for m, path, _ in http.calls))
+
+    def test_managed_marker_preserves_profile_and_is_repeatable(self):
+        http = FakeHttp()
+        before = copy.deepcopy(http.profile)
+        p.ensure_fixture_marker(http)
+        self.assertEqual(http.profile['attributes'][:-1], before['attributes'])
+        self.assertEqual(http.profile['groups'], before['groups'])
+        self.assertEqual(http.profile['attributes'][-1], {'name': p.MARKER, 'multivalued': False,
+            'permissions': {'view': ['admin'], 'edit': ['admin']}})
+        p.ensure_fixture_marker(http)
+        self.assertEqual(sum(m == 'PUT' for m, _, _ in http.calls), 1)
+        self.assertTrue(all(path == '/admin/realms/con/users/profile' for _, path, _ in http.calls))
+
+    def test_incompatible_existing_marker_is_not_overwritten(self):
+        http = FakeHttp()
+        http.profile['attributes'].append({'name': p.MARKER, 'permissions': {'edit': ['user']}})
+        before = copy.deepcopy(http.profile)
+        with self.assertRaisesRegex(RuntimeError, 'profile contract'):
+            p.ensure_fixture_marker(http)
+        self.assertEqual(http.profile, before)
+        self.assertFalse(any(m == 'PUT' for m, _, _ in http.calls))
+
+    def test_profile_dropping_marker_stops_before_creating_users(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'users.json'
+            http = FakeHttp()
+            original = http.call
+            def call(method, endpoint, **kwargs):
+                result = original(method, endpoint, **kwargs)
+                if method == 'PUT' and endpoint.endswith('/users/profile'):
+                    http.profile['attributes'] = [a for a in http.profile['attributes'] if a['name'] != p.MARKER]
+                return result
+            http.call = call
+            with self.assertRaisesRegex(RuntimeError, 'profile contract'):
+                p.create_users(http, path)
+            self.assertEqual(http.users, {})
+            self.assertFalse(path.exists())
+
+    def test_created_user_dropping_marker_retains_protected_recovery_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'users.json'
+            http = FakeHttp()
+            http.drop_managed_marker = True
+            with self.assertRaisesRegex(RuntimeError, 'unowned Con user'):
+                p.run(http, copy.deepcopy(BOOTSTRAP), 'create-users', path)
+            fixture = p.read_fixture(path)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(len(fixture['users']), 1)
+            self.assertIn(fixture['users'][0]['id'], http.users)
+            self.assertFalse(any(m == 'DELETE' for m, _, _ in http.calls))
+            self.assertEqual(http.calls[-1][1], '/realms/master/protocol/openid-connect/logout')
 
     def test_fixture_is_private_and_cleanup_verifies_absence(self):
         with tempfile.TemporaryDirectory() as directory:

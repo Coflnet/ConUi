@@ -121,12 +121,29 @@ def remove_users(http, fixture):
             raise RuntimeError('Con test user cleanup failed')
 
 
+def ensure_fixture_marker(http):
+    path = '/admin/realms/con/users/profile'
+    profile = http.call('GET', path)[1]
+    attribute = next((a for a in profile['attributes'] if a['name'] == MARKER), None)
+    if attribute is None:
+        profile['attributes'].append({'name': MARKER, 'multivalued': False,
+            'permissions': {'view': ['admin'], 'edit': ['admin']}})
+        http.call('PUT', path, body=profile)
+        profile = http.call('GET', path)[1]
+        attribute = next((a for a in profile['attributes'] if a['name'] == MARKER), None)
+    if (attribute is None or attribute.get('multivalued', False) != False
+            or attribute.get('permissions', {}).get('view') != ['admin']
+            or attribute.get('permissions', {}).get('edit') != ['admin']):
+        raise RuntimeError('Con fixture marker profile contract differs')
+
+
 def create_users(http, path):
     # Reserve the artifact before creating users; never overwrite prior credentials.
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     fixture = {'realm': 'con', 'marker': secrets.token_hex(16), 'users': []}
     try:
         with os.fdopen(fd, 'w') as handle:
+            ensure_fixture_marker(http)
             for _ in range(2):
                 username = 'con-e2e-' + secrets.token_hex(12)
                 password = secrets.token_urlsafe(32)
@@ -144,6 +161,9 @@ def create_users(http, path):
                 handle.truncate()
                 handle.flush()
                 os.fsync(handle.fileno())
+                current = http.call('GET', '/admin/realms/con/users/' + fixture['users'][-1]['id'])[1]
+                if current.get('username') != username or current.get('attributes', {}).get(MARKER) != [fixture['marker']]:
+                    raise RuntimeError('Con test user ownership was not retained')
     except BaseException:
         if fixture['users']:
             remove_users(http, fixture)

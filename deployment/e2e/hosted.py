@@ -241,6 +241,7 @@ def backup(page, output):
         assert wav[:4] == b'RIFF' and wav[8:12] == b'WAVE' and struct.unpack_from('<I', wav, 4)[0] == len(wav) - 8
     expect(page.get_by_text('Sicherung erstellt', exact=True)).to_be_visible()
     click(page, 'Fertig')
+    expect(page.get_by_text('Einstellungen', exact=True)).to_be_visible()
     return path
 
 
@@ -310,7 +311,6 @@ def run(args):
             click(restore, 'Wiederherstellen')
             expect(restore.get_by_text('Wiederherstellung abgeschlossen', exact=True)).to_be_visible()
             click(restore, 'Fertig')
-            back(restore)
             click(restore, 'Geschichten')
             open_item(restore, title)
             playback(restore)
