@@ -147,4 +147,224 @@ void main() {
         'correct horse battery staple', auth.encryptionSalt ?? auth.userId!);
     expect(decryptor.decryptString(uploadedBody), plainJson);
   });
+
+  for (final change in ['account', 'salt']) {
+    test('changing $change blocks an old unlocked key before any sync request',
+        () async {
+      SharedPreferences.setMockInitialValues({
+        'auth_token': 'first.token',
+        'user_id': 'u1',
+        'encryption_salt': 'first-salt',
+      });
+      final db = createTestDatabaseService();
+      await db.initialize();
+      var apiCalls = 0;
+      var blobCalls = 0;
+      final auth = AuthService(httpClient: MockClient((request) async {
+        apiCalls++;
+        return http.Response('{}', 200);
+      }));
+      await auth.initialize();
+      final sync =
+          SyncService(db, auth, httpClient: MockClient((request) async {
+        blobCalls++;
+        return http.Response('', 200);
+      }));
+      sync.initializeEncryption('first password');
+      final person = Person(name: 'Private first-account story');
+      await db.savePerson(person);
+      final pendingIds =
+          (await db.getPendingChanges()).map((c) => c.id).toList();
+      final initialIndex = jsonEncode((await db.getSyncIndex())?.toJson());
+
+      // Same salt with a different user still invalidates the account binding;
+      // same user with a changed salt also needs a newly derived key.
+      SharedPreferences.setMockInitialValues({
+        'auth_token': 'second.token',
+        'user_id': change == 'account' ? 'u2' : 'u1',
+        'encryption_salt': change == 'salt' ? 'second-salt' : 'first-salt',
+      });
+      await auth.initialize();
+      await sync.syncOnOpen();
+      await sync.syncOnClose();
+      await sync.fullSync();
+      expect(sync.needsEncryptionPassword, isTrue);
+      expect(apiCalls, 0);
+      expect(blobCalls, 0);
+      expect((await db.getPendingChanges()).map((c) => c.id), pendingIds);
+      expect((await db.getPerson(person.id))!.name, person.name);
+      expect(jsonEncode((await db.getSyncIndex())?.toJson()), initialIndex);
+
+      // Observing another identity locks this session even if it switches back.
+      SharedPreferences.setMockInitialValues({
+        'auth_token': 'first.token',
+        'user_id': 'u1',
+        'encryption_salt': 'first-salt',
+      });
+      await auth.initialize();
+      await sync.syncOnClose();
+      expect(sync.needsEncryptionPassword, isTrue);
+      expect(apiCalls, 0);
+      expect(blobCalls, 0);
+    });
+  }
+
+  test('token refresh for the same user and salt preserves the unlocked key',
+      () async {
+    final db = createTestDatabaseService();
+    await db.initialize();
+    var apiCalls = 0;
+    final auth = AuthService(httpClient: MockClient((request) async {
+      apiCalls++;
+      expect(request.url.path, '/api/sync/updates');
+      return http.Response(
+          jsonEncode({'entries': [], 'latestVersion': 0}), 200);
+    }));
+    await auth.initialize();
+    final sync = SyncService(db, auth);
+    sync.initializeEncryption('password');
+    SharedPreferences.setMockInitialValues(
+        {'auth_token': 'refreshed.token', 'user_id': 'u1'});
+    await auth.initialize();
+    await sync.syncOnOpen();
+    expect(sync.needsEncryptionPassword, isFalse);
+    expect(apiCalls, 1);
+  });
+
+  for (final switchAt in ['upload', 'blob', 'commit', 'reunlock']) {
+    test('account change during $switchAt aborts upload before another request',
+        () async {
+      SharedPreferences.setMockInitialValues({
+        'auth_token': 'first.token',
+        'user_id': 'u1',
+        'encryption_salt': 'first-salt',
+      });
+      final db = createTestDatabaseService();
+      await db.initialize();
+      await db.saveSyncIndex(SyncIndex(lastSyncTimestamp: 8));
+      await db.savePerson(Person(name: 'Private first-account story'));
+      final pendingIds =
+          (await db.getPendingChanges()).map((c) => c.id).toList();
+      final initialIndex = jsonEncode((await db.getSyncIndex())?.toJson());
+      late AuthService auth;
+      late SyncService sync;
+      var apiCalls = 0;
+      var blobCalls = 0;
+      Future<void> switchAccount() async {
+        SharedPreferences.setMockInitialValues({
+          'auth_token': 'second.token',
+          'user_id': 'u2',
+          'encryption_salt': 'second-salt',
+        });
+        await auth.initialize();
+        if (switchAt == 'reunlock') {
+          sync.initializeEncryption('second password');
+        }
+      }
+
+      auth = AuthService(httpClient: MockClient((request) async {
+        apiCalls++;
+        expect(request.headers['Authorization'], 'Bearer first.token');
+        if (request.url.path == '/api/sync/upload') {
+          if (switchAt == 'upload' || switchAt == 'reunlock') {
+            await switchAccount();
+          }
+          return http.Response(
+              jsonEncode(
+                  {'uploadUrl': 'https://storage.test/put', 's3Key': 'key'}),
+              200);
+        }
+        expect(request.url.path, '/api/sync/commit');
+        if (switchAt == 'commit') await switchAccount();
+        return http.Response('{}', 200);
+      }));
+      await auth.initialize();
+      sync = SyncService(db, auth, httpClient: MockClient((request) async {
+        blobCalls++;
+        if (switchAt == 'blob') await switchAccount();
+        return http.Response('', 200);
+      }))
+        ..initializeEncryption('first password');
+      await sync.syncOnClose();
+      expect(apiCalls, switchAt == 'commit' ? 2 : 1);
+      expect(blobCalls, ['upload', 'reunlock'].contains(switchAt) ? 0 : 1);
+      expect((await db.getPendingChanges()).map((c) => c.id), pendingIds);
+      expect(jsonEncode((await db.getSyncIndex())?.toJson()), initialIndex);
+      expect(sync.lastSyncTime, isNull);
+      expect(sync.lastError, contains('Account or encryption changed'));
+      expect(sync.needsEncryptionPassword, switchAt != 'reunlock');
+      expect(sync.isSyncing, isFalse);
+    });
+  }
+
+  for (final switchAt in ['updates', 'download']) {
+    test('salt change during $switchAt cannot apply a stale download or cursor',
+        () async {
+      SharedPreferences.setMockInitialValues({
+        'auth_token': 'first.token',
+        'user_id': 'u1',
+        'encryption_salt': 'first-salt',
+      });
+      final db = createTestDatabaseService();
+      await db.initialize();
+      await db.saveSyncIndex(SyncIndex(lastSyncTimestamp: 8));
+      final initialIndex = jsonEncode((await db.getSyncIndex())?.toJson());
+      final remote = Person(id: 'remote-person', name: 'Private remote story');
+      late AuthService auth;
+      late String encrypted;
+      var apiCalls = 0;
+      var blobCalls = 0;
+      Future<void> changeSalt() async {
+        SharedPreferences.setMockInitialValues({
+          'auth_token': 'second.token',
+          'user_id': 'u1',
+          'encryption_salt': 'second-salt',
+        });
+        await auth.initialize();
+      }
+
+      auth = AuthService(httpClient: MockClient((request) async {
+        apiCalls++;
+        expect(request.headers['Authorization'], 'Bearer first.token');
+        if (request.url.path == '/api/sync/updates') {
+          // Full download starts at zero without first changing the saved cursor.
+          expect(jsonDecode(request.body)['lastSyncVersion'], 0);
+          if (switchAt == 'updates') await changeSalt();
+          return http.Response(
+              jsonEncode({
+                'entries': [
+                  {
+                    'blobType': 'person',
+                    'blobId': remote.id,
+                    's3Key': 'key',
+                    'version': 9
+                  }
+                ],
+                'latestVersion': 9
+              }),
+              200);
+        }
+        return http.Response(
+            jsonEncode({'downloadUrl': 'https://storage.test/blob'}), 200);
+      }));
+      await auth.initialize();
+      final sync =
+          SyncService(db, auth, httpClient: MockClient((request) async {
+        blobCalls++;
+        await changeSalt();
+        return http.Response(encrypted, 200);
+      }))
+            ..initializeEncryption('first password');
+      encrypted = EncryptionService.instance!.encryptJson(remote.toJson());
+      await sync.forceFullSync();
+      expect(apiCalls, switchAt == 'updates' ? 1 : 2);
+      expect(blobCalls, switchAt == 'updates' ? 0 : 1);
+      expect(await db.getPerson(remote.id), isNull);
+      expect(jsonEncode((await db.getSyncIndex())?.toJson()), initialIndex);
+      expect(sync.needsEncryptionPassword, isTrue);
+      expect(sync.lastSyncTime, isNull);
+      expect(sync.lastError, contains('Account or encryption changed'));
+      expect(sync.isSyncing, isFalse);
+    });
+  }
 }

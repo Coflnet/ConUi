@@ -32,6 +32,8 @@ class SyncService extends ChangeNotifier {
   final http.Client _http;
 
   bool _isSyncing = false;
+  int _encryptionRevision = 0;
+  int _syncRevision = 0;
   String? _lastError;
   DateTime? _lastSyncTime;
 
@@ -40,6 +42,8 @@ class SyncService extends ChangeNotifier {
   /// re-entered their password) - see the class doc comment. While this is
   /// true, sync is skipped entirely rather than ever risking an
   /// unencrypted upload.
+  String? _encryptionUserId;
+  String? _encryptionSalt;
   bool _needsEncryptionPassword = false;
   bool get needsEncryptionPassword => _needsEncryptionPassword;
 
@@ -65,10 +69,22 @@ class SyncService extends ChangeNotifier {
     });
   }
 
+  String get _currentEncryptionSalt =>
+      _auth.encryptionSalt ?? _auth.userId ?? 'default-salt';
+
+  bool get _keyMatchesAccount =>
+      _auth.isAuthenticated &&
+      _encryption.isInitialized &&
+      _encryptionUserId == _auth.userId &&
+      _encryptionSalt == _currentEncryptionSalt;
+
   // Initialize encryption with user's password
   void initializeEncryption(String password) {
-    final salt = _auth.encryptionSalt ?? _auth.userId ?? 'default-salt';
+    final salt = _currentEncryptionSalt;
     _encryption.initializeWithPassword(password, salt);
+    _encryptionUserId = _auth.userId;
+    _encryptionSalt = salt;
+    _encryptionRevision++;
     _needsEncryptionPassword = false;
     _safeNotifyListeners();
   }
@@ -84,36 +100,59 @@ class SyncService extends ChangeNotifier {
   /// can prompt for the password instead of the sync just silently doing
   /// nothing forever.
   bool _requireEncryptionOrSkip() {
-    if (_encryption.isInitialized) {
+    if (_keyMatchesAccount) {
       _needsEncryptionPassword = false;
       return true;
     }
+    // Once a different identity is observed, switching back also needs unlock.
+    _encryptionUserId = _encryptionSalt = null;
     _needsEncryptionPassword = true;
     _safeNotifyListeners();
     return false;
   }
 
+  void _checkSyncSession() {
+    if (!_keyMatchesAccount || _syncRevision != _encryptionRevision) {
+      if (!_keyMatchesAccount) _requireEncryptionOrSkip();
+      throw StateError('Account or encryption changed during sync');
+    }
+  }
+
+  Future<http.Response> _syncPost(String path, Map<String, dynamic> body) {
+    _checkSyncSession();
+    return _auth.authenticatedPost(path, body);
+  }
+
+  Future<http.Response> _syncGet(String path) {
+    _checkSyncSession();
+    return _auth.authenticatedGet(path);
+  }
+
   void _checkResponse(http.Response response, String operation) {
+    _checkSyncSession();
     if (response.statusCode != 200) {
       throw StateError('Sync $operation failed (${response.statusCode})');
     }
   }
 
   // Sync on app open
-  Future<void> syncOnOpen() async {
+  Future<void> syncOnOpen({bool forceFull = false}) async {
     if (!_auth.isAuthenticated || _isSyncing) return;
     if (!_requireEncryptionOrSkip()) return;
 
     _isSyncing = true;
+    _syncRevision = _encryptionRevision;
     _lastError = null;
     _safeNotifyListeners();
 
     try {
       // Get local sync index
-      final localIndex = await _db.getSyncIndex() ?? SyncIndex();
+      final localIndex = forceFull
+          ? SyncIndex(lastSyncTimestamp: 0)
+          : await _db.getSyncIndex() ?? SyncIndex();
 
       // Fetch remote updates
-      final response = await _auth.authenticatedPost('/api/sync/updates', {
+      final response = await _syncPost('/api/sync/updates', {
         'lastSyncVersion': localIndex.lastSyncTimestamp,
       });
 
@@ -130,7 +169,9 @@ class SyncService extends ChangeNotifier {
       // Update local sync index
       localIndex.lastSyncTimestamp = data['latestVersion'];
       localIndex.updatedAt = DateTime.now();
+      _checkSyncSession();
       await _db.saveSyncIndex(localIndex);
+      _checkSyncSession();
 
       _lastSyncTime = DateTime.now();
     } catch (e) {
@@ -148,6 +189,7 @@ class SyncService extends ChangeNotifier {
     if (!_requireEncryptionOrSkip()) return;
 
     _isSyncing = true;
+    _syncRevision = _encryptionRevision;
     _lastError = null;
     _safeNotifyListeners();
 
@@ -216,8 +258,11 @@ class SyncService extends ChangeNotifier {
       if (!await _uploadSyncIndex()) return;
 
       // Mark changes as synced
+      _checkSyncSession();
       await _db.markChangesSynced(syncedIds);
+      _checkSyncSession();
       await _db.clearSyncedChanges();
+      _checkSyncSession();
 
       if (_lastError == null) _lastSyncTime = DateTime.now();
     } catch (e) {
@@ -242,7 +287,7 @@ class SyncService extends ChangeNotifier {
       final checksum = _encryption.calculateChecksum(jsonData);
 
       // Get upload URL
-      final uploadResponse = await _auth.authenticatedPost('/api/sync/upload', {
+      final uploadResponse = await _syncPost('/api/sync/upload', {
         'blobType': 'person',
         'blobId': personId,
         'checksum': checksum,
@@ -265,7 +310,7 @@ class SyncService extends ChangeNotifier {
       _checkResponse(s3Response, 'blob upload');
 
       // Commit upload
-      final commitResponse = await _auth.authenticatedPost('/api/sync/commit', {
+      final commitResponse = await _syncPost('/api/sync/commit', {
         'blobType': 'person',
         'blobId': personId,
         's3Key': s3Key,
@@ -295,7 +340,7 @@ class SyncService extends ChangeNotifier {
       final encryptedData = _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
-      final uploadResponse = await _auth.authenticatedPost('/api/sync/upload', {
+      final uploadResponse = await _syncPost('/api/sync/upload', {
         'blobType': 'place',
         'blobId': placeId,
         'checksum': checksum,
@@ -316,7 +361,7 @@ class SyncService extends ChangeNotifier {
 
       _checkResponse(s3Response, 'blob upload');
 
-      final commitResponse = await _auth.authenticatedPost('/api/sync/commit', {
+      final commitResponse = await _syncPost('/api/sync/commit', {
         'blobType': 'place',
         'blobId': placeId,
         's3Key': s3Key,
@@ -346,7 +391,7 @@ class SyncService extends ChangeNotifier {
       final encryptedData = _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
-      final uploadResponse = await _auth.authenticatedPost('/api/sync/upload', {
+      final uploadResponse = await _syncPost('/api/sync/upload', {
         'blobType': 'object',
         'blobId': objectId,
         'checksum': checksum,
@@ -367,7 +412,7 @@ class SyncService extends ChangeNotifier {
 
       _checkResponse(s3Response, 'blob upload');
 
-      final commitResponse = await _auth.authenticatedPost('/api/sync/commit', {
+      final commitResponse = await _syncPost('/api/sync/commit', {
         'blobType': 'object',
         'blobId': objectId,
         's3Key': s3Key,
@@ -397,7 +442,7 @@ class SyncService extends ChangeNotifier {
       final encryptedData = _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
-      final uploadResponse = await _auth.authenticatedPost('/api/sync/upload', {
+      final uploadResponse = await _syncPost('/api/sync/upload', {
         'blobType': 'connection',
         'blobId': connectionId,
         'checksum': checksum,
@@ -418,7 +463,7 @@ class SyncService extends ChangeNotifier {
 
       _checkResponse(s3Response, 'blob upload');
 
-      final commitResponse = await _auth.authenticatedPost('/api/sync/commit', {
+      final commitResponse = await _syncPost('/api/sync/commit', {
         'blobType': 'connection',
         'blobId': connectionId,
         's3Key': s3Key,
@@ -446,7 +491,7 @@ class SyncService extends ChangeNotifier {
           .toList();
       final committedChunks = <String, Map<String, dynamic>>{};
       if (recordings.isNotEmpty) {
-        final response = await _auth.authenticatedGet('/api/sync/all');
+        final response = await _syncGet('/api/sync/all');
         _checkResponse(response, 'recording metadata');
         for (final entry in jsonDecode(response.body) as List) {
           if (entry['blobType'] == _recordingBlobType) {
@@ -467,7 +512,7 @@ class SyncService extends ChangeNotifier {
       final encryptedData = _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
-      final uploadResponse = await _auth.authenticatedPost('/api/sync/upload', {
+      final uploadResponse = await _syncPost('/api/sync/upload', {
         'blobType': 'event_month',
         'blobId': monthKey,
         'checksum': checksum,
@@ -488,7 +533,7 @@ class SyncService extends ChangeNotifier {
 
       _checkResponse(s3Response, 'blob upload');
 
-      final commitResponse = await _auth.authenticatedPost('/api/sync/commit', {
+      final commitResponse = await _syncPost('/api/sync/commit', {
         'blobType': 'event_month',
         'blobId': monthKey,
         's3Key': s3Key,
@@ -516,7 +561,7 @@ class SyncService extends ChangeNotifier {
       final encryptedData = _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
-      final uploadResponse = await _auth.authenticatedPost('/api/sync/upload', {
+      final uploadResponse = await _syncPost('/api/sync/upload', {
         'blobType': 'index',
         'blobId': 'main',
         'checksum': checksum,
@@ -537,7 +582,7 @@ class SyncService extends ChangeNotifier {
 
       _checkResponse(s3Response, 'blob upload');
 
-      final commitResponse = await _auth.authenticatedPost('/api/sync/commit', {
+      final commitResponse = await _syncPost('/api/sync/commit', {
         'blobType': 'index',
         'blobId': 'main',
         's3Key': s3Key,
@@ -625,7 +670,7 @@ class SyncService extends ChangeNotifier {
         continue;
       }
       final encrypted = _encryption.encryptBytes(chunk);
-      final upload = await _auth.authenticatedPost('/api/sync/upload', {
+      final upload = await _syncPost('/api/sync/upload', {
         'blobType': _recordingBlobType,
         'blobId': blobId,
         'checksum': file.sha256,
@@ -637,7 +682,7 @@ class SyncService extends ChangeNotifier {
           headers: {'Content-Type': 'application/octet-stream'},
           body: encrypted);
       _checkResponse(put, 'recording upload');
-      final commit = await _auth.authenticatedPost('/api/sync/commit', {
+      final commit = await _syncPost('/api/sync/commit', {
         'blobType': _recordingBlobType,
         'blobId': blobId,
         's3Key': data['s3Key'],
@@ -650,20 +695,23 @@ class SyncService extends ChangeNotifier {
   }
 
   Future<void> _downloadRecording(AttachedFile file) async {
+    _checkSyncSession();
     _validateRecordingMetadata(file);
     if (await _recordings.exists(file.id)) {
       await _verifyLocalRecording(file);
       return;
     }
     final stagingId = const Uuid().v4();
+    _checkSyncSession();
     await _recordings.beginRecording(stagingId);
     try {
       for (var index = 0; index * _recordingChunkBytes < file.size; index++) {
-        final response = await _auth.authenticatedGet(
+        final response = await _syncGet(
             '/api/sync/download/$_recordingBlobType/${_recordingChunkId(file, index)}');
         _checkResponse(response, 'recording download URL');
         final download = await _http.send(http.Request(
             'GET', Uri.parse(jsonDecode(response.body)['downloadUrl'])));
+        _checkSyncSession();
         if (download.statusCode != 200) {
           throw StateError(
               'Recording download failed (${download.statusCode})');
@@ -678,6 +726,7 @@ class SyncService extends ChangeNotifier {
           }
           encrypted.add(bytes);
         }
+        _checkSyncSession();
         final payload = encrypted.takeBytes();
         if (payload.length != expectedSize + 35 ||
             utf8.decode(payload.sublist(0, 7), allowMalformed: true) !=
@@ -692,6 +741,7 @@ class SyncService extends ChangeNotifier {
         await _recordings.appendChunk(stagingId,
             index == 0 ? Uint8List.sublistView(plain, wavHeaderLength) : plain);
       }
+      _checkSyncSession();
       final result = await _recordings.finalizeRecording(stagingId);
       if (result.sizeBytes != file.size || result.sha256Hex != file.sha256) {
         throw StateError('Recording checksum mismatch: ${file.id}');
@@ -705,6 +755,7 @@ class SyncService extends ChangeNotifier {
       }
       final adapter = DatabaseBackupAdapter(
           databaseService: _db, recordingStore: _recordings);
+      _checkSyncSession();
       try {
         await adapter.storeVerifiedRecordingStream(
             file.id, _recordings.openReadStream(stagingId),
@@ -719,6 +770,7 @@ class SyncService extends ChangeNotifier {
   }
 
   Future<void> _downloadAndApplyBlob(_SyncEntry entry) async {
+    _checkSyncSession();
     // Audio is fetched only through its authenticated story metadata, so
     // orphan chunks from an interrupted upload do not become local recordings.
     if (entry.blobType == _recordingBlobType) return;
@@ -727,6 +779,7 @@ class SyncService extends ChangeNotifier {
         case 'person':
           final person = await _db.getPerson(entry.blobId);
           if (person != null) {
+            _checkSyncSession();
             await _db.savePerson(person.copyWith(isDeleted: true),
                 recordPendingChange: false);
           }
@@ -734,6 +787,7 @@ class SyncService extends ChangeNotifier {
         case 'place':
           final place = await _db.getPlace(entry.blobId);
           if (place != null) {
+            _checkSyncSession();
             await _db.savePlace(place.copyWith(isDeleted: true),
                 recordPendingChange: false);
           }
@@ -741,6 +795,7 @@ class SyncService extends ChangeNotifier {
         case 'object':
           final object = await _db.getObject(entry.blobId);
           if (object != null) {
+            _checkSyncSession();
             await _db.saveObject(object.copyWith(isDeleted: true),
                 recordPendingChange: false);
           }
@@ -748,12 +803,14 @@ class SyncService extends ChangeNotifier {
         case 'connection':
           final connection = await _db.getConnection(entry.blobId);
           if (connection != null) {
+            _checkSyncSession();
             await _db.saveConnection(connection.copyWith(isDeleted: true),
                 recordPendingChange: false);
           }
           break;
         case 'event_month':
           final events = await _db.getEvents(monthKey: entry.blobId);
+          _checkSyncSession();
           await _db.bulkSaveEvents(
               events.map((event) => event.copyWith(isDeleted: true)).toList());
           break;
@@ -765,7 +822,7 @@ class SyncService extends ChangeNotifier {
       }
       return;
     }
-    final response = await _auth.authenticatedGet(
+    final response = await _syncGet(
         '/api/sync/download/${entry.blobType}/${entry.blobId}');
 
     _checkResponse(response, 'download');
@@ -810,11 +867,13 @@ class SyncService extends ChangeNotifier {
             await _downloadRecording(file);
           }
         }
+        _checkSyncSession();
         await _db.bulkSaveEvents(monthlyEvents.events);
         for (final event in monthlyEvents.events) {
           for (final file in event.files.where((file) => file.isRecording)) {
             final recording = await _db.getLocalRecording(file.id);
             if (recording != null) {
+              _checkSyncSession();
               await _db
                   .saveLocalRecording(recording.copyWith(eventId: event.id));
             }
@@ -826,6 +885,7 @@ class SyncService extends ChangeNotifier {
         // A remote device's cursor cannot acknowledge this device's downloads.
         index.lastSyncTimestamp =
             (await _db.getSyncIndex())?.lastSyncTimestamp ?? 0;
+        _checkSyncSession();
         await _db.saveSyncIndex(index);
         break;
       default:
@@ -836,11 +896,14 @@ class SyncService extends ChangeNotifier {
   // Force full sync
   Future<void> forceFullSync() async {
     if (!_auth.isAuthenticated || _isSyncing) return;
+    if (!_requireEncryptionOrSkip()) return;
 
-    // Reset sync index to force full download
-    await _db.saveSyncIndex(SyncIndex(lastSyncTimestamp: 0));
-    await syncOnOpen();
-    if (_lastError == null) await syncOnClose();
+    final revision = _encryptionRevision;
+    // Request all updates without changing the persisted cursor until success.
+    await syncOnOpen(forceFull: true);
+    if (_lastError == null && _keyMatchesAccount && revision == _encryptionRevision) {
+      await syncOnClose();
+    }
   }
 
   // Alias for fullSync (used by settings screen)
