@@ -4,6 +4,58 @@ Written for the next Claude Code session. Read fully before acting. Start the se
 `/run/media/ekwav/Data/dev/Con/ConUi-work/integration` (not in `dev/Connections`, which is a
 stale Angular clone kept only for reference).
 
+## Shared identity follow-up — 2026-10-03
+
+This section supersedes the earlier missing-authentication/configuration blockers.
+RFInD's `docs/SHARED-IDENTITY.md` already designates its Keycloak server for other
+projects. Con now has a prepared separate realm `con`, public PKCE client `con-app`,
+issuer `https://app.rfind.de/auth/realms/con`, API audience `con-api`, and exact
+web/native callbacks. See `deployment/keycloak/README.md`. The generator includes
+Keycloak's `basic` scope: real browser testing caught missing `sub` without it.
+No Firebase project or additional owner-supplied identity configuration is needed.
+
+Implemented release web/Android sign-in, single-use/expiring browser state and PKCE,
+verified account/salt adoption, and backend discovery/JWKS signature/issuer/audience/
+client checks. Login and encryption passwords remain separate. Sync keys bind to
+account and salt; session checks stop changed-account requests and subsequent state
+updates. A full-sync request no longer clears the persisted cursor before success.
+Already-issued storage operations cannot be rolled back by these session checks.
+
+Fleet `con-rollout` local commit `a23be5f` replaces hand-created Con JWT/Scylla
+Secret references with the prepared exact `kv/con/con-backend` leaf, JWT workload
+role, verified TLS init fetch, in-memory config files, and immediate token revocation.
+Stage gates override runtime JSON; OIDC requires persistent Scylla. Con-only OpenBao
+updates through ansible and the protected narrow child-token flow remain authorized;
+no live secrets/roles were read or changed. `regcred`, trusted CA distribution,
+Con storage and scoped leaf/role provisioning still need execution before rollout.
+RFInD shared-identity registry commit `21f10ec` is local only on its existing master.
+
+Local browser verification used disposable Keycloak 26.7.3 and the real Con API
+with in-memory account/sync stores. German phone/desktop login and account screens
+fit; PKCE login and repeated login succeed, account ID/salt stay stable, callback
+parameters are removed, and both existing stories plus recordings remain local.
+This does not verify production Cassandra/S3, shared Keycloak deployment, native
+interactive login, or deployed multi-user E2E.
+
+Verification: 450 Flutter tests pass with two memory skips; 102 backend tests pass;
+analyzer has the same nine baseline issues; production web release (without the
+local HTTP OIDC define) and debug APK build successfully. The merged Android
+manifest contains the `com.coflnet.con` AppAuth receiver. Four realm tests and six
+Fleet offline tests plus Helm lint pass. Final sync-focused checks pass 11/11;
+the broader affected sync suites passed 38/38. The full gate ran before redundant
+post-response wrapper checks were removed; the final focused run covers that
+simplification. Durable safe evidence is in
+`/run/media/ekwav/Data/dev/Con/ConUi-work/review-auth-2026-10-03`; credentials, raw
+callback logs and browser profiles are excluded. Local review processes stopped.
+
+Local integration commits: `97dedd4` backend verifier/config, `a167971` Flutter
+PKCE/login, `165ad6d` realm generator, `d7bd8b4` sync session guards; all include
+the requested co-author trailer.
+
+Nothing was pushed or applied to the cluster. Cross-user sharing and non-recording
+attachment transfer remain unfinished. Rollout and deployed E2E require approval.
+The owner's checkout and protected people-screen build/search region are unchanged.
+
 ## Verification update — 2026-10-03
 
 This section supersedes the original handoff state and TODO status below. Work remains on
@@ -59,7 +111,7 @@ German feedback without an uncaught exception. The release UI still supports loc
 An earlier final attempt failed two deletion-test I/O waits and a 30-second crypto-test timeout;
 these harness issues were fixed and the complete gate passed afterward. Logs retain both attempts.
 
-### Remaining product and rollout requirements
+### Earlier remaining requirements (superseded by shared identity follow-up)
 
 The app is NOT ready to claim secure sharing between users or deployed end-to-end verification:
 - Release login currently offers local use only. Production Firebase sign-in configuration is missing;

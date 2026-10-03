@@ -53,9 +53,16 @@ and AES-256-GCM with random 96-bit nonces. Legacy content is readable but remain
 unauthenticated until rewritten. Older clients cannot read new envelopes or
 transfer recording chunks; update all participating clients together.
 
-These services currently sync within one account. Production sign-in setup and
-cross-user sharing, recipient authorization, and key exchange remain rollout
-requirements; the release UI currently offers local use only.
+These services currently sync within one account. Release sign-in uses the shared
+Keycloak service through a separate Con realm/client and authorization-code PKCE;
+see [identity deployment](../deployment/keycloak/README.md). Local use remains
+available. Signing in preserves local stories; encrypted sync requires a separate
+password. Account or salt changes invalidate an unlocked sync key, and in-flight
+sync checks the active identity before further requests and state updates.
+
+The realm and OpenBao wiring are prepared locally, not deployed. Persistent Con
+storage, cross-user recipient authorization, grants/revocation, key exchange,
+and non-recording attachment transfer remain rollout requirements.
 
 ## Where the app's name lives
 
