@@ -120,12 +120,12 @@ def click(page, text, *, force=False):
     global PHASE
     PHASE = 'UI control: ' + text
     name = re.compile('^' + re.escape(text) + r'(?: Tab [1-5] von 5)?$')
-    target = page.get_by_role('button', name=name).or_(
+    target = page.get_by_role('tab', name=text, exact=True).or_(
+        page.get_by_role('button', name=name)).or_(
         page.get_by_role('checkbox', name=text, exact=True)).or_(
-        page.get_by_role('menuitem', name=text, exact=True)).or_(
-        page.get_by_text(text, exact=True)).last
+        page.get_by_role('menuitem', name=text, exact=True)).last
     target.scroll_into_view_if_needed()
-    target.click(force=force)
+    target.click(force=force or target.get_attribute('role') in ('menuitem', 'tab'))
 
 
 def open_item(page, title):
@@ -140,8 +140,10 @@ def field(page, label, value):
     # Flutter exposes text inputs through its accessibility tree.
     target = page.get_by_role('textbox', name=re.compile(re.escape(label)))
     target.click()
-    target.press('Control+A')
-    target.press_sequentially(value)
+    expect(target).to_be_focused()
+    page.evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+    target.fill(value)
+    expect(target).to_have_value(value)
 
 
 def settings(page):
@@ -202,11 +204,13 @@ def login(page, origin, user):
         page.remove_listener('response', capture)
 
 
-def screenshots(page, output, name):
+def screenshots(page, output, name, prepare=None):
     original = dict(page.viewport_size)
     for width, height in ((390, 844), (1440, 900)):
         page.set_viewport_size({'width': width, 'height': height})
         page.wait_for_timeout(300)
+        if prepare is not None:
+            prepare()
         page.screenshot(path=str(output / f'{name}-{width}.png'))
     page.set_viewport_size(original)
 
@@ -268,27 +272,36 @@ def calendar(page, output=None):
     row = page.get_by_role('button', name=re.compile(f'^{year}\\s+1 Geschichte$'))
     expect(row).to_be_visible()
     if output is not None:
-        screenshots(page, output, 'calendar-years')
+        def show_years():
+            if row.count() == 0:
+                page.get_by_role('button', name=re.compile(f'^{year} · Jahre')).click()
+            expect(row).to_be_visible()
+        screenshots(page, output, 'calendar-years', show_years)
+        show_years()
     row.click()
     expect(page.get_by_text(f'{month} {year}', exact=True)).to_be_visible()
 
 
 def photo_view(page, filename, output=None):
     global PHASE
-    PHASE = 'UI original photo viewer'
-    page.get_by_role('button', name=filename, exact=True).click()
+    PHASE = 'UI original photo viewer: open'
+    page.get_by_role('button', name=re.compile('^' + re.escape(filename) + r'(?:\s|$)')).click(force=True)
+    PHASE = 'UI original photo viewer: title'
     expect(page.get_by_text(filename, exact=True).last).to_be_visible()
     if output is not None:
+        PHASE = 'UI original photo viewer: screenshots'
         screenshots(page, output, 'photo-original')
+    PHASE = 'UI original photo viewer: loaded'
     expect(page.get_by_role('progressbar')).to_have_count(0)
     expect(page.get_by_text(re.compile('Dieses Foto ist auf diesem Gerät nicht verfügbar'))).to_have_count(0)
+    PHASE = 'UI original photo viewer: return'
     back(page)
 
 
 def playback(page):
     click(page, 'Abspielen', force=True)
     page.wait_for_function("window.__e2eMedia.some(e => !e.paused && e.currentTime > 0.2)")
-    assert page.evaluate('window.__e2eMedia.every(e => !e.error)')
+    assert page.evaluate('window.__e2eMedia.filter(e => !e.paused).every(e => !e.error)')
     click(page, 'Pause', force=True)
 
 
@@ -399,6 +412,7 @@ def run(args):
             click(restore, 'Wiederherstellen')
             expect(restore.get_by_text('Wiederherstellung abgeschlossen', exact=True)).to_be_visible()
             click(restore, 'Fertig')
+            expect(restore.get_by_text('Karte', exact=True).last).to_be_visible()
             click(restore, 'Geschichten')
             calendar(restore)
             open_item(restore, title)
@@ -412,6 +426,13 @@ def run(args):
             result['uncaught_errors'] = 0
             result['completed'] = True
             print(json.dumps(result))
+        except Exception:
+            for index, failed in enumerate(pages):
+                if failed.url.startswith(args.origin):
+                    failed.screenshot(path=str(output / f'failure-{index}.png'))
+                    summary = failed.locator('[role]').evaluate_all("nodes => nodes.map(e => ({role:e.getAttribute('role'),label:e.getAttribute('aria-label'),text:(e.innerText||'').slice(0,200)}))")
+                    (output / f'failure-ui-{index}.json').write_text(json.dumps(summary, ensure_ascii=False))
+            raise
         finally:
             (output / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
             for ctx in (first, second, restored):

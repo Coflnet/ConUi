@@ -77,11 +77,18 @@ def open_quick_add(page):
     expect(page.get_by_text("Neue Geschichte", exact=True)).to_be_visible()
 
 
-def record_story(page, number):
+def record_story(page, number, result):
     global PHASE
     PHASE = "anonymous story recording " + str(number)
     title = "E2E anonyme Aufnahme " + str(number)
     notes = "Synthetische Notiz bleibt erhalten."
+    print("Guest speech recording " + str(number) + " started", flush=True)
+    responses = []
+    def capture(response):
+        if urlsplit(response.url).path == '/api/transcription/segment':
+            responses.append(response.status)
+    page.on('response', capture)
+    result['last_recording_transcription_http_statuses'] = responses
     open_quick_add(page)
     hosted.field(page, "Was ist hier passiert?", notes)
     hosted.field(page, "Titel (optional)", title)
@@ -92,8 +99,14 @@ def record_story(page, number):
     hosted.click(page, "Aufnahme beenden")
     expect(page.get_by_role("button", name="Geschichte speichern", exact=True)).to_be_enabled(timeout=90000)
     transcript = page.get_by_role("textbox", name=re.compile(r"Was ist hier passiert\?"))
+    # Flutter refreshes an inactive semantic input from its controller on focus.
+    transcript.click()
+    expect(transcript).to_be_focused()
     expect(transcript).to_have_value(re.compile("country", re.I), timeout=90000)
+    page.remove_listener('response', capture)
+    assert responses and all(status == 200 for status in responses)
     assert transcript.input_value().startswith(notes), "Typed notes were overwritten by transcription"
+    print("Guest speech recording " + str(number) + " transcribed", flush=True)
     hosted.click(page, "Geschichte speichern")
     hosted.click(page, "Geschichten")
     hosted.open_item(page, title)
@@ -109,7 +122,9 @@ def run(args):
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
     result = {"completed": False, "anonymous_daily_allowances_consumed": 0,
-              "server_path": "isolated_deployed_backend" if args.api_forward else "public_ingress"}
+              "initial_remaining": args.initial_remaining,
+              "server_path": "isolated_deployed_backend" if args.api_forward else
+                  "isolated_ingress" if any("--host-resolver-rules=" in arg for arg in args.browser_arg) else "public_ingress"}
     errors = []
     try:
         validate_fixture(args.audio_fixture)
@@ -145,21 +160,23 @@ def run(args):
                 page.goto(args.origin)
                 hosted.semantics(page)
                 hosted.click(page, "Ohne Konto fortfahren")
-                check_remaining(page, 3)
-                result["fresh_anonymous_allowance"] = True
-                PHASE = "server rejects 61-second audio without consuming an allowance"
-                too_long = segment(page, 61)
-                assert too_long["status"] == 413
-                assert too_long["body"]["slug"] == "anonymous_recording_too_long"
-                assert "Sign in" in too_long["body"]["message"]
-                check_remaining(page, 3)
-                result["server_actual_duration_limit"] = True
+                check_remaining(page, args.initial_remaining)
+                result["initial_allowance_verified"] = True
+                if args.initial_remaining > 0:
+                    PHASE = "server rejects 61-second audio without consuming an allowance"
+                    too_long = segment(page, 61)
+                    assert too_long["status"] == 413
+                    assert too_long["body"]["slug"] == "anonymous_recording_too_long"
+                    assert "Sign in" in too_long["body"]["message"]
+                    check_remaining(page, args.initial_remaining)
+                    result["server_actual_duration_limit"] = True
                 english_recording_language(page)
-                for number in range(1, 4):
-                    record_story(page, number)
-                    check_remaining(page, 3 - number)
+                for number in range(1, args.initial_remaining + 1):
+                    record_story(page, number, result)
+                    check_remaining(page, args.initial_remaining - number)
                     result["anonymous_daily_allowances_consumed"] = number
-                result["three_anonymous_stories_transcribed_saved_played"] = True
+                result["remaining_anonymous_stories_transcribed_saved_played"] = args.initial_remaining > 0
+                result["server_total_daily_slots_used"] = 3
                 PHASE = "fourth recording clear German sign-in guidance before capture"
                 open_quick_add(page)
                 hosted.field(page, "Was ist hier passiert?", "Geschichte bleibt ohne weitere Aufnahme speicherbar.")
@@ -185,6 +202,13 @@ def run(args):
                 result["uncaught_errors"] = 0
                 result["completed"] = True
                 print(json.dumps(result), flush=True)
+            except Exception:
+                if page.url.startswith(args.origin):
+                    page.screenshot(path=str(output / 'failure.png'))
+                    result['synthetic_textbox_values'] = page.get_by_role('textbox').evaluate_all('nodes => nodes.map(e => e.value)')
+                    summary = page.locator('[role]').evaluate_all("nodes => nodes.map(e => ({role:e.getAttribute('role'),label:e.getAttribute('aria-label'),text:(e.innerText||'').slice(0,200),value:e.value}))")
+                    (output / 'failure-ui.json').write_text(json.dumps(summary, ensure_ascii=False))
+                raise
             finally:
                 context.close()
                 browser.close()
@@ -197,6 +221,8 @@ def main():
     parser.add_argument("--origin", default="https://con.coflnet.com")
     parser.add_argument("--output", required=True)
     parser.add_argument("--audio-fixture", required=True, type=Path, help="Known public lifenizer speech-sample.wav; owner recordings are refused")
+    parser.add_argument("--initial-remaining", type=int, choices=range(0, 4), default=3,
+                        help="Expected remaining allowance; permits resuming after an interrupted test without resetting production quotas")
     parser.add_argument("--api-forward", help="Optional deployed-backend tunnel, e.g. http://127.0.0.1:18083; isolates test quota from the public IP")
     parser.add_argument("--chromium", default="/usr/bin/chromium")
     parser.add_argument("--browser-arg", action="append", default=[])
