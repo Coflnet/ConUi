@@ -7,6 +7,7 @@ import '../../models/models.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
+import '../../widgets/transcript_people_picker.dart';
 import '../../services/story_photo_service.dart';
 import '../../widgets/story_photo.dart';
 import '../../services/record_package_audio_capture.dart';
@@ -40,6 +41,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
   DateTime _dateTime = DateTime.now();
   DateTime? _endDateTime;
   List<String> _participantIds = [];
+  late final TranscriptPeopleController _peoplePicker;
   String? _placeId;
   bool _isSaving = false;
   bool _isPickingPhotos = false;
@@ -73,6 +75,8 @@ class _AddEventScreenState extends State<AddEventScreen> {
       _ownsRecorder = true;
     }
     _recorder.addListener(_onRecorderChanged);
+    _peoplePicker = TranscriptPeopleController(_descriptionController, context.read<DatabaseService>());
+    _peoplePicker.addListener(_onPeopleChanged);
   }
 
   static RecorderController _buildDefaultRecorderController(BuildContext context) {
@@ -89,6 +93,10 @@ class _AddEventScreenState extends State<AddEventScreen> {
       ),
       language: settings.effectiveRecordingLanguage,
     );
+  }
+
+  void _onPeopleChanged() {
+    if (mounted) setState(() {});
   }
 
   void _onRecorderChanged() {
@@ -131,6 +139,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
       _recorder.dispose();
     }
     _titleController.dispose();
+    _peoplePicker.dispose();
     _descriptionController.dispose();
     super.dispose();
   }
@@ -200,61 +209,72 @@ class _AddEventScreenState extends State<AddEventScreen> {
 
     setState(() => _isSaving = true);
 
-    final db = context.read<DatabaseService>();
-    final newFiles = <AttachedFile>[
-      ...(widget.existingEvent?.files ?? const []),
-      if (_pendingRecording != null) _pendingRecording!,
-      ..._photos,
-    ];
-    final event = widget.existingEvent != null
-        ? widget.existingEvent!.copyWith(
-            title: _titleController.text.trim(),
-            description: _descriptionController.text.trim().isEmpty
-                ? null
-                : _descriptionController.text.trim(),
-            type: _type,
-            dateTime: _dateTime,
-            endDateTime: _endDateTime,
-            participantIds: _participantIds,
-            placeId: _placeId,
-            files: newFiles,
-          )
-        : Event(
-            id: _draftEvent.id,
-            title: _titleController.text.trim(),
-            description: _descriptionController.text.trim().isEmpty
-                ? null
-                : _descriptionController.text.trim(),
-            type: _type,
-            dateTime: _dateTime,
-            endDateTime: _endDateTime,
-            participantIds: _participantIds,
-            placeId: _placeId,
-            files: newFiles,
-          );
+    try {
+      final db = context.read<DatabaseService>();
+      final detectedIds = await saveStoryPeople(db, await _peoplePicker.peopleForSave());
+      final participantIds = {..._participantIds, ...detectedIds}.toList();
+      final newFiles = <AttachedFile>[
+        ...(widget.existingEvent?.files ?? const []),
+        if (_pendingRecording != null) _pendingRecording!,
+        ..._photos,
+      ];
+      final event = widget.existingEvent != null
+          ? widget.existingEvent!.copyWith(
+              title: _titleController.text.trim(),
+              description: _descriptionController.text.trim().isEmpty
+                  ? null
+                  : _descriptionController.text.trim(),
+              type: _type,
+              dateTime: _dateTime,
+              endDateTime: _endDateTime,
+              participantIds: participantIds,
+              placeId: _placeId,
+              files: newFiles,
+            )
+          : Event(
+              id: _draftEvent.id,
+              title: _titleController.text.trim(),
+              description: _descriptionController.text.trim().isEmpty
+                  ? null
+                  : _descriptionController.text.trim(),
+              type: _type,
+              dateTime: _dateTime,
+              endDateTime: _endDateTime,
+              participantIds: participantIds,
+              placeId: _placeId,
+              files: newFiles,
+            );
 
-    await db.saveEvent(event);
+      await db.saveEvent(event);
 
-    final pending = _pendingRecording;
-    if (pending != null) {
-      final recording = await db.getLocalRecording(pending.id);
-      if (recording != null) {
-        await db.saveLocalRecording(recording.copyWith(eventId: event.id));
+      final pending = _pendingRecording;
+      if (pending != null) {
+        final recording = await db.getLocalRecording(pending.id);
+        if (recording != null) {
+          await db.saveLocalRecording(recording.copyWith(eventId: event.id));
+        }
       }
-    }
 
-    if (mounted) {
-      final l10n = AppLocalizations.of(context);
-      Navigator.pop(
-          context, true); // Return true to indicate save was successful
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(l10n.addEventSavedSnackbar(
-                event.title,
-                widget.existingEvent != null
-                    ? l10n.addEventSavedActionUpdated
-                    : l10n.addEventSavedActionCreated))),
-      );
+      if (mounted) {
+        final l10n = AppLocalizations.of(context);
+        Navigator.pop(
+            context, true); // Return true to indicate save was successful
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(l10n.addEventSavedSnackbar(
+                  event.title,
+                  widget.existingEvent != null
+                      ? l10n.addEventSavedActionUpdated
+                      : l10n.addEventSavedActionCreated))),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(AppLocalizations.of(context).storySaveFailed)));
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -262,6 +282,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final locale = Localizations.localeOf(context).toString();
+    final participantCount = {..._participantIds, ..._peoplePicker.selectedPeople.map((p) => p.id)}.length;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.existingEvent != null ? l10n.addEventTitleEdit : l10n.addEventTitleNew),
@@ -345,12 +366,13 @@ class _AddEventScreenState extends State<AddEventScreen> {
               maxLines: 3,
             ),
             const SizedBox(height: 16),
+            TranscriptPeoplePicker(controller: _peoplePicker, selectedIds: _participantIds.toSet()),
             Card(
               child: ListTile(
                 leading: const Icon(Icons.people),
-                title: Text(_participantIds.isEmpty
+                title: Text(participantCount == 0
                     ? l10n.addEventAddParticipants
-                    : l10n.addEventParticipantsCount(_participantIds.length)),
+                    : l10n.addEventParticipantsCount(participantCount)),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _selectParticipants(),
               ),
@@ -501,13 +523,14 @@ class _AddEventScreenState extends State<AddEventScreen> {
             children: persons
                 .map((p) => CheckboxListTile(
                       title: Text(p.name),
-                      value: _participantIds.contains(p.id),
+                      value: _participantIds.contains(p.id) || _peoplePicker.selectedPeople.any((person) => person.id == p.id),
                       onChanged: (v) {
                         setState(() {
                           if (v == true) {
                             _participantIds.add(p.id);
                           } else {
                             _participantIds.remove(p.id);
+                            _peoplePicker.dismiss(p.name);
                           }
                         });
                         Navigator.pop(context);

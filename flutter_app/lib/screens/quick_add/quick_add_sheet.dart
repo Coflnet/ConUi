@@ -10,6 +10,8 @@ import '../../services/app_settings_service.dart';
 import '../../services/audio_capture.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
+import '../../services/person_mentions.dart';
+import '../../widgets/transcript_people_picker.dart';
 import '../../services/story_photo_service.dart';
 import '../../widgets/story_photo.dart';
 import '../../services/record_package_audio_capture.dart';
@@ -130,6 +132,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   final _personSearchController = TextEditingController();
 
   final List<PersonPick> _selectedPersons = [];
+  late final TranscriptPeopleController _peoplePicker;
   List<Person> _allPersons = [];
   List<Place> _allPlaces = [];
   Place? _nearbyPlace;
@@ -153,6 +156,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   @override
   void initState() {
     super.initState();
+    _peoplePicker = TranscriptPeopleController(_textController, context.read<DatabaseService>());
     if (widget.recorderController != null) {
       _recorder = widget.recorderController!;
     } else {
@@ -303,7 +307,11 @@ class QuickAddSheetState extends State<QuickAddSheet> {
 
   void _selectExistingPerson(Person person) {
     setState(() {
-      _selectedPersons.add(PersonPick.existing(person));
+      _selectedPersons.removeWhere((pick) => pick.existing == null &&
+          [person.name, ...person.aliases].any((name) => normalizedPersonName(name) == normalizedPersonName(pick.displayName)));
+      if (!_selectedPersons.any((pick) => pick.existing?.id == person.id)) {
+        _selectedPersons.add(PersonPick.existing(person));
+      }
       _personSearchController.clear();
     });
   }
@@ -312,12 +320,15 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
     setState(() {
-      _selectedPersons.add(PersonPick.newName(trimmed));
+      if (!_selectedPersons.any((pick) => normalizedPersonName(pick.displayName) == normalizedPersonName(trimmed))) {
+        _selectedPersons.add(PersonPick.newName(trimmed));
+      }
       _personSearchController.clear();
     });
   }
 
   void _removePerson(PersonPick pick) {
+    _peoplePicker.dismiss(pick.displayName);
     setState(() => _selectedPersons.remove(pick));
   }
 
@@ -535,57 +546,60 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     }
 
     setState(() => _isSaving = true);
-    final db = context.read<DatabaseService>();
-    final position = widget.position.value;
+    try {
+      final db = context.read<DatabaseService>();
+      final position = widget.position.value;
 
-    Place place;
-    if (_useExistingPlace != null) {
-      place = _useExistingPlace!;
-    } else {
-      final name = _placeNameController.text.trim().isNotEmpty
-          ? _placeNameController.text.trim()
-          : defaultPlaceName(position, l10n);
-      place = Place(name: name, latitude: position.latitude, longitude: position.longitude);
-      await db.savePlace(place);
-    }
-
-    final participantIds = <String>[];
-    for (final pick in _selectedPersons) {
-      if (pick.existing != null) {
-        participantIds.add(pick.existing!.id);
+      Place place;
+      if (_useExistingPlace != null) {
+        place = _useExistingPlace!;
       } else {
-        final person = Person(name: pick.newName!);
-        await db.savePerson(person);
-        participantIds.add(person.id);
+        final name = _placeNameController.text.trim().isNotEmpty
+            ? _placeNameController.text.trim()
+            : defaultPlaceName(position, l10n);
+        place = Place(name: name, latitude: position.latitude, longitude: position.longitude);
+        await db.savePlace(place);
       }
-    }
 
-    final files = <AttachedFile>[
-      if (_pendingRecording != null) _pendingRecording!,
-      ..._photos
-    ];
-    final event = Event(
-      id: _draftEvent.id,
-      title: _deriveTitle(l10n, text, place.name),
-      description: text.isEmpty ? null : text,
-      dateTime: _date,
-      datePrecision: _datePrecision,
-      placeId: place.id,
-      participantIds: participantIds,
-      files: files,
-    );
-    await db.saveEvent(event);
+      final participantIds = await saveStoryPeople(db, [
+        for (final pick in _selectedPersons) pick.existing ?? Person(name: pick.newName!),
+        ...await _peoplePicker.peopleForSave(),
+      ]);
 
-    final pendingId = _pendingRecording?.id;
-    if (pendingId != null) {
-      final recording = await db.getLocalRecording(pendingId);
-      if (recording != null) {
-        await db.saveLocalRecording(recording.copyWith(eventId: event.id));
+      final files = <AttachedFile>[
+        if (_pendingRecording != null) _pendingRecording!,
+        ..._photos
+      ];
+      final event = Event(
+        id: _draftEvent.id,
+        title: _deriveTitle(l10n, text, place.name),
+        description: text.isEmpty ? null : text,
+        dateTime: _date,
+        datePrecision: _datePrecision,
+        placeId: place.id,
+        participantIds: participantIds,
+        files: files,
+      );
+      await db.saveEvent(event);
+
+      final pendingId = _pendingRecording?.id;
+      if (pendingId != null) {
+        final recording = await db.getLocalRecording(pendingId);
+        if (recording != null) {
+          await db.saveLocalRecording(recording.copyWith(eventId: event.id));
+        }
       }
-    }
 
-    if (!mounted) return;
-    Navigator.pop(context, QuickAddResult(event: event, place: place));
+      if (!mounted) return;
+      Navigator.pop(context, QuickAddResult(event: event, place: place));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(AppLocalizations.of(context).storySaveFailed)));
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   @override
@@ -594,6 +608,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     if (_ownsRecorder) {
       _recorder.dispose();
     }
+    _peoplePicker.dispose();
     _textController.dispose();
     _placeNameController.dispose();
     _titleController.dispose();
@@ -652,6 +667,8 @@ class QuickAddSheetState extends State<QuickAddSheet> {
                 const SizedBox(height: 20),
                 Text(l10n.quickAddPersonsLabel, style: Theme.of(context).textTheme.labelLarge),
                 const SizedBox(height: 8),
+                TranscriptPeoplePicker(controller: _peoplePicker,
+                    selectedNames: _selectedPersons.map((p) => normalizedPersonName(p.displayName)).toSet()),
                 _buildPersonsPicker(l10n),
                 const SizedBox(height: 20),
                 Text(l10n.quickAddWhenLabel, style: Theme.of(context).textTheme.labelLarge),
@@ -801,11 +818,11 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     final suggestions = query.isEmpty
         ? const <Person>[]
         : _allPersons
-            .where((p) => !selectedIds.contains(p.id) && p.name.toLowerCase().contains(query))
+            .where((p) => !selectedIds.contains(p.id) && [p.name, ...p.aliases].any((name) => name.toLowerCase().contains(query)))
             .take(5)
             .toList();
     final exactMatch =
-        _allPersons.any((p) => p.name.toLowerCase() == query) || query.isEmpty;
+        _allPersons.any((p) => [p.name, ...p.aliases].any((name) => name.toLowerCase() == query)) || query.isEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

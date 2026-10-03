@@ -203,4 +203,101 @@ void main() {
     });
     expect(recording!.eventId, events.first.id);
   });
+
+  testWidgets(
+      'final recording tail adds detected people while preserving edited story notes and participants',
+      (tester) async {
+    final db = createTestDatabaseService();
+    final manual = Person(id: 'manual', name: 'Alex Jones');
+    final paul = Person(id: 'known-paul', name: 'Paul Roberts', aliases: ['Paul']);
+    final original = Event(
+      id: 'original-story',
+      title: 'An existing story',
+      description: 'Original typed notes.',
+      dateTime: DateTime(2020, 5, 2),
+      participantIds: [manual.id],
+    );
+    await tester.runAsync(() async {
+      await db.initialize();
+      await db.savePerson(manual);
+      await db.savePerson(paul);
+      await db.saveEvent(original);
+    });
+    addTearDown(() => tester.runAsync(() async {
+          await (await db.database).close();
+          db.dispose();
+        }));
+
+    const transcript = 'My sister Jane Smith visited Uncle Paul.';
+    var transcriptionRequests = 0;
+    final capture = FakeAudioCapture();
+    final store = NativeRecordingFileStore(baseDirectory: tempDir);
+    final recorder = RecorderController(
+      audioCapture: capture,
+      fileStore: store,
+      database: db,
+      transcriptionClient: TranscriptionClient(
+        baseUrl: 'https://api.example.com',
+        getToken: () => 'tok',
+        httpClient: MockClient((request) async {
+          if (request.method == 'GET') {
+            return http.Response(jsonEncode({'available': true}), 200);
+          }
+          transcriptionRequests++;
+          return http.Response(jsonEncode({'text': transcript}), 200);
+        }),
+      ),
+      segmentDuration: const Duration(seconds: 30),
+      backoff: (_) => Duration.zero,
+    );
+    addTearDown(recorder.dispose);
+    await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: ChangeNotifierProvider<DatabaseService>.value(
+        value: db,
+        child: AddEventScreen(existingEvent: original, recorderController: recorder),
+      ),
+    ));
+
+    await _pressAsync(tester, find.widgetWithIcon(IconButton, Icons.mic));
+    await tester.pump();
+    await tester.runAsync(() async {
+      // This short buffer stays below the segmentation threshold. Its text
+      // appears only when Stop flushes the final tail, never as a live segment.
+      capture.emitChunk(Uint8List(1600));
+      await Future<void>.delayed(Duration.zero);
+    });
+    expect(transcriptionRequests, 0);
+    expect(recorder.liveTranscript, isEmpty);
+    await _pressAsync(tester, find.widgetWithIcon(IconButton, Icons.stop_circle));
+    await tester.pump();
+    expect(transcriptionRequests, 1);
+    expect(find.byWidgetPredicate((w) => w is TextFormField &&
+        w.controller?.text == 'Original typed notes. $transcript'), findsOneWidget);
+    final recordingFile = recorder.lastStopResult!.attachedFile;
+    await tester.runAsync(() async {
+      // Recognition creates only a draft; the original story is unchanged.
+      expect((await db.getPersons()).map((p) => p.id), unorderedEquals([manual.id, paul.id]));
+      expect((await db.getEvent(original.id))!.description, original.description);
+    });
+
+    await _pressAsync(tester, find.byType(TextButton));
+    await tester.pump();
+    await tester.runAsync(() async {
+      final people = await db.getPersons();
+      final jane = people.singleWhere((p) => p.name == 'Jane Smith');
+      expect(people, hasLength(3));
+      expect(people.where((p) => p.name == paul.name).single.id, paul.id);
+      final saved = (await db.getEvent(original.id))!;
+      expect(saved.title, original.title);
+      expect(saved.description, 'Original typed notes. $transcript');
+      expect(saved.participantIds, unorderedEquals([manual.id, paul.id, jane.id]));
+      expect(saved.files.single.kind, AttachedFile.kindRecording);
+      expect(saved.files.single.id, recordingFile.id);
+      expect(await store.exists(recordingFile.id), isTrue);
+      expect((await db.getLocalRecording(recordingFile.id))!.eventId, original.id);
+    });
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }

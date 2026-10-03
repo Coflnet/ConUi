@@ -1,6 +1,7 @@
 // Widget tests for PlaceSheet: name (editable), stories at that place in
 // date order with their persons, and "Add story here".
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -131,18 +132,36 @@ void main() {
       await db.savePlace(place);
     });
 
+    // Opening the form initializes its recorder even though this navigation
+    // test never records. Fake only that platform lifecycle.
+    const recorderChannel = MethodChannel('com.llfbandit.record/messages');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        recorderChannel, (call) async {
+      expect(call.method, isIn(['create', 'dispose']));
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(recorderChannel, null));
+
     await tester.pumpWidget(_wrap(db, PlaceSheet(placeId: place.id)));
     await _settle(tester);
 
     // Not pumpAndSettle(): the place sheet's own small map keeps retrying
     // its (in this offline test) permanently-failing tile requests, so
     // there's always another frame scheduled and pumpAndSettle would never
-    // return. A bounded number of plain pumps is enough for the sheet
-    // transition + QuickAddSheet's own initState/lookups to settle.
+    // return. Bounded plain pumps complete the sheet transition; the
+    // database lookups need the real async zone below.
     await tester.tap(find.widgetWithText(FilledButton, 'Add story here'));
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
+    // The form and person recognizer share SQLite's isolate transaction lock.
+    // Await their lookup queue in the real async zone before ending the test.
+    await tester.runAsync(() async {
+      await db.getPersons();
+      await db.getPlaces();
+    });
+    await tester.pump();
 
     // The quick add sheet opened already pinned to this place - its place
     // name field (distinct from the place sheet's own name field
@@ -154,5 +173,7 @@ void main() {
       matching: find.widgetWithText(TextField, 'Grandpa\'s workshop'),
     ));
     expect(placeNameField.enabled, isFalse);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.runAsync(() => db.getPersons());
   });
 }

@@ -590,4 +590,50 @@ void main() {
       expect(recording!.eventId, isNull, reason: 'orphaned until attached to a story');
     });
   });
+  testWidgets('final transcript automatically links known aliases and new people on save',
+      (tester) async {
+    final db = createTestDatabaseService();
+    final anna = Person(name: 'Anna Müller', aliases: ['Anni']);
+    await tester.runAsync(() async {
+      await db.initialize();
+      await db.savePerson(anna);
+    });
+    final capture = FakeAudioCapture();
+    final recorder = _buildRecorder(capture: capture, db: db, tempDir: tempDir,
+        transcribedText: 'Anni traf meinen Onkel Paul.');
+    addTearDown(recorder.dispose);
+    final position = ValueNotifier(const LatLng(10, 10));
+    addTearDown(position.dispose);
+    await tester.pumpWidget(_wrap(db,
+        QuickAddSheet(position: position, recorderController: recorder)));
+    await _settle(tester);
+    await tester.enterText(find.widgetWithText(TextField, 'What happened here?'), 'My notes.');
+    final start = tester.widget<GestureDetector>(find.descendant(
+        of: find.bySemanticsLabel('Start recording'), matching: find.byType(GestureDetector))).onTap!;
+    await tester.runAsync(() async => await (start as Function)());
+    await tester.pump();
+    await tester.runAsync(() async {
+      capture.emitChunk(Uint8List(1600)); // Only the final tail is transcribed.
+      await Future<void>.delayed(Duration.zero);
+    });
+    final stop = tester.widget<GestureDetector>(find.descendant(
+        of: find.bySemanticsLabel('Stop recording'), matching: find.byType(GestureDetector))).onTap!;
+    await tester.runAsync(() async => await (stop as Function)());
+    await tester.pump();
+    expect(find.widgetWithText(Chip, 'Anna Müller'), findsOneWidget);
+    expect(find.widgetWithText(Chip, 'Paul'), findsOneWidget);
+    await tester.runAsync(() async => expect(await db.getPersons(), hasLength(1)));
+    await _pressAsync(tester, find.widgetWithText(FilledButton, 'Save story'));
+    await _settle(tester);
+    await tester.runAsync(() async {
+      final people = await db.getPersons();
+      final event = (await db.getEvents()).single;
+      expect(people, hasLength(2));
+      expect(event.participantIds.toSet(), {anna.id, people.singleWhere((p) => p.name == 'Paul').id});
+      expect(event.description, 'My notes. Anni traf meinen Onkel Paul.');
+      expect(event.files.single.kind, AttachedFile.kindRecording);
+    });
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
 }

@@ -78,7 +78,7 @@ void main() {
     await _settle(tester);
 
     expect(find.text('Neue Geschichte'), findsOneWidget);
-    expect(find.text('Wer war dabei?'), findsOneWidget);
+    expect(find.text('Personen in dieser Geschichte'), findsOneWidget);
     expect(find.text('Wann war das?'), findsOneWidget);
     expect(find.widgetWithText(TextField, 'Was ist hier passiert?'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Geschichte speichern'), findsOneWidget);
