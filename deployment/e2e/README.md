@@ -17,7 +17,7 @@ and device rows; this harness deliberately leaves those marked E2E rows rather
 than deleting arbitrary application data.
 
 Use an installed Playwright Python environment with the system Chromium binary.
-The existing cached environment used for the prepare check is:
+The existing cached environment used for these checks is:
 
 ```sh
 /home/ekwav/.cache/uv/archive-v0/eq7TXxf37ojESxDq/bin/python deployment/e2e/hosted.py \
@@ -33,15 +33,41 @@ honor its routing; no application authentication is replaced by password grants.
 Chromium runs with a unique temporary profile, extensions disabled and a generated
 16-kHz mono PCM WAV fake microphone. The harness records only its own PID,
 verifies `/proc/<pid>/cmdline` contains its exact profile before termination,
-and removes the PID file and profile after exit. No browser traces, HARs,
+and removes the PID file and profile after exit. A demonstrated late profile-write
+race retries only `ENOTEMPTY` for at most five seconds; persistent or other
+cleanup errors fail the run. No browser traces, HARs,
 credential screenshots, raw callback URLs, error bodies, or token logs are saved.
 Failures print their exception type and the current static UI/API phase without
-Playwright's potentially sensitive call log or any typed field value. The output contains only a synthetic backup and boolean/status results.
+Playwright's potentially sensitive call log or any typed field value. API progress
+prints only method, fixed path, HTTP status and content type. The output contains
+only a synthetic backup and boolean/status results; `completed` stays false on
+partial runs.
 
-Local disposable static-build checks reproduced Flutter's person-add chip as a
-checkbox and input updates requiring keyboard events; the harness accounts for
-both. The helper must still be run against the deployed release to validate the
-complete Flutter semantics workflow. Syntax/help and isolated Chromium checks are preparation only; they
-are not evidence that the deployed application passed. First live execution may
-expose an accessibility selector mismatch, which should be corrected in this
-repeatable script before reporting the workflow verified.
+The harness uses Flutter's accessibility semantics for the German UI:
+
+- Text fields receive keyboard input so Flutter controllers update; Keycloak's
+  ordinary HTML inputs use `fill`.
+- Person-add chips expose `checkbox`; relationship dropdown choices expose
+  `menuitem`. Navigation button names include `Tab 1 von 5` through `Tab 5 von 5`.
+- Story and Settings buttons merge titles with dates or subtitles. `open_item`
+  matches an anchored title followed by whitespace; ordinary controls retain
+  exact labels. Participant names include the avatar initial, so assertions
+  match the person name at the end of the button name.
+- The harness waits for `Aufnahme als Text` after stopping recording, which
+  proves finalization and attachment before typing and saving the story.
+- Playback, relationship entry and back navigation use forced physical clicks
+  for demonstrated overlapping semantics hit targets. Playback still must
+  advance the actual media clock, and relationship creation must show the
+  saved result. The friend relationship submit button is `Hinzufügen`.
+- The encryption-lock Snackbar is checked in semantics text because its exact
+  text locator did not expose the visible message reliably.
+
+Backups are ZIP files. The restore picker accepts `.zip`; the archive contains
+`manifest.json`, `data.json`, `README.txt`, and `recordings/<id>.wav`. Format version
+1 records each recording's byte count and SHA-256 digest. Independent disposable
+local checks verified the story/recording/relationship workflow, ZIP recording
+integrity, and fresh-profile restore with actual playback. Hosted completion is
+established only by a successful full run against the deployed release: require
+exit status zero and `result.json` with `completed: true`, then verify temporary
+identity/token cleanup through the protected operator flow. A partial result or
+local run alone does not establish hosted completion.

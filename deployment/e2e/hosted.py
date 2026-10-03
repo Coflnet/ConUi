@@ -1,12 +1,15 @@
 """Real hosted Con UI checks with two disposable Keycloak identities."""
 import argparse
 from contextlib import contextmanager
+import errno
+import hashlib
 import json
 import math
 import os
 from pathlib import Path
 import re
 import signal
+import shutil
 import shlex
 import struct
 import subprocess
@@ -16,10 +19,13 @@ import time
 from urllib.parse import urlsplit
 import uuid
 import wave
+import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'keycloak'))
 from provision import read_fixture
 from playwright.sync_api import sync_playwright, expect
+
+expect.set_options(timeout=45000)
 
 PHASE = 'startup'
 
@@ -41,7 +47,8 @@ def fake_audio(path):
 
 @contextmanager
 def chromium(args, output):
-    with tempfile.TemporaryDirectory(prefix='con-e2e-browser-') as directory:
+    directory = tempfile.mkdtemp(prefix='con-e2e-browser-')
+    try:
         profile = Path(directory) / 'profile'
         audio = Path(directory) / 'input.wav'
         fake_audio(audio)
@@ -78,6 +85,16 @@ def chromium(args, output):
                     process.kill()
                     process.wait(timeout=10)
             pidfile.unlink(missing_ok=True)
+    finally:
+        # Chromium children can still finish profile writes after its PID exits.
+        for attempt in range(50):
+            try:
+                shutil.rmtree(directory)
+                break
+            except OSError as error:
+                if error.errno != errno.ENOTEMPTY or attempt == 49:
+                    raise
+                time.sleep(0.1)
 
 
 def semantics(page):
@@ -87,14 +104,22 @@ def semantics(page):
     page.wait_for_selector('flt-semantics', state='attached')
 
 
-def click(page, text):
+def click(page, text, *, force=False):
     global PHASE
     PHASE = 'UI control: ' + text
-    target = page.get_by_role('button', name=text, exact=True).or_(
+    name = re.compile('^' + re.escape(text) + r'(?: Tab [1-5] von 5)?$')
+    target = page.get_by_role('button', name=name).or_(
         page.get_by_role('checkbox', name=text, exact=True)).or_(
+        page.get_by_role('menuitem', name=text, exact=True)).or_(
         page.get_by_text(text, exact=True)).last
     target.scroll_into_view_if_needed()
-    target.click()
+    target.click(force=force)
+
+
+def open_item(page, title):
+    global PHASE
+    PHASE = 'UI item: ' + title
+    page.get_by_role('button', name=re.compile('^' + re.escape(title) + r'(?:\s|$)')).click()
 
 
 def field(page, label, value):
@@ -108,23 +133,29 @@ def field(page, label, value):
 
 
 def settings(page):
+    global PHASE
+    PHASE = 'UI settings'
     # The app's settings IconButton currently has no accessible label.
     page.mouse.click(page.viewport_size['width'] - 28, 28)
     expect(page.get_by_text('Einstellungen', exact=True)).to_be_visible()
 
 
 def back(page):
-    page.get_by_role('button', name=re.compile('Back|Zurück')).first.click()
+    global PHASE
+    PHASE = 'UI back'
+    page.get_by_role('button', name=re.compile('Back|Zurück')).first.click(force=True)
 
 
 def api(page, token, path, method='GET', body=None):
     global PHASE
     PHASE = 'API: ' + method + ' ' + path
-    return page.evaluate("""async ({token,path,method,body}) => {
+    result = page.evaluate("""async ({token,path,method,body}) => {
       const r = await fetch(path, {method, headers: {'Authorization':'Bearer '+token,
         'Content-Type':'application/json'}, body: body === null ? undefined : JSON.stringify(body)});
-      return {status:r.status, body:await r.json().catch(()=>null)};
+      return {status:r.status, contentType:r.headers.get('Content-Type'), body:await r.json().catch(()=>null)};
     }""", {'token': token, 'path': path, 'method': method, 'body': body})
+    print(f"API check: {method} {path} HTTP {result['status']} ({result['contentType']})", flush=True)
+    return result
 
 
 def login(page, origin, user):
@@ -167,40 +198,47 @@ def story(page, title, person):
     expect(page.get_by_text('Aufnahme beenden', exact=True)).to_be_visible()
     page.wait_for_timeout(3000)
     click(page, 'Aufnahme beenden')
-    expect(page.get_by_text('Aufnahme starten', exact=True)).to_be_visible()
+    expect(page.get_by_role('button', name='Aufnahme als Text', exact=True)).to_be_visible()
     field(page, 'Was ist hier passiert?', 'Synthetische Erzählung für die Bereitstellungsprüfung.')
     field(page, 'Namen eingeben', person)
     click(page, '„' + person + '“ hinzufügen')
     field(page, 'Titel (optional)', title)
     click(page, 'Geschichte speichern')
     click(page, 'Geschichten')
-    click(page, title)
-    expect(page.get_by_text(person, exact=True)).to_be_visible()
+    open_item(page, title)
+    expect(page.get_by_role('button', name=re.compile(re.escape(person) + '$'))).to_be_visible()
     playback(page)
-    click(page, 'Verbindung hinzufügen')
+    click(page, 'Verbindung hinzufügen', force=True)
     page.get_by_role('button', name=re.compile('Verbinden mit')).click()
     click(page, '+ Neue Person hinzufügen…')
     field(page, 'Name der neuen Person', person + ' Freundin')
-    click(page, 'Speichern')
-    expect(page.get_by_text(re.compile(re.escape(person + ' Freundin'))).first).to_be_visible()
+    click(page, 'Hinzufügen')
+    expect(page.get_by_role('button', name=re.compile(re.escape(person + ' Freundin'))).first).to_be_visible()
 
 
 def playback(page):
-    click(page, 'Abspielen')
+    click(page, 'Abspielen', force=True)
     page.wait_for_function("window.__e2eMedia.some(e => !e.paused && e.currentTime > 0.2)")
     assert page.evaluate('window.__e2eMedia.every(e => !e.error)')
-    click(page, 'Pause')
+    click(page, 'Pause', force=True)
 
 
 def backup(page, output):
     back(page)
     settings(page)
-    click(page, 'Sicherung erstellen')
+    open_item(page, 'Sicherung erstellen')
     expect(page.get_by_text(re.compile('1 Aufnahme'))).to_be_visible()
     with page.expect_download() as download:
         click(page, 'Sicherung erstellen')
-    path = output / 'synthetic-backup.conbackup'
+    path = output / 'synthetic-backup.zip'
     download.value.save_as(path)
+    with zipfile.ZipFile(path) as archive:
+        manifest = json.loads(archive.read('manifest.json'))
+        assert manifest['formatVersion'] == 1 and not manifest['missingAudio']
+        recording, = manifest['recordings']
+        wav = archive.read('recordings/' + recording['id'] + '.wav')
+        assert len(wav) == recording['size'] and hashlib.sha256(wav).hexdigest() == recording['sha256']
+        assert wav[:4] == b'RIFF' and wav[8:12] == b'WAVE' and struct.unpack_from('<I', wav, 4)[0] == len(wav) - 8
     expect(page.get_by_text('Sicherung erstellt', exact=True)).to_be_visible()
     click(page, 'Fertig')
     return path
@@ -211,7 +249,7 @@ def run(args):
     output.mkdir(parents=True, exist_ok=True)
     users = read_fixture(args.fixture)['users']
     assert len(users) == 2
-    result = {'cloud_sync': 'not_verified_s3_unconfigured'}
+    result = {'completed': False, 'cloud_sync': 'not_verified_s3_unconfigured'}
     with chromium(args, output) as endpoint, sync_playwright() as playwright:
         browser = playwright.chromium.connect_over_cdp(endpoint)
         def context(width):
@@ -244,8 +282,8 @@ def run(args):
             upload = api(page, token, '/api/sync/upload', 'POST', {'blobType':'person','blobId':str(uuid.uuid4()),'checksum':'0'*64,'expectedVersion':0})
             assert upload['status'] == 503 and upload['body']['slug'] == 'storage_unavailable'
             result['s3_expected_503'] = True
-            page.get_by_role('button', name='Jetzt abgleichen', exact=True).click()
-            expect(page.get_by_text('Geben Sie vor dem Abgleich Ihr Verschlüsselungspasswort ein.', exact=True)).to_be_visible()
+            click(page, 'Jetzt abgleichen')
+            page.wait_for_function("message => [...document.querySelectorAll('flt-semantics')].some(e => (e.innerText || '').includes(message))", arg='Geben Sie vor dem Abgleich Ihr Verschlüsselungspasswort ein.')
             result['sync_encryption_locked'] = True
             title, person = 'E2E Geschichte', 'E2E Erzählerin'
             print('Checking story, recording playback and relationship UI', flush=True)
@@ -259,7 +297,7 @@ def run(args):
             same = api(page, token, '/api/auth/me')
             assert same['status'] == 200 and same['body']['id'] == account['id'] and same['body']['encryptionKeySalt'] == account['encryptionKeySalt']
             click(page, 'Geschichten')
-            click(page, title)
+            open_item(page, title)
             playback(page)
             result['reload_preserved_account_recording'] = True
             restore.goto(args.origin)
@@ -267,23 +305,24 @@ def run(args):
             click(restore, 'Ohne Konto fortfahren')
             settings(restore)
             with restore.expect_file_chooser() as chooser:
-                click(restore, 'Aus Sicherung wiederherstellen')
+                open_item(restore, 'Aus Sicherung wiederherstellen')
             chooser.value.set_files(archive)
             click(restore, 'Wiederherstellen')
             expect(restore.get_by_text('Wiederherstellung abgeschlossen', exact=True)).to_be_visible()
             click(restore, 'Fertig')
             back(restore)
             click(restore, 'Geschichten')
-            click(restore, title)
+            open_item(restore, title)
             playback(restore)
-            expect(restore.get_by_text(person, exact=True)).to_be_visible()
-            expect(restore.get_by_text(re.compile(re.escape(person + ' Freundin'))).first).to_be_visible()
+            expect(restore.get_by_role('button', name=re.compile(re.escape(person) + '$'))).to_be_visible()
+            expect(restore.get_by_role('button', name=re.compile(re.escape(person + ' Freundin'))).first).to_be_visible()
             result['fresh_profile_restore_playback_relationship'] = True
             assert not errors, 'Uncaught browser errors observed'
             result['uncaught_errors'] = 0
-            (output / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
+            result['completed'] = True
             print(json.dumps(result))
         finally:
+            (output / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
             for ctx in (first, second, restored):
                 ctx.close()
             browser.close()
