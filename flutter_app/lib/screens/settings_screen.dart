@@ -47,6 +47,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadSyncStatus() async {
+    if (!mounted) return;
     final db = context.read<DatabaseService>();
     final pending = await db.getPendingChanges();
     if (!mounted) return;

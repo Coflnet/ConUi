@@ -12,6 +12,7 @@
 // doesn't resolve inside testWidgets' FakeAsync zone) and SharedPreferences
 // through its test-mode mock storage (BackupService.getLastBackupAt() goes
 // through SharedPreferences).
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -31,6 +32,23 @@ import 'package:relationship_manager/services/recording_file_store_native.dart';
 import 'package:relationship_manager/services/sync_service.dart';
 
 import '../support/test_database.dart';
+
+class _DelayedBackupStatus extends BackupService {
+  _DelayedBackupStatus(DatabaseService db) : super(databaseService: db);
+
+  int statusReads = 0;
+  final resumeStatus = Completer<DateTime?>();
+
+  @override
+  Future<DateTime?> getLastBackupAt() =>
+      ++statusReads == 1 ? Future.value(null) : resumeStatus.future;
+
+  @override
+  Future<int> recordingsSpaceBytes() async => 0;
+
+  @override
+  Future<PickedBackupFile?> pickBackupFile() async => null;
+}
 
 Widget _wrap({
   required DatabaseService db,
@@ -128,6 +146,29 @@ void main() {
     expect(find.byType(Scaffold), findsWidgets);
     expect(find.byType(AppBar), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
+  });
+
+  testWidgets('leaving settings while post-restore status loads causes no error',
+      (tester) async {
+    final db = createTestDatabaseService();
+    await tester.runAsync(db.initialize);
+    final backupService = _DelayedBackupStatus(db);
+    await tester.pumpWidget(_wrap(db: db, backupService: backupService));
+    await _settle(tester);
+
+    final restoreTile = tester.widget<ListTile>(
+        find.widgetWithText(ListTile, 'Restore from backup'));
+    // Cancelling the picker closes the actual RestoreScreen route and starts
+    // Settings' refresh. Hold that refresh while the user leaves Settings.
+    final refresh = (restoreTile.onTap! as Function)() as Future<void>;
+    await tester.pumpAndSettle();
+    expect(backupService.statusReads, 2);
+    await tester.pumpWidget(const SizedBox.shrink());
+    final completed = expectLater(refresh, completes);
+    backupService.resumeStatus.complete(null);
+    await tester.pump();
+    await completed;
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('shows Create backup / Restore from backup instead of the old '
