@@ -42,9 +42,9 @@
     "ciWebhookSecretConfigured": true,
     "publicConIssuerVerified": true,
     "namespaceCreated": true,
-    "sourcePublishedCommit": "4b1933b2b922c85e91d625e18abc9a7d2b39e8ac",
-    "githubRun": 37156695138,
-    "argoWorkflow": "promote-7pgdj",
+    "sourcePublishedCommit": "8d6d5a57517e2c08cc52390be7ef2a2858f8dbf0",
+    "githubRun": 37161509940,
+    "argoWorkflow": "promote-l9f44",
     "imageScanPassed": true,
     "workload": "con/con-con-chart",
     "workloadReady": true,
@@ -55,8 +55,8 @@
     "openbaoProxyAccessApproved": true,
     "openbaoInitTokenRevoked": true,
     "deployedE2ePassed": true,
-    "fleetImagePromotionCommit": "fa6c4a732bc74e9140b071575a4656d6974e6bf0",
-    "imageDigest": "sha256:79ab865de1cf72b4f5ede3ad74059626de23ef948ffbf95654b452f64517a545"
+    "fleetImagePromotionCommit": "1bca2084c516ea836048d8d1036a1db5271efa35",
+    "imageDigest": "sha256:c61845d7dfe5d8d9ca1dd370eb3aff6accf95442d0646357b83320027b60f083"
   },
   "e2e": {
     "completed": true,
@@ -105,6 +105,33 @@
       "text_and_photo_actions_remain_available": true,
       "server_quota_not_bypassed_by_uuid_or_forwarded_header": true,
       "uncaught_errors": 0
+    },
+    "automaticStoryPeople": {
+      "completed": true,
+      "recorded": true,
+      "origin": "https://con.coflnet.com",
+      "transcription_http_statuses": [
+        200,
+        200,
+        200
+      ],
+      "person_count": 3,
+      "backup_exact_people_and_reused_ids": true,
+      "reload_preserved_participants": true,
+      "fresh_restore_preserved_exact_ids": true,
+      "recording_playback_reload_restore": true,
+      "uncaught_errors": 0
+    },
+    "localAutomaticStoryPeople": {
+      "completed": true,
+      "recorded": false,
+      "origin": "http://127.0.0.1:18085",
+      "person_count": 2,
+      "backup_exact_people_and_reused_ids": true,
+      "reload_preserved_participants": true,
+      "fresh_restore_preserved_exact_ids": true,
+      "recording_playback_reload_restore": false,
+      "uncaught_errors": 0
     }
   },
   "checks": {
@@ -122,7 +149,7 @@
     "baselineAnalyzeIssues": 9,
     "webReleaseBuilt": true,
     "debugApkBuilt": true,
-    "flutterLatestGatePassed": 479,
+    "flutterLatestGatePassed": 506,
     "fleetOfflineChartPassed": 7,
     "protectedPeopleSuffixIdentical": true
   },
@@ -143,5 +170,22 @@
     "yearOverviewCounts": true,
     "previousNextYear": true
   },
-  "evidenceDirectory": "/run/media/ekwav/Data/dev/Con/ConUi-work/review-features-2026-10-04"
+  "evidenceDirectory": "/run/media/ekwav/Data/dev/Con/ConUi-work/review-features-2026-10-04",
+  "personRecognition": {
+    "implemented": true,
+    "localOnly": true,
+    "forms": [
+      "mapQuickAdd",
+      "newOrEditedStory"
+    ],
+    "knownNamesAliasesUniqueFirstNames": true,
+    "unknownNamesRequireHumanCues": true,
+    "ambiguousNamesRequireChoice": true,
+    "suggestionsRemovable": true,
+    "draftPeopleCreatedOnlyOnStorySave": true,
+    "finalTranscriptTailVerified": true,
+    "unintroducedNamesAndPronounsSupported": false,
+    "automaticRelationshipsImplemented": false
+  },
+  "personRecognitionEvidenceDirectory": "/run/media/ekwav/Data/dev/Con/ConUi-work/review-person-recognition-2026-10-04"
 }

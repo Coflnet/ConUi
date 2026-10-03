@@ -4,6 +4,54 @@ Written for the next Claude Code session. Read fully before acting. Start the se
 `/run/media/ekwav/Data/dev/Con/ConUi-work/integration` (not in `dev/Connections`, which is a
 stale Angular clone kept only for reference).
 
+## Automatic transcript people — 2026-10-04
+
+This section supersedes the runtime source/image below. Runtime source
+`8d6d5a57517e2c08cc52390be7ef2a2858f8dbf0` is live at https://con.coflnet.com.
+GitHub `37161509940`, Argo `promote-l9f44`, and Fleet promotion
+`1bca2084c516ea836048d8d1036a1db5271efa35` passed; exact runtime digest
+`sha256:c61845d7dfe5d8d9ca1dd370eb3aff6accf95442d0646357b83320027b60f083`
+is Ready1 with generation/observed generation 11. Public readiness HTTP200:
+Cassandra and transcription true, S3 false.
+
+- Both story forms recognize people from typed notes and recording transcripts,
+  including final segment tails. Known names, aliases and unique first names reuse
+  existing records. German/English human cues suggest new names; ambiguous names
+  offer choices. Suggestions are removable, discarded drafts write no people,
+  and final save rereads the current people to avoid duplicates.
+- Recognition runs locally without another API/model service. This is a
+  conservative first pass: unfamiliar names without human cues and pronoun
+  resolution remain unsupported. It adds story-person links, not inferred family
+  relationships; those still use the existing relationship UI.
+- Person lists and story forms use “People in this story” / “Personen in dieser
+  Geschichte”. Database failures retain the draft and show localized retry guidance.
+- Deployed `deployment/e2e/people.py` passed with real fictional speech: three ASR
+  requests HTTP200, typed notes retained, existing Jane Smith/Paul IDs reused,
+  new Anna Miller linked automatically, removed Eva absent. Backup exact person
+  counts/IDs and audio checksum, actual playback, reload and fresh-context restore
+  passed with zero uncaught browser errors. German390/1440 screenshots reviewed.
+- Independent local production-web run passed typed recognition/removal/reuse,
+  exact person IDs, reload and fresh restore, zero browser errors. Harness fixes
+  use the explicit story-add control and actual checkbox/delete semantics;
+  locally served builds can use their exact bundled renderer bytes when CDN
+  startup stalls. No ASR responses are injected.
+
+Both synthetic Con identities were removed with GET404 verification; the credential
+fixture was removed. Creation and cleanup used the required narrow, short-lived,
+nonrenewable Bao child flow; each child was immediately revoked, invalid HTTP403
+proven and token artifacts removed. This task’s owned Keycloak tunnel was stopped
+only after verifying its recorded PID/command; browser/server artifacts are gone.
+
+Checks: 506 Flutter gate tests pass (diagnostic memory tests excluded),
+117 backend pass; analyzer retains nine baseline issues; web release and debug
+APK succeed. Protected people-screen build/search suffix remains byte-identical
+to `69a5c97`. Small feature commits `2b79309` and `8d6d5a5`; harness/docs receipts
+use `[skip ci]` and do not change Docker inputs or the verified runtime.
+
+Safe durable evidence: `dev/Con/ConUi-work/review-person-recognition-2026-10-04`.
+Previous feature evidence remains in `review-features-2026-10-04`.
+Cloud storage/sync/sharing limitations from the receipt below remain.
+
 ## Guest recording, photos and calendar follow-up — 2026-10-04
 
 This section supersedes the runtime and transcription state in the older receipt.
