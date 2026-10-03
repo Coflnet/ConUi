@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-03",
+  "date": "2026-10-04",
   "keycloak": {
     "realm": "con",
     "client": "con-app",
@@ -38,13 +38,13 @@
       "Con-only S3 credentials for cloud sync",
       "Cross-user sharing and non-recording attachment transfer unimplemented"
     ],
-    "fleetPublishedCommit": "e54e673f982dc8e863739baa4e1c5ffd686c2348",
+    "fleetPublishedCommit": "0f9e798d4441e0e093bec7c1f4dda4d8b24dd972",
     "ciWebhookSecretConfigured": true,
     "publicConIssuerVerified": true,
     "namespaceCreated": true,
-    "sourcePublishedCommit": "cf1f8ea8a0613f0c4074d2c6e1c3a159f635a509",
-    "githubRun": 37151516502,
-    "argoWorkflow": "promote-h9q7l",
+    "sourcePublishedCommit": "4b1933b2b922c85e91d625e18abc9a7d2b39e8ac",
+    "githubRun": 37156695138,
+    "argoWorkflow": "promote-7pgdj",
     "imageScanPassed": true,
     "workload": "con/con-con-chart",
     "workloadReady": true,
@@ -55,8 +55,8 @@
     "openbaoProxyAccessApproved": true,
     "openbaoInitTokenRevoked": true,
     "deployedE2ePassed": true,
-    "fleetImagePromotionCommit": "47224c97df34a5395e3b3ed59525c260b2a1223b",
-    "imageDigest": "sha256:4114b3d316450930f22ba806337cc40bb742791a9cfee6afb98b3b70db577631"
+    "fleetImagePromotionCommit": "fa6c4a732bc74e9140b071575a4656d6974e6bf0",
+    "imageDigest": "sha256:79ab865de1cf72b4f5ede3ad74059626de23ef948ffbf95654b452f64517a545"
   },
   "e2e": {
     "completed": true,
@@ -72,7 +72,40 @@
     "syntheticIdentityCleanupVerified404": true,
     "credentialArtifactsRemoved": true,
     "nativeInteractiveLoginVerified": false,
-    "syntheticApiRowsRetained": true
+    "syntheticApiRowsRetained": true,
+    "story_photo_original_view": true,
+    "calendar_year_counts_navigation": true,
+    "authenticated_transcription_succeeded": true,
+    "backup_photo_original_sha256": "fcb0a1513eaac8b8ddb83162f5818ae411f6b9f974d9b05776122f614e702a0f",
+    "reload_preserved_photo": true,
+    "fresh_profile_restore_photo": true,
+    "successiveRestoredPlaybackPassed": true,
+    "guestVerification": {
+      "publicInitialAllowance": 3,
+      "actual61SecondWavRejected413BeforeQuotaExhaustion": true,
+      "threeDistinctRecordingSlotsAllocated": true,
+      "firstRecordingTranscriptVisibleNotesRetained": true,
+      "twoSubsequentRecordingsTranscribedSaved": true,
+      "twoSubsequentPlaybackClocksAdvanced": true,
+      "fourthBlockedBeforeCapture": true,
+      "spoofedForwardingHeaderRejected429": true,
+      "uninterruptedThreeRecordingRunCompleted": false,
+      "quotaResetPerformed": false,
+      "notes": "Initial anonymous run read an inactive semantic input. Resumed run saved two recordings; its final assertion included a disposed historical audio element. Screenshots and transcript responses prove real ASR. Corrected active-player assertion separately passed successive restored playback. Final exhausted-quota public check completed with zero uncaught errors. The real test connection has used its guest quota for this UTC day."
+    },
+    "guestExhaustedQuota": {
+      "completed": true,
+      "anonymous_daily_allowances_consumed": 0,
+      "initial_remaining": 0,
+      "server_path": "public_ingress",
+      "initial_allowance_verified": true,
+      "remaining_anonymous_stories_transcribed_saved_played": false,
+      "server_total_daily_slots_used": 3,
+      "fourth_recording_guidance_before_capture": true,
+      "text_and_photo_actions_remain_available": true,
+      "server_quota_not_bypassed_by_uuid_or_forwarded_header": true,
+      "uncaught_errors": 0
+    }
   },
   "checks": {
     "flutterGateRuns": [
@@ -83,11 +116,32 @@
       453
     ],
     "diagnosticMemorySkipped": 2,
-    "backendPassed": 109,
+    "backendPassed": 117,
     "keycloakPassed": 16,
     "storageHelperPassed": 3,
     "baselineAnalyzeIssues": 9,
     "webReleaseBuilt": true,
-    "debugApkBuilt": true
-  }
+    "debugApkBuilt": true,
+    "flutterLatestGatePassed": 479,
+    "fleetOfflineChartPassed": 7,
+    "protectedPeopleSuffixIdentical": true
+  },
+  "transcription": {
+    "configured": true,
+    "anonymousDailyLimitPerIp": 3,
+    "anonymousMaxDurationSeconds": 60,
+    "dailyBoundary": "UTC",
+    "persistentQuotaCas": true,
+    "spoofedForwardingHeaderRejected": true
+  },
+  "localPhotos": {
+    "implemented": true,
+    "originalBytesBackupRestoreVerified": true,
+    "cloudTransferImplemented": false
+  },
+  "calendar": {
+    "yearOverviewCounts": true,
+    "previousNextYear": true
+  },
+  "evidenceDirectory": "/run/media/ekwav/Data/dev/Con/ConUi-work/review-features-2026-10-04"
 }

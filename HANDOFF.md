@@ -4,6 +4,75 @@ Written for the next Claude Code session. Read fully before acting. Start the se
 `/run/media/ekwav/Data/dev/Con/ConUi-work/integration` (not in `dev/Connections`, which is a
 stale Angular clone kept only for reference).
 
+## Guest recording, photos and calendar follow-up — 2026-10-04
+
+This section supersedes the runtime and transcription state in the older receipt.
+Runtime source `4b1933b2b922c85e91d625e18abc9a7d2b39e8ac` is deployed at
+https://con.coflnet.com. GitHub `37156695138` and Argo `promote-7pgdj` passed
+OIDC verification, mandatory scan and promotion. Exact digest
+`sha256:79ab865de1cf72b4f5ede3ad74059626de23ef948ffbf95654b452f64517a545`
+and deployment generation 10 / observed generation 10 / Ready1 verified.
+Public readiness is HTTP200: Cassandra and transcription true, S3 false.
+
+- Anonymous recordings now use actual Whisper transcription. Server-side
+  Cassandra CAS limits three recording IDs per effective IP per UTC day and
+  validates cumulative PCM WAV duration <=60 seconds. Retries reuse identical
+  recording/segment bytes; signed-in users retain the existing longer limit.
+  Forwarding is accepted only from the exact verified ingress proxy addresses.
+  Fleet `3ef86101` enables Whisper with a Con-only TCP9000 policy;
+  `0f9e798d` configures the four verified proxy/source addresses. No broad trust.
+- Guest UI explains the allowance before capture, automatically stops at one
+  minute while retaining the attached audio, and blocks exhausted quota before
+  microphone capture. Typed stories/photos remain available. German/English
+  errors explain sign-in, tomorrow, shorter recordings, microphone permissions,
+  offline retry, missing originals, and backup recovery. Final transcript tails
+  and out-of-order segment answers no longer lose or reorder notes.
+- Both story forms accept local photos. Original bytes survive reload and ZIP
+  backup/restore with SHA-256 verification; thumbnails open the original viewer.
+  Photos are local only: cloud attachment transfer remains unimplemented.
+- Stories calendar has a year overview with counts and direct previous/next-year
+  controls alongside month navigation. Historical years and narrow German layouts
+  have regression coverage. Phone390 and desktop1440 screenshots reviewed.
+- Full public hosted E2E passed: two actual PKCE accounts, account isolation,
+  authenticated transcription HTTP200, map story/participant/relationship,
+  actual playback, photo picker/original viewer, calendar counts/navigation,
+  ZIP original-photo/audio integrity, reload and fresh-profile restore. Zero
+  uncaught browser errors. Independent production-web photo E2E also passed.
+- Guest public checks proved actual speech transcription with typed notes intact,
+  three allocated daily slots, actual 61-second WAV rejection HTTP413 before
+  exhaustion, and two subsequently saved recordings whose playback clocks advanced.
+  The first run incorrectly read an inactive semantic input, although the canvas
+  showed the transcript. A resumed run's last assertion inspected an already
+  disposed older audio element. Corrected active-player verification separately
+  passed two successive restored playbacks. Final exhausted-quota public E2E
+  passed: pre-capture German guidance, text/photos still usable, fresh UUID plus
+  spoofed forwarding header HTTP429, zero uncaught errors. This is aggregate
+  evidence, not a claim of an uninterrupted three-recording E2E pass. No quota
+  reset/bypass was performed; today's real test connection allowance is consumed.
+- Browser harness fixes wait for Flutter editing activation, refocus inactive
+  transcript inputs, select actual roles across responsive/restore transitions,
+  and account for merged photo labels and overlapping semantic click targets.
+  `--initial-remaining 0` explicitly verifies quota-only continuation.
+- Two owned synthetic identities deleted with GET404 verification; fixture removed.
+  Cleanup used a narrow short-lived nonrenewable Bao child through the approved
+  wrapper; revoked, invalid HTTP403 proven and artifacts removed. All owned tunnels
+  stopped by verified recorded PID; exact interrupted browser profile removed only
+  after proving its PID absent. Synthetic API rows remain intentionally.
+- A kubectl JSONPath error dumped a workflow containing a short-lived CI OIDC token.
+  Expiry was verified without printing it again; it is expired. No long-lived
+  credential was printed. Raw workflow/token data is excluded from evidence.
+
+Final runtime checks: 479 Flutter pass, two diagnostic memory skips, 117 backend
+pass; analyzer retains nine baseline issues; release web and debug APK succeed.
+Fleet offline chart checks pass7 and Helm lints pass. Protected people-screen
+build/search suffix remains byte-identical to `69a5c97`. Follow-up harness/docs
+commits use `[skip ci]`: no Docker inputs change, retaining the scanned exact image.
+
+Safe durable evidence: `dev/Con/ConUi-work/review-features-2026-10-04`.
+Remaining: protected Con-only R2 credentials, encrypted cloud-sync E2E,
+cross-user sharing and cloud photo transfer. Existing approval is sufficient for
+scoped Con provisioning; do not reuse another application's storage credential.
+
 ## Live rollout and hosted verification — 2026-10-03
 
 This receipt supersedes all historical no-push, approval and readiness blockers below.
