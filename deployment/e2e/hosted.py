@@ -1,5 +1,6 @@
 """Real hosted Con UI checks with two disposable Keycloak identities."""
 import argparse
+import base64
 from contextlib import contextmanager
 import errno
 import hashlib
@@ -20,6 +21,7 @@ from urllib.parse import urlsplit
 import uuid
 import wave
 import zipfile
+import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'keycloak'))
 from provision import read_fixture
@@ -45,13 +47,23 @@ def fake_audio(path):
         audio.writeframes(b''.join(struct.pack('<h', int(4000 * math.sin(2 * math.pi * 440 * i / 16000))) for i in range(16000 * 8)))
 
 
+def fake_photo(path):
+    def chunk(kind, data):
+        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+    pixels = (b'\x00' + b'\xe8\x55\x32' * 64) * 64
+    path.write_bytes(b'\x89PNG\r\n\x1a\n' +
+        chunk(b'IHDR', struct.pack('>IIBBBBB', 64, 64, 8, 2, 0, 0, 0)) +
+        chunk(b'IDAT', zlib.compress(pixels)) + chunk(b'IEND', b''))
+
+
 @contextmanager
 def chromium(args, output):
     directory = tempfile.mkdtemp(prefix='con-e2e-browser-')
     try:
         profile = Path(directory) / 'profile'
-        audio = Path(directory) / 'input.wav'
-        fake_audio(audio)
+        audio = args.audio_fixture.resolve() if args.audio_fixture else Path(directory) / 'input.wav'
+        if not args.audio_fixture:
+            fake_audio(audio)
         command = [args.chromium, '--headless=new', '--disable-extensions', '--no-first-run',
             '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0',
             '--user-data-dir=' + str(profile), '--lang=de-DE', '--autoplay-policy=no-user-gesture-required',
@@ -190,22 +202,46 @@ def login(page, origin, user):
         page.remove_listener('response', capture)
 
 
-def story(page, title, person):
+def screenshots(page, output, name):
+    original = dict(page.viewport_size)
+    for width, height in ((390, 844), (1440, 900)):
+        page.set_viewport_size({'width': width, 'height': height})
+        page.wait_for_timeout(300)
+        page.screenshot(path=str(output / f'{name}-{width}.png'))
+    page.set_viewport_size(original)
+
+
+def story(page, title, person, photo):
     # A map tap is the normal quick-add entrypoint.
     page.mouse.click(page.viewport_size['width'] * 0.58, page.viewport_size['height'] * 0.48)
     expect(page.get_by_text('Neue Geschichte', exact=True)).to_be_visible()
+    transcription_statuses = []
+    def capture_transcription(response):
+        if urlsplit(response.url).path == '/api/transcription/segment':
+            transcription_statuses.append(response.status)
+    page.on('response', capture_transcription)
     click(page, 'Aufnahme starten')
     expect(page.get_by_text('Aufnahme beenden', exact=True)).to_be_visible()
     page.wait_for_timeout(3000)
     click(page, 'Aufnahme beenden')
-    expect(page.get_by_role('button', name='Aufnahme als Text', exact=True)).to_be_visible()
+    expect(page.get_by_role('button', name='Geschichte speichern', exact=True)).to_be_enabled()
+    page.remove_listener('response', capture_transcription)
+    assert transcription_statuses and all(status == 200 for status in transcription_statuses), 'Authenticated transcription did not succeed'
     field(page, 'Was ist hier passiert?', 'Synthetische Erzählung für die Bereitstellungsprüfung.')
     field(page, 'Namen eingeben', person)
     click(page, '„' + person + '“ hinzufügen')
     field(page, 'Titel (optional)', title)
+    with page.expect_file_chooser() as chooser:
+        click(page, 'Fotos hinzufügen')
+    chooser.value.set_files(photo)
+    expect(page.get_by_role('button', name=photo.name, exact=True)).to_be_visible()
+    screenshots(page, photo.parent, 'quick-add-photo')
     click(page, 'Geschichte speichern')
     click(page, 'Geschichten')
+    calendar(page, photo.parent)
     open_item(page, title)
+    photo_view(page, photo.name, photo.parent)
+    screenshots(page, photo.parent, 'story-details')
     expect(page.get_by_role('button', name=re.compile(re.escape(person) + '$'))).to_be_visible()
     playback(page)
     click(page, 'Verbindung hinzufügen', force=True)
@@ -216,6 +252,39 @@ def story(page, title, person):
     expect(page.get_by_role('button', name=re.compile(re.escape(person + ' Freundin'))).first).to_be_visible()
 
 
+def calendar(page, output=None):
+    global PHASE
+    PHASE = 'UI calendar year navigation'
+    year = page.evaluate('new Date().getFullYear()')
+    month = page.evaluate("new Intl.DateTimeFormat('de-DE', {month:'long'}).format(new Date())")
+    expect(page.get_by_text(f'{month} {year}', exact=True)).to_be_visible()
+    expect(page.get_by_role('button', name=re.compile(f'^{year} · Jahre\\s+1 Geschichte$'))).to_be_visible()
+    click(page, 'Vorheriges Jahr')
+    expect(page.get_by_text(f'{month} {year - 1}', exact=True)).to_be_visible()
+    expect(page.get_by_role('button', name=re.compile(f'^{year - 1} · Jahre\\s+0 Geschichten$'))).to_be_visible()
+    click(page, 'Nächstes Jahr')
+    expect(page.get_by_text(f'{month} {year}', exact=True)).to_be_visible()
+    page.get_by_role('button', name=re.compile(f'^{year} · Jahre')).click()
+    row = page.get_by_role('button', name=re.compile(f'^{year}\\s+1 Geschichte$'))
+    expect(row).to_be_visible()
+    if output is not None:
+        screenshots(page, output, 'calendar-years')
+    row.click()
+    expect(page.get_by_text(f'{month} {year}', exact=True)).to_be_visible()
+
+
+def photo_view(page, filename, output=None):
+    global PHASE
+    PHASE = 'UI original photo viewer'
+    page.get_by_role('button', name=filename, exact=True).click()
+    expect(page.get_by_text(filename, exact=True).last).to_be_visible()
+    if output is not None:
+        screenshots(page, output, 'photo-original')
+    expect(page.get_by_role('progressbar')).to_have_count(0)
+    expect(page.get_by_text(re.compile('Dieses Foto ist auf diesem Gerät nicht verfügbar'))).to_have_count(0)
+    back(page)
+
+
 def playback(page):
     click(page, 'Abspielen', force=True)
     page.wait_for_function("window.__e2eMedia.some(e => !e.paused && e.currentTime > 0.2)")
@@ -223,7 +292,8 @@ def playback(page):
     click(page, 'Pause', force=True)
 
 
-def backup(page, output):
+def backup(page, output, photo):
+    global PHASE
     back(page)
     settings(page)
     open_item(page, 'Sicherung erstellen')
@@ -232,9 +302,19 @@ def backup(page, output):
         click(page, 'Sicherung erstellen')
     path = output / 'synthetic-backup.zip'
     download.value.save_as(path)
+    PHASE = 'Backup original photo and recording integrity'
     with zipfile.ZipFile(path) as archive:
         manifest = json.loads(archive.read('manifest.json'))
         assert manifest['formatVersion'] == 1 and not manifest['missingAudio']
+        data = json.loads(archive.read('data.json'))
+        photo_row, = [row['data'] for row in data['files'] if row['data']['file_name'] == photo.name]
+        original = photo.read_bytes()
+        digest = hashlib.sha256(original).hexdigest()
+        assert base64.b64decode(photo_row['bytes'], validate=True) == original
+        assert photo_row['size'] == len(original) and photo_row['sha256'] == digest
+        story_row, = data['events']
+        attachment, = [file for file in story_row['data']['files'] if file['id'] == photo_row['id']]
+        assert attachment['fileName'] == photo.name and attachment['sha256'] == digest
         recording, = manifest['recordings']
         wav = archive.read('recordings/' + recording['id'] + '.wav')
         assert len(wav) == recording['size'] and hashlib.sha256(wav).hexdigest() == recording['sha256']
@@ -248,6 +328,8 @@ def backup(page, output):
 def run(args):
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
+    photo = output / 'synthetic-photo.png'
+    fake_photo(photo)
     users = read_fixture(args.fixture)['users']
     assert len(users) == 2
     result = {'completed': False, 'cloud_sync': 'not_verified_s3_unconfigured'}
@@ -288,10 +370,14 @@ def run(args):
             result['sync_encryption_locked'] = True
             title, person = 'E2E Geschichte', 'E2E Erzählerin'
             print('Checking story, recording playback and relationship UI', flush=True)
-            story(page, title, person)
+            story(page, title, person, photo)
+            result['story_photo_original_view'] = True
+            result['calendar_year_counts_navigation'] = True
             result['story_recording_relationship_playback'] = True
+            result['authenticated_transcription_succeeded'] = True
             print('Checking backup, reload and fresh-profile restore', flush=True)
-            archive = backup(page, output)
+            archive = backup(page, output, photo)
+            result['backup_photo_original_sha256'] = hashlib.sha256(photo.read_bytes()).hexdigest()
             back(page)
             page.reload()
             semantics(page)
@@ -299,7 +385,9 @@ def run(args):
             assert same['status'] == 200 and same['body']['id'] == account['id'] and same['body']['encryptionKeySalt'] == account['encryptionKeySalt']
             click(page, 'Geschichten')
             open_item(page, title)
+            photo_view(page, photo.name)
             playback(page)
+            result['reload_preserved_photo'] = True
             result['reload_preserved_account_recording'] = True
             restore.goto(args.origin)
             semantics(restore)
@@ -312,8 +400,11 @@ def run(args):
             expect(restore.get_by_text('Wiederherstellung abgeschlossen', exact=True)).to_be_visible()
             click(restore, 'Fertig')
             click(restore, 'Geschichten')
+            calendar(restore)
             open_item(restore, title)
+            photo_view(restore, photo.name)
             playback(restore)
+            result['fresh_profile_restore_photo'] = True
             expect(restore.get_by_role('button', name=re.compile(re.escape(person) + '$'))).to_be_visible()
             expect(restore.get_by_role('button', name=re.compile(re.escape(person + ' Freundin'))).first).to_be_visible()
             result['fresh_profile_restore_playback_relationship'] = True
@@ -335,10 +426,13 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--chromium', default='/usr/bin/chromium')
     parser.add_argument('--browser-arg', action='append', default=[])
+    parser.add_argument('--audio-fixture', type=Path, help='Optional WAV file for Chromium fake microphone capture')
     args = parser.parse_args()
     url = urlsplit(args.origin)
     if url.scheme != 'https' or url.hostname != 'con.coflnet.com' or url.path not in ('', '/') or url.query or url.fragment or url.username:
         parser.error('Use the exact hosted Con HTTPS origin')
+    if args.audio_fixture and not args.audio_fixture.is_file():
+        parser.error('The audio fixture must be an existing WAV file')
     os.umask(0o077)
     try:
         run(args)
