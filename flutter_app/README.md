@@ -16,6 +16,23 @@ flutter run
 
 To view the complete documentation, view the [online documentation](https://docs.flutter.dev/), which offers tutorials, samples, guidance on mobile development, and a full API reference.
 
+## Running the test suite reliably
+
+Run `flutter test` for the gate suite, also used by the Dockerfile's
+`flutter-test` stage. It includes the 50 MB recording round trip and
+200 MiB deterministic native backup/restore tests that reject whole-file
+reads and assert buffers stay at or below 4 MiB. The web writer intentionally
+buffers recordings and is covered by the round trip, not the native bound.
+
+The two process RSS tests are tagged `memory` and skipped by default in
+`dart_test.yaml`. RSS varies with garbage collection and allocator behavior,
+even when a test runs alone, so these are diagnostic checks outside the gate.
+To opt in explicitly:
+
+```bash
+flutter test test/backup/large_recording_test.dart --tags=memory --run-skipped --concurrency=1
+```
+
 ## Where the app's name lives
 
 The in-app title (window/tab title bar, Android app-switcher label while

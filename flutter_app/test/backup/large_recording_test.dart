@@ -1,11 +1,7 @@
-// Large-recording tests: a 50 MB generated recording round-trips
-// correctly, and peak memory while writing an archive does not grow with
-// how many recordings (or how much total audio) go into it - only with the
-// size of whichever single recording is being copied at that moment. See
-// BackupWriter's doc comment for the guarantee this is checking, and the
-// final report for exactly how "memory" is measured here (dart:io's
-// ProcessInfo.currentRss, sampled around each recording).
+// Deterministic native buffer bounds and a web-compatible round trip form
+// the gate. Process RSS diagnostics are tagged memory and skipped by default.
 import 'dart:io';
+import 'dart:math' show min, max;
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -59,6 +55,72 @@ void main() {
     expect(sink.recordings['big'], bigWav);
   }, timeout: const Timeout(Duration(minutes: 2)));
 
+  group('native 200 MiB recording buffer bounds', () {
+    const size = 200 * 1024 * 1024 + 44;
+    const limit = 4 * 1024 * 1024;
+    late Directory directory;
+    late File archive;
+    final writeReads = _ReadBounds();
+    late _BoundedOutput output;
+    late String checksum;
+
+    setUpAll(() async {
+      directory = Directory.systemTemp.createTempSync('backup_buffer_test');
+      archive = File('${directory.path}/out.zip');
+      output = _BoundedOutput(archive.path);
+      final result = await IOOverrides.runZoned(
+        () => BackupWriter().write(
+          source: FakeBackupDataSource(
+              recordingFilePaths: {'big': 'generated.wav'}),
+          output: output,
+        ),
+        createFile: (path) {
+          expect(path, 'generated.wav');
+          return _ReadFile(
+              () => _MeasuredReader(writeReads, size: size), writeReads);
+        },
+      );
+      await output.close();
+      checksum = result.manifest.recordings.single.sha256Hex;
+      expect(result.manifest.recordings.single.sizeBytes, size);
+    });
+    tearDownAll(() => directory.deleteSync(recursive: true));
+
+    test('writer hashes and copies chunks without a whole-file read', () {
+      expect(
+          writeReads.bytesRead, inInclusiveRange(size * 2, size * 2 + limit));
+      expect(writeReads.largestBuffer, inInclusiveRange(1, limit));
+      expect(writeReads.wholeReads, 0);
+      expect(output.largestBuffer, inInclusiveRange(1, limit));
+      expect(archive.lengthSync(), greaterThan(size));
+    });
+
+    test('restore hashes and stores chunks without a whole-file read',
+        () async {
+      final reads = _ReadBounds();
+      final sink = _CountingSink();
+      await IOOverrides.runZoned(() async {
+        final input = InputFileStream(archive.path);
+        try {
+          final result = await BackupRestorer().apply(input, sink);
+          expect(result.recordings.single.outcome, RecordingOutcome.restored);
+        } finally {
+          await input.close();
+        }
+      }, createFile: (path) {
+        expect(path, archive.path);
+        return _ReadFile(
+            () => _MeasuredReader(reads, file: archive.openSync()), reads);
+      });
+      expect(reads.bytesRead, greaterThanOrEqualTo(size * 2));
+      expect(reads.largestBuffer, inInclusiveRange(1, limit));
+      expect(reads.wholeReads, 0);
+      expect(sink.largestBuffer, inInclusiveRange(1, limit));
+      expect(sink.bytesStored, size);
+      expect(sink.recordingChecksums['big'], checksum);
+    }, timeout: const Timeout(Duration(minutes: 2)));
+  });
+
   test(
     'peak memory while writing recordings does not grow with their total size '
     '(only with the size of the one currently being copied)',
@@ -93,10 +155,6 @@ void main() {
         output: output,
         onProgress: (p) {
           if (p.phase.name == 'writingRecordings' && p.current > 0) {
-            // A GC pass here makes the sample reflect genuinely
-            // reachable memory rather than not-yet-collected garbage
-            // from previous iterations, which is what would hide a
-            // real accumulation bug.
             rssSamples.add(ProcessInfo.currentRss);
           }
         },
@@ -142,6 +200,7 @@ void main() {
           '~${(firstHalfPerRecording / 1024).round()} KB, second-half '
           '~${(secondHalfPerRecording / 1024).round()} KB (samples: $rssSamples)');
     },
+    tags: ['memory'],
     timeout: const Timeout(Duration(minutes: 2)),
   );
 
@@ -215,6 +274,117 @@ void main() {
           '${(rssAfterRecording! / (1024 * 1024)).toStringAsFixed(1)} MB, growth '
           '${(growthBytes / (1024 * 1024)).toStringAsFixed(1)} MB');
     },
+    tags: ['memory'],
     timeout: const Timeout(Duration(minutes: 3)),
   );
+}
+
+// IOOverrides supplies a generated native file to the unmodified writer and
+// watches the real ZIP file on restore. Unsupported reads fail immediately;
+// bounds cover underlying buffers, including ZIP entry substreams and hashing.
+class _ReadBounds {
+  int largestBuffer = 0;
+  int bytesRead = 0;
+  int wholeReads = 0;
+
+  Never rejectWholeRead() {
+    wholeReads++;
+    throw StateError(
+        'Whole-file reads are forbidden in the native backup path');
+  }
+}
+
+class _ReadFile implements File {
+  final RandomAccessFile Function() reader;
+  final _ReadBounds bounds;
+  _ReadFile(this.reader, this.bounds);
+
+  @override
+  RandomAccessFile openSync({FileMode mode = FileMode.read}) => reader();
+  @override
+  Future<Uint8List> readAsBytes() => bounds.rejectWholeRead();
+  @override
+  Uint8List readAsBytesSync() => bounds.rejectWholeRead();
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _MeasuredReader implements RandomAccessFile {
+  final _ReadBounds bounds;
+  final RandomAccessFile? file;
+  final int size;
+  int _offset = 0;
+  late final Uint8List header = WavHeader.build(dataLength: size - 44);
+  _MeasuredReader(this.bounds, {this.file, this.size = 0});
+
+  @override
+  int lengthSync() => file?.lengthSync() ?? size;
+  @override
+  void setPositionSync(int value) {
+    _offset = value;
+    file?.setPositionSync(value);
+  }
+
+  @override
+  int readIntoSync(List<int> buffer, [int start = 0, int? end]) {
+    bounds.largestBuffer = max(bounds.largestBuffer, buffer.length);
+    expect(buffer.length, lessThanOrEqualTo(4 * 1024 * 1024));
+    final int count;
+    if (file != null) {
+      count = file!.readIntoSync(buffer, start, end);
+    } else {
+      count = min((end ?? buffer.length) - start, size - _offset);
+      buffer.fillRange(start, start + count, 0);
+      if (_offset < header.length) {
+        final take = min(count, header.length - _offset);
+        buffer.setRange(start, start + take, header, _offset);
+      }
+    }
+    _offset += count;
+    bounds.bytesRead += count;
+    return count;
+  }
+
+  @override
+  Uint8List readSync(int bytes) => bounds.rejectWholeRead();
+  @override
+  Future<Uint8List> read(int bytes) => bounds.rejectWholeRead();
+  @override
+  void closeSync() => file?.closeSync();
+  @override
+  Future<void> close() async {
+    await file?.close();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _BoundedOutput extends OutputFileStream {
+  int largestBuffer = 0;
+  _BoundedOutput(String path)
+      : super.withFileHandle(FileHandle(path, mode: FileAccess.write));
+
+  @override
+  void writeBytes(List<int> bytes, {int? length}) {
+    largestBuffer = max(largestBuffer, bytes.length);
+    expect(bytes.length, lessThanOrEqualTo(4 * 1024 * 1024));
+    super.writeBytes(bytes, length: length);
+  }
+}
+
+class _CountingSink extends FakeBackupDataSink {
+  int largestBuffer = 0;
+  int bytesStored = 0;
+
+  @override
+  Future<void> storeVerifiedRecordingStream(
+      String id, Stream<List<int>> wavBytes,
+      {required String sha256Hex}) async {
+    await for (final chunk in wavBytes) {
+      largestBuffer = max(largestBuffer, chunk.length);
+      bytesStored += chunk.length;
+    }
+    recordingChecksums[id] = sha256Hex;
+  }
 }
