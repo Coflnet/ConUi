@@ -78,6 +78,12 @@ class SyncService extends ChangeNotifier {
     return false;
   }
 
+  void _checkResponse(http.Response response, String operation) {
+    if (response.statusCode != 200) {
+      throw StateError('Sync $operation failed (${response.statusCode})');
+    }
+  }
+
   // Sync on app open
   Future<void> syncOnOpen() async {
     if (!_auth.isAuthenticated || _isSyncing) return;
@@ -96,22 +102,20 @@ class SyncService extends ChangeNotifier {
         'lastSyncVersion': localIndex.lastSyncTimestamp,
       });
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final entries = (data['entries'] as List)
-            .map((e) => _SyncEntry.fromJson(e))
-            .toList();
+      _checkResponse(response, 'updates');
+      final data = jsonDecode(response.body);
+      final entries =
+          (data['entries'] as List).map((e) => _SyncEntry.fromJson(e)).toList();
 
-        // Download and apply each updated blob
-        for (final entry in entries) {
-          await _downloadAndApplyBlob(entry);
-        }
-
-        // Update local sync index
-        localIndex.lastSyncTimestamp = data['latestVersion'];
-        localIndex.updatedAt = DateTime.now();
-        await _db.saveSyncIndex(localIndex);
+      // Download and apply each updated blob
+      for (final entry in entries) {
+        await _downloadAndApplyBlob(entry);
       }
+
+      // Update local sync index
+      localIndex.lastSyncTimestamp = data['latestVersion'];
+      localIndex.updatedAt = DateTime.now();
+      await _db.saveSyncIndex(localIndex);
 
       _lastSyncTime = DateTime.now();
     } catch (e) {
@@ -194,13 +198,13 @@ class SyncService extends ChangeNotifier {
       }
 
       // Upload sync index
-      await _uploadSyncIndex();
+      if (!await _uploadSyncIndex()) return;
 
       // Mark changes as synced
       await _db.markChangesSynced(syncedIds);
       await _db.clearSyncedChanges();
 
-      _lastSyncTime = DateTime.now();
+      if (_lastError == null) _lastSyncTime = DateTime.now();
     } catch (e) {
       _lastError = e.toString();
       debugPrint('Sync on close error: $e');
@@ -230,7 +234,7 @@ class SyncService extends ChangeNotifier {
         'expectedVersion': 0,
       });
 
-      if (uploadResponse.statusCode != 200) return false;
+      _checkResponse(uploadResponse, 'upload URL');
 
       final uploadData = jsonDecode(uploadResponse.body);
       final uploadUrl = uploadData['uploadUrl'];
@@ -243,10 +247,10 @@ class SyncService extends ChangeNotifier {
         body: utf8.encode(encryptedData),
       );
 
-      if (s3Response.statusCode != 200) return false;
+      _checkResponse(s3Response, 'blob upload');
 
       // Commit upload
-      await _auth.authenticatedPost('/api/sync/commit', {
+      final commitResponse = await _auth.authenticatedPost('/api/sync/commit', {
         'blobType': 'person',
         'blobId': personId,
         's3Key': s3Key,
@@ -255,8 +259,10 @@ class SyncService extends ChangeNotifier {
         'isDeleted': person.isDeleted,
       });
 
+      _checkResponse(commitResponse, 'commit');
       return true;
     } catch (e) {
+      _lastError = e.toString();
       debugPrint('Upload person blob error: $e');
       return false;
     }
@@ -281,7 +287,7 @@ class SyncService extends ChangeNotifier {
         'expectedVersion': 0,
       });
 
-      if (uploadResponse.statusCode != 200) return false;
+      _checkResponse(uploadResponse, 'upload URL');
 
       final uploadData = jsonDecode(uploadResponse.body);
       final uploadUrl = uploadData['uploadUrl'];
@@ -293,9 +299,9 @@ class SyncService extends ChangeNotifier {
         body: utf8.encode(encryptedData),
       );
 
-      if (s3Response.statusCode != 200) return false;
+      _checkResponse(s3Response, 'blob upload');
 
-      await _auth.authenticatedPost('/api/sync/commit', {
+      final commitResponse = await _auth.authenticatedPost('/api/sync/commit', {
         'blobType': 'place',
         'blobId': placeId,
         's3Key': s3Key,
@@ -304,8 +310,10 @@ class SyncService extends ChangeNotifier {
         'isDeleted': place.isDeleted,
       });
 
+      _checkResponse(commitResponse, 'commit');
       return true;
     } catch (e) {
+      _lastError = e.toString();
       debugPrint('Upload place blob error: $e');
       return false;
     }
@@ -330,7 +338,7 @@ class SyncService extends ChangeNotifier {
         'expectedVersion': 0,
       });
 
-      if (uploadResponse.statusCode != 200) return false;
+      _checkResponse(uploadResponse, 'upload URL');
 
       final uploadData = jsonDecode(uploadResponse.body);
       final uploadUrl = uploadData['uploadUrl'];
@@ -342,9 +350,9 @@ class SyncService extends ChangeNotifier {
         body: utf8.encode(encryptedData),
       );
 
-      if (s3Response.statusCode != 200) return false;
+      _checkResponse(s3Response, 'blob upload');
 
-      await _auth.authenticatedPost('/api/sync/commit', {
+      final commitResponse = await _auth.authenticatedPost('/api/sync/commit', {
         'blobType': 'object',
         'blobId': objectId,
         's3Key': s3Key,
@@ -353,8 +361,10 @@ class SyncService extends ChangeNotifier {
         'isDeleted': object.isDeleted,
       });
 
+      _checkResponse(commitResponse, 'commit');
       return true;
     } catch (e) {
+      _lastError = e.toString();
       debugPrint('Upload object blob error: $e');
       return false;
     }
@@ -379,7 +389,7 @@ class SyncService extends ChangeNotifier {
         'expectedVersion': 0,
       });
 
-      if (uploadResponse.statusCode != 200) return false;
+      _checkResponse(uploadResponse, 'upload URL');
 
       final uploadData = jsonDecode(uploadResponse.body);
       final uploadUrl = uploadData['uploadUrl'];
@@ -391,9 +401,9 @@ class SyncService extends ChangeNotifier {
         body: utf8.encode(encryptedData),
       );
 
-      if (s3Response.statusCode != 200) return false;
+      _checkResponse(s3Response, 'blob upload');
 
-      await _auth.authenticatedPost('/api/sync/commit', {
+      final commitResponse = await _auth.authenticatedPost('/api/sync/commit', {
         'blobType': 'connection',
         'blobId': connectionId,
         's3Key': s3Key,
@@ -402,8 +412,10 @@ class SyncService extends ChangeNotifier {
         'isDeleted': connection.isDeleted,
       });
 
+      _checkResponse(commitResponse, 'commit');
       return true;
     } catch (e) {
+      _lastError = e.toString();
       debugPrint('Upload connection blob error: $e');
       return false;
     }
@@ -429,7 +441,7 @@ class SyncService extends ChangeNotifier {
         'expectedVersion': 0,
       });
 
-      if (uploadResponse.statusCode != 200) return false;
+      _checkResponse(uploadResponse, 'upload URL');
 
       final uploadData = jsonDecode(uploadResponse.body);
       final uploadUrl = uploadData['uploadUrl'];
@@ -441,9 +453,9 @@ class SyncService extends ChangeNotifier {
         body: utf8.encode(encryptedData),
       );
 
-      if (s3Response.statusCode != 200) return false;
+      _checkResponse(s3Response, 'blob upload');
 
-      await _auth.authenticatedPost('/api/sync/commit', {
+      final commitResponse = await _auth.authenticatedPost('/api/sync/commit', {
         'blobType': 'event_month',
         'blobId': monthKey,
         's3Key': s3Key,
@@ -452,8 +464,10 @@ class SyncService extends ChangeNotifier {
         'isDeleted': false,
       });
 
+      _checkResponse(commitResponse, 'commit');
       return true;
     } catch (e) {
+      _lastError = e.toString();
       debugPrint('Upload event month blob error: $e');
       return false;
     }
@@ -476,7 +490,7 @@ class SyncService extends ChangeNotifier {
         'expectedVersion': 0,
       });
 
-      if (uploadResponse.statusCode != 200) return false;
+      _checkResponse(uploadResponse, 'upload URL');
 
       final uploadData = jsonDecode(uploadResponse.body);
       final uploadUrl = uploadData['uploadUrl'];
@@ -488,9 +502,9 @@ class SyncService extends ChangeNotifier {
         body: utf8.encode(encryptedData),
       );
 
-      if (s3Response.statusCode != 200) return false;
+      _checkResponse(s3Response, 'blob upload');
 
-      await _auth.authenticatedPost('/api/sync/commit', {
+      final commitResponse = await _auth.authenticatedPost('/api/sync/commit', {
         'blobType': 'index',
         'blobId': 'main',
         's3Key': s3Key,
@@ -499,64 +513,103 @@ class SyncService extends ChangeNotifier {
         'isDeleted': false,
       });
 
+      _checkResponse(commitResponse, 'commit');
       return true;
     } catch (e) {
+      _lastError = e.toString();
       debugPrint('Upload sync index error: $e');
       return false;
     }
   }
 
   Future<void> _downloadAndApplyBlob(_SyncEntry entry) async {
-    try {
-      final response = await _auth.authenticatedGet(
-          '/api/sync/download/${entry.blobType}/${entry.blobId}');
-
-      if (response.statusCode != 200) return;
-
-      final data = jsonDecode(response.body);
-      final downloadUrl = data['downloadUrl'];
-
-      final blobResponse = await _http.get(Uri.parse(downloadUrl));
-      if (blobResponse.statusCode != 200) return;
-
-      final encryptedData = blobResponse.body;
-      // Same guarantee as above: encryption is always initialized here.
-      final jsonData = _encryption.decryptString(encryptedData);
-
-      final parsedData = jsonDecode(jsonData);
-
+    if (entry.isDeleted) {
       switch (entry.blobType) {
-        // recordPendingChange: false on every case below - this data just
-        // came FROM the backend, so re-queuing it as a pending change would
-        // upload it straight back next sync (see DatabaseService.savePerson's
-        // doc comment).
         case 'person':
-          final person = Person.fromJson(parsedData);
-          await _db.savePerson(person, recordPendingChange: false);
+          final person = await _db.getPerson(entry.blobId);
+          if (person != null) {
+            await _db.savePerson(person.copyWith(isDeleted: true),
+                recordPendingChange: false);
+          }
           break;
         case 'place':
-          final place = Place.fromJson(parsedData);
-          await _db.savePlace(place, recordPendingChange: false);
+          final place = await _db.getPlace(entry.blobId);
+          if (place != null) {
+            await _db.savePlace(place.copyWith(isDeleted: true),
+                recordPendingChange: false);
+          }
           break;
         case 'object':
-          final object = EventObject.fromJson(parsedData);
-          await _db.saveObject(object, recordPendingChange: false);
+          final object = await _db.getObject(entry.blobId);
+          if (object != null) {
+            await _db.saveObject(object.copyWith(isDeleted: true),
+                recordPendingChange: false);
+          }
           break;
         case 'connection':
-          final connection = Connection.fromJson(parsedData);
-          await _db.saveConnection(connection, recordPendingChange: false);
+          final connection = await _db.getConnection(entry.blobId);
+          if (connection != null) {
+            await _db.saveConnection(connection.copyWith(isDeleted: true),
+                recordPendingChange: false);
+          }
           break;
         case 'event_month':
-          final monthlyEvents = MonthlyEvents.fromJson(parsedData);
-          await _db.bulkSaveEvents(monthlyEvents.events);
-          break;
-        case 'index':
-          final index = SyncIndex.fromJson(parsedData);
-          await _db.saveSyncIndex(index);
+          final events = await _db.getEvents(monthKey: entry.blobId);
+          await _db.bulkSaveEvents(
+              events.map((event) => event.copyWith(isDeleted: true)).toList());
           break;
       }
-    } catch (e) {
-      debugPrint('Download blob error: $e');
+      return;
+    }
+    final response = await _auth.authenticatedGet(
+        '/api/sync/download/${entry.blobType}/${entry.blobId}');
+
+    _checkResponse(response, 'download');
+
+    final data = jsonDecode(response.body);
+    final downloadUrl = data['downloadUrl'];
+
+    final blobResponse = await _http.get(Uri.parse(downloadUrl));
+    _checkResponse(blobResponse, 'blob download');
+
+    final encryptedData = blobResponse.body;
+    // Same guarantee as above: encryption is always initialized here.
+    final jsonData = _encryption.decryptString(encryptedData);
+
+    final parsedData = jsonDecode(jsonData);
+
+    switch (entry.blobType) {
+      // recordPendingChange: false on every case below - this data just
+      // came FROM the backend, so re-queuing it as a pending change would
+      // upload it straight back next sync (see DatabaseService.savePerson's
+      // doc comment).
+      case 'person':
+        final person = Person.fromJson(parsedData);
+        await _db.savePerson(person, recordPendingChange: false);
+        break;
+      case 'place':
+        final place = Place.fromJson(parsedData);
+        await _db.savePlace(place, recordPendingChange: false);
+        break;
+      case 'object':
+        final object = EventObject.fromJson(parsedData);
+        await _db.saveObject(object, recordPendingChange: false);
+        break;
+      case 'connection':
+        final connection = Connection.fromJson(parsedData);
+        await _db.saveConnection(connection, recordPendingChange: false);
+        break;
+      case 'event_month':
+        final monthlyEvents = MonthlyEvents.fromJson(parsedData);
+        await _db.bulkSaveEvents(monthlyEvents.events);
+        break;
+      case 'index':
+        final index = SyncIndex.fromJson(parsedData);
+        // A remote device's cursor cannot acknowledge this device's downloads.
+        index.lastSyncTimestamp =
+            (await _db.getSyncIndex())?.lastSyncTimestamp ?? 0;
+        await _db.saveSyncIndex(index);
+        break;
     }
   }
 
@@ -567,7 +620,7 @@ class SyncService extends ChangeNotifier {
     // Reset sync index to force full download
     await _db.saveSyncIndex(SyncIndex(lastSyncTimestamp: 0));
     await syncOnOpen();
-    await syncOnClose();
+    if (_lastError == null) await syncOnClose();
   }
 
   // Alias for fullSync (used by settings screen)
