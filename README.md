@@ -8,6 +8,8 @@ This system is divided into two main components:
 * **Frontend (`flutter_app`)**: A cross-platform Flutter client app representing the user interface. It works offline using a local database and synchronizes data when a network connection is available. Data is encrypted prior to sync.
 * **Backend (`backend/RelationshipManager.Api`)**: An ASP.NET Core 8 Web API that provides authentication, metadata synchronization, blob storage, and live speech-to-text transcription for stories being recorded. The backend never needs to read user content - blobs are opaque, already-encrypted bytes to it.
 
+Story descriptions and recording transcripts automatically suggest people in both story forms. Existing names, aliases and unique first names reuse local records; unfamiliar names are recognized conservatively after German/English human cues such as “meine Schwester Anna” or “my uncle Paul”. Suggestions can be removed, ambiguous names require a choice, and new people are created only when the story is saved. Recognition runs on the device and does not upload transcript text to an additional service. Unintroduced names and pronoun resolution remain outside this first pass.
+
 ### Tech Stack
 * **Client:** Flutter / Dart (Local DB: sqflite)
 * **API:** C# / .NET 8 / ASP.NET Core
