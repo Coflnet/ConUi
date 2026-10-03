@@ -438,7 +438,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           if (recordings.isNotEmpty)
             TextButton(
               onPressed: () async {
-                await db.deleteEvent(event.id);
+                await db.saveEvent(event.copyWith(
+                  isDeleted: true,
+                  files: event.files.where((file) => !file.isRecording).toList(),
+                ));
                 for (final recording in recordings) {
                   await db.deleteRecordingPermanently(recording.id, _recordingFileStore);
                 }
