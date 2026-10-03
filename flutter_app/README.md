@@ -33,6 +33,30 @@ To opt in explicitly:
 flutter test test/backup/large_recording_test.dart --tags=memory --run-skipped --concurrency=1
 ```
 
+Browser recording-store checks use real IndexedDB in Chromium:
+
+```sh
+CHROME_EXECUTABLE=/usr/bin/chromium flutter test --no-pub --platform chrome test/web/recording_file_store_web_test.dart --reporter expanded
+```
+
+## Encrypted recording sync
+
+The sync service transfers original WAV recordings in independently authenticated
+1 MiB chunks before publishing their story metadata. `recording_chunk_v1` IDs
+include the recording ID, full WAV SHA-256, and chunk index. A download must pass
+AEAD, size, canonical WAV-header, and whole-recording checksum checks before it
+is imported; conflicting local originals remain untouched. Editing story text
+reuses already committed chunks. Browser reads use bounded IndexedDB pages.
+
+New content uses `con:v1:` envelopes: PBKDF2-HMAC-SHA256 (600,000 iterations)
+and AES-256-GCM with random 96-bit nonces. Legacy content is readable but remains
+unauthenticated until rewritten. Older clients cannot read new envelopes or
+transfer recording chunks; update all participating clients together.
+
+These services currently sync within one account. Production sign-in setup and
+cross-user sharing, recipient authorization, and key exchange remain rollout
+requirements; the release UI currently offers local use only.
+
 ## Where the app's name lives
 
 The in-app title (window/tab title bar, Android app-switcher label while

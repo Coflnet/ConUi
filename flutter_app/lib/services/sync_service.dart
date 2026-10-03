@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:uuid/uuid.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:http/http.dart' as http;
@@ -6,11 +8,22 @@ import '../models/models.dart';
 import 'auth_service.dart';
 import 'database_service.dart';
 import 'encryption_service.dart';
+import 'recording_file_store.dart';
+import 'wav.dart';
+import '../backup/database_backup_adapter.dart';
+import '../backup/backup_format.dart';
 
 class SyncService extends ChangeNotifier {
   final DatabaseService _db;
   final AuthService _auth;
   final EncryptionService _encryption = EncryptionService();
+  final RecordingFileStore _recordings;
+
+  // v1: immutable SHA-qualified IDs, fixed 1 MiB plaintext chunks, each
+  // independently authenticated by EncryptionService's v1 AEAD envelope.
+  // The encrypted story attachment authenticates total WAV size and SHA.
+  static const _recordingBlobType = 'recording_chunk_v1';
+  static const _recordingChunkBytes = 1024 * 1024;
 
   /// Injectable so tests can intercept the direct-to-storage blob PUT/GET
   /// calls (these go straight to a presigned S3-style URL, not through
@@ -30,8 +43,10 @@ class SyncService extends ChangeNotifier {
   bool _needsEncryptionPassword = false;
   bool get needsEncryptionPassword => _needsEncryptionPassword;
 
-  SyncService(this._db, this._auth, {http.Client? httpClient})
-      : _http = httpClient ?? http.Client();
+  SyncService(this._db, this._auth,
+      {http.Client? httpClient, RecordingFileStore? recordingFileStore})
+      : _http = httpClient ?? http.Client(),
+        _recordings = recordingFileStore ?? createRecordingFileStore();
 
   bool get isSyncing => _isSyncing;
 
@@ -425,6 +440,24 @@ class SyncService extends ChangeNotifier {
     try {
       final events =
           await _db.getEvents(monthKey: monthKey, includeDeleted: true);
+      final recordings = events
+          .expand((event) => event.files)
+          .where((file) => file.isRecording)
+          .toList();
+      final committedChunks = <String, Map<String, dynamic>>{};
+      if (recordings.isNotEmpty) {
+        final response = await _auth.authenticatedGet('/api/sync/all');
+        _checkResponse(response, 'recording metadata');
+        for (final entry in jsonDecode(response.body) as List) {
+          if (entry['blobType'] == _recordingBlobType) {
+            committedChunks[entry['blobId'] as String] =
+                Map<String, dynamic>.from(entry as Map);
+          }
+        }
+      }
+      for (final file in recordings) {
+        await _uploadRecording(file, committedChunks);
+      }
       final monthlyEvents = MonthlyEvents(monthKey: monthKey, events: events);
 
       final jsonData = jsonEncode(monthlyEvents.toJson());
@@ -522,7 +555,173 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  void _validateRecordingMetadata(AttachedFile file) {
+    if (!isSafeRecordingId(file.id) ||
+        file.size <= wavHeaderLength ||
+        file.size > BackupSafetyLimits.maxRecordingBytes ||
+        file.size % WavFormat.standard.blockAlign != 0 ||
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(file.sha256 ?? '')) {
+      throw FormatException('Invalid recording metadata: ${file.id}');
+    }
+  }
+
+  String _recordingChunkId(AttachedFile file, int index) =>
+      '${file.id}_${file.sha256}_$index';
+
+  // Coalesce small source chunks without ever reading a whole recording.
+  Stream<Uint8List> _recordingChunks(String id) async* {
+    var buffer = Uint8List(_recordingChunkBytes);
+    var used = 0;
+    await for (final source in _recordings.openReadStream(id)) {
+      var offset = 0;
+      while (offset < source.length) {
+        final count = (source.length - offset).clamp(0, buffer.length - used);
+        buffer.setRange(used, used + count, source, offset);
+        used += count;
+        offset += count;
+        if (used == buffer.length) {
+          yield buffer;
+          buffer = Uint8List(_recordingChunkBytes);
+          used = 0;
+        }
+      }
+    }
+    if (used > 0) yield Uint8List.sublistView(buffer, 0, used);
+  }
+
+  void _validateWavHeader(AttachedFile file, List<int> bytes) {
+    final expected = WavHeader.build(dataLength: file.size - wavHeaderLength);
+    if (bytes.length < wavHeaderLength ||
+        !listEquals(bytes.sublist(0, wavHeaderLength), expected)) {
+      throw FormatException('Invalid WAV header: ${file.id}');
+    }
+  }
+
+  Future<void> _verifyLocalRecording(AttachedFile file) async {
+    _validateRecordingMetadata(file);
+    if (!await _recordings.exists(file.id)) {
+      throw StateError('Recording is missing on this device: ${file.id}');
+    }
+    final info = await hashWavStream(_recordings.openReadStream(file.id),
+        dataLength: file.size - wavHeaderLength);
+    if (info.sizeBytes != file.size || info.sha256Hex != file.sha256) {
+      throw StateError('Recording size/checksum conflict: ${file.id}');
+    }
+    _validateWavHeader(file, await _recordingChunks(file.id).first);
+  }
+
+  Future<void> _uploadRecording(AttachedFile file,
+      Map<String, Map<String, dynamic>> committedChunks) async {
+    await _verifyLocalRecording(file);
+    var index = 0;
+    await for (final chunk in _recordingChunks(file.id)) {
+      final blobId = _recordingChunkId(file, index++);
+      final committed = committedChunks[blobId];
+      // IDs authenticate the full WAV SHA; committed size checks the exact
+      // v1 envelope length. Reuse current-user chunks when only story text changes.
+      if (committed != null &&
+          committed['isDeleted'] != true &&
+          committed['size'] == chunk.length + 35) {
+        continue;
+      }
+      final encrypted = _encryption.encryptBytes(chunk);
+      final upload = await _auth.authenticatedPost('/api/sync/upload', {
+        'blobType': _recordingBlobType,
+        'blobId': blobId,
+        'checksum': file.sha256,
+        'expectedVersion': 0,
+      });
+      _checkResponse(upload, 'recording upload URL');
+      final data = jsonDecode(upload.body);
+      final put = await _http.put(Uri.parse(data['uploadUrl']),
+          headers: {'Content-Type': 'application/octet-stream'},
+          body: encrypted);
+      _checkResponse(put, 'recording upload');
+      final commit = await _auth.authenticatedPost('/api/sync/commit', {
+        'blobType': _recordingBlobType,
+        'blobId': blobId,
+        's3Key': data['s3Key'],
+        'checksum': file.sha256,
+        'size': encrypted.length,
+        'isDeleted': false,
+      });
+      _checkResponse(commit, 'recording commit');
+    }
+  }
+
+  Future<void> _downloadRecording(AttachedFile file) async {
+    _validateRecordingMetadata(file);
+    if (await _recordings.exists(file.id)) {
+      await _verifyLocalRecording(file);
+      return;
+    }
+    final stagingId = const Uuid().v4();
+    await _recordings.beginRecording(stagingId);
+    try {
+      for (var index = 0; index * _recordingChunkBytes < file.size; index++) {
+        final response = await _auth.authenticatedGet(
+            '/api/sync/download/$_recordingBlobType/${_recordingChunkId(file, index)}');
+        _checkResponse(response, 'recording download URL');
+        final download = await _http.send(http.Request(
+            'GET', Uri.parse(jsonDecode(response.body)['downloadUrl'])));
+        if (download.statusCode != 200) {
+          throw StateError(
+              'Recording download failed (${download.statusCode})');
+        }
+        final expectedSize = (file.size - index * _recordingChunkBytes)
+            .clamp(0, _recordingChunkBytes);
+        final encrypted = BytesBuilder(copy: false);
+        await for (final bytes in download.stream) {
+          // v1 envelope adds seven prefix bytes, a 12-byte nonce and 16-byte tag.
+          if (encrypted.length + bytes.length > expectedSize + 35) {
+            throw const FormatException('Oversized encrypted recording chunk');
+          }
+          encrypted.add(bytes);
+        }
+        final payload = encrypted.takeBytes();
+        if (payload.length != expectedSize + 35 ||
+            utf8.decode(payload.sublist(0, 7), allowMalformed: true) !=
+                'con:v1:') {
+          throw const FormatException('Invalid authenticated recording chunk');
+        }
+        final plain = _encryption.decryptBytes(payload);
+        if (plain.length != expectedSize) {
+          throw const FormatException('Invalid recording chunk length');
+        }
+        if (index == 0) _validateWavHeader(file, plain);
+        await _recordings.appendChunk(stagingId,
+            index == 0 ? Uint8List.sublistView(plain, wavHeaderLength) : plain);
+      }
+      final result = await _recordings.finalizeRecording(stagingId);
+      if (result.sizeBytes != file.size || result.sha256Hex != file.sha256) {
+        throw StateError('Recording checksum mismatch: ${file.id}');
+      }
+      // The staging ID is a new transient import, never a user's original.
+      // Original bytes are written only after all chunks/header/hash verify.
+      // Another tab/restore may have saved this ID while the network awaited.
+      if (await _recordings.exists(file.id)) {
+        await _verifyLocalRecording(file);
+        return;
+      }
+      final adapter = DatabaseBackupAdapter(
+          databaseService: _db, recordingStore: _recordings);
+      try {
+        await adapter.storeVerifiedRecordingStream(
+            file.id, _recordings.openReadStream(stagingId),
+            sha256Hex: result.sha256Hex);
+      } catch (_) {
+        await _recordings.delete(file.id); // incomplete new import only
+        rethrow;
+      }
+    } finally {
+      await _recordings.delete(stagingId);
+    }
+  }
+
   Future<void> _downloadAndApplyBlob(_SyncEntry entry) async {
+    // Audio is fetched only through its authenticated story metadata, so
+    // orphan chunks from an interrupted upload do not become local recordings.
+    if (entry.blobType == _recordingBlobType) return;
     if (entry.isDeleted) {
       switch (entry.blobType) {
         case 'person':
@@ -558,6 +757,11 @@ class SyncService extends ChangeNotifier {
           await _db.bulkSaveEvents(
               events.map((event) => event.copyWith(isDeleted: true)).toList());
           break;
+        case 'index':
+          break; // A deleted remote index does not delete this device's cursor.
+        default:
+          throw UnsupportedError(
+              'Unsupported sync blob type: ${entry.blobType}');
       }
       return;
     }
@@ -601,7 +805,21 @@ class SyncService extends ChangeNotifier {
         break;
       case 'event_month':
         final monthlyEvents = MonthlyEvents.fromJson(parsedData);
+        for (final event in monthlyEvents.events) {
+          for (final file in event.files.where((file) => file.isRecording)) {
+            await _downloadRecording(file);
+          }
+        }
         await _db.bulkSaveEvents(monthlyEvents.events);
+        for (final event in monthlyEvents.events) {
+          for (final file in event.files.where((file) => file.isRecording)) {
+            final recording = await _db.getLocalRecording(file.id);
+            if (recording != null) {
+              await _db
+                  .saveLocalRecording(recording.copyWith(eventId: event.id));
+            }
+          }
+        }
         break;
       case 'index':
         final index = SyncIndex.fromJson(parsedData);
@@ -610,6 +828,8 @@ class SyncService extends ChangeNotifier {
             (await _db.getSyncIndex())?.lastSyncTimestamp ?? 0;
         await _db.saveSyncIndex(index);
         break;
+      default:
+        throw UnsupportedError('Unsupported sync blob type: ${entry.blobType}');
     }
   }
 
