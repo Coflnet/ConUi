@@ -16,14 +16,23 @@ webhook credential copy. The old no-push restriction is superseded for this work
   Published registration `91e9cc8b`; `a69505e3` renames `fleet/con.yaml` to
   `fleet/con-app.yaml` after Fleet rejected the former path during checkout.
   Parent reconciliation recovered; `con/con-con-chart` deployment now exists.
-- Workload is blocked at `Init:ErrImagePull`: both private images require
-  registry authentication and `con/regcred` is missing. Automatic approval
-  review rejected copying `rfind-demo/regcred` across namespaces because it
-  broadens credential access. Explicit approval question is pending; do not
-  bypass that rejection or indirectly reuse the credential.
+- Owner explicitly approved copying `rfind-demo/regcred` into `con/regcred`.
+  Copy/readback succeeded through memory only; no credential value displayed.
+  Private images now pull successfully.
+- Owner explicitly approved the Con-only OpenBao proxy rule on TCP10283.
+  Fleet `4e132d5c` adds only namespace `con` / app label `con` to that rule.
+  Live policy verified; init mounted configuration and revoked its token.
+- Backend starts but readiness currently fails on Scylla TLS name mismatch.
+  The observed public server certificate has CN `sky-client` and no SAN.
+  Exact `CASSANDRA:TLS_SERVER_NAME=sky-client` was CAS-patched through the
+  ansible helper, preserving CA and other config. Five-minute narrow child
+  self-revocation proven by HTTP403 and token artifacts removed. Backend
+  support and strict pinned-root chain rebuilding are implemented. Four real
+  leaf-only TLS regressions pass (right identity, wrong name/root, expired leaf);
+  full backend suite passes 109/109. Release E2E still has not run.
 - Argo webhook credential was copied through memory/stdin to ConUi Actions
   `ARGO_WEBHOOK_SECRET`; metadata verified, no value displayed.
-- Ansible helper commit `8464f83` is published to main. Unrelated uncommitted
+- Ansible Con storage/helper commit `7a02aa3` is published to main. Unrelated uncommitted
   infrastructure work was not included. Rfind checkout has unrelated local
   commits/work; it was not pushed wholesale.
 - Deployed E2E has NOT run. `deployment/e2e/hosted.py` is preparatory only until
@@ -54,20 +63,23 @@ webhook credential copy. The old no-push restriction is superseded for this work
 - Private EU R2 bucket `con-stories` exists, public access off. Durable
   bucket-only S3 credentials remain unavailable; a protected input-file path
   was requested. Do not reuse the DNS API token or another application's key.
-  S3 remains disabled; cloud sync and cross-user sharing are not verified.
+  Exact-origin GET/PUT CORS is applied and verified by readback and HTTP204
+  preflight. `ansible/scripts/provision-con-storage.sh` prepares CAS-protected
+  S3 configuration from a protected Con-only credential file. S3 remains
+  disabled; cloud sync and cross-user sharing are not verified.
 - Namespace/CA distribution and public identity route are provisioned. Con TLS
-  certificate is Ready; public HTTPS returns 503 while the image pull is blocked.
+  certificate is Ready; public HTTPS returns 503 while Scylla readiness fails.
   Workload readiness is not verified.
   Rfind's pre-existing Modified drift was not changed.
 
 Latest checks before rollout: 450 Flutter gate tests pass, two memory-tagged RSS
-checks skipped by default; 105 backend and 12 realm/provisioning tests pass.
+checks skipped by default; 109 backend and 12 realm/provisioning tests pass.
 Analyzer has nine baseline findings; web release and debug APK builds passed.
 CI then independently passed the image test/build/scan gate. Con chart seven
 and Rfind chart fifteen tests passed, with relevant Helm lints.
 
-Next: obtain registry-copy approval or a dedicated Con pull credential; wait for
-init/readiness, verify public API, create owned synthetic users through a narrow
+Next: publish the TLS server-name fix through normal scanned CI; verify
+readiness/public API, create owned synthetic users through a narrow
 OpenBao child, run the hosted browser harness, then clean users and artifacts.
 For real cloud-sync E2E, first provision Con-only S3 credentials and exact-origin
 CORS, CAS-patch only S3 fields and enable the chart gate. Cross-user sharing and

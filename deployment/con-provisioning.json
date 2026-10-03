@@ -14,7 +14,8 @@
       "SELECT",
       "MODIFY"
     ],
-    "legacyConUnchanged": true
+    "legacyConUnchanged": true,
+    "tlsServerName": "sky-client"
   },
   "openbao": {
     "leaf": "kv/con/con-backend",
@@ -26,16 +27,17 @@
     "bucket": "con-stories",
     "jurisdiction": "eu",
     "publicAccess": false,
-    "credentialsProvisioned": false
+    "credentialsProvisioned": false,
+    "corsVerified": true
   },
   "deployment": {
     "pushed": true,
     "deployedE2eRun": false,
     "blockedOn": [
-      "Con registry pull credential approval or dedicated credential",
+      "Scylla TLS server-name support pending release",
       "Con-only S3 credentials for cloud sync"
     ],
-    "fleetPublishedCommit": "a69505e396670e8a16ce4c98810bcfeb51807bf6",
+    "fleetPublishedCommit": "4e132d5c07ae98d0423c77647bccdcfe6f0cf3bb",
     "ciWebhookSecretConfigured": true,
     "publicConIssuerVerified": true,
     "namespaceCreated": true,
@@ -45,8 +47,11 @@
     "imageScanPassed": true,
     "workload": "con/con-con-chart",
     "workloadReady": false,
-    "workloadStatus": "Init:ErrImagePull",
+    "workloadStatus": "Running; Scylla TLS name mismatch",
     "tlsCertificateReady": true,
-    "publicHttpsStatus": 503
+    "publicHttpsStatus": 503,
+    "registryCredentialCopied": true,
+    "openbaoProxyAccessApproved": true,
+    "openbaoInitTokenRevoked": true
   }
 }
