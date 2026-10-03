@@ -79,6 +79,13 @@ List<PersonMention> extractPersonMentions(String text, List<Person> people) {
       caseSensitive: false, unicode: true);
   for (final cue in cues.allMatches(text)) {
     if (!boundary(cue.start - 1)) continue;
+    // A role followed by "of/von" describes a relationship, not a name particle.
+    if (!RegExp(r'^(?:herr|frau|mr\.?|mrs\.?|ms\.?)$', caseSensitive: false)
+            .hasMatch(cue.group(0)!.trim()) &&
+        RegExp(r'^(?:of|von)\s+', caseSensitive: false)
+            .hasMatch(text.substring(cue.end))) {
+      continue;
+    }
     final start =
         cue.end + (academicTitle.firstMatch(text.substring(cue.end))?.end ?? 0);
     final match = personName.firstMatch(text.substring(start));

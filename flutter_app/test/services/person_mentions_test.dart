@@ -57,6 +57,11 @@ void main() {
         isEmpty);
   });
 
+  test('relationship prepositions do not become name particles', () {
+    expect(extractPersonMentions('Alex ist der Bruder von Ben.', []).map((m) => m.name), isEmpty);
+    expect(extractPersonMentions('Herr von Ben kam.', []).single.name, 'von Ben');
+  });
+
   test('English cues support particles, hyphens and apostrophes', () {
     final mentions = extractPersonMentions(
         "My sister Jane Smith met Mr. van Helsing. "
