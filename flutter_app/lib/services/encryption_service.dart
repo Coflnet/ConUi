@@ -1,81 +1,116 @@
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
+import 'package:pointycastle/export.dart' as pc;
 
 class EncryptionService {
   static EncryptionService? _instance;
   static EncryptionService? get instance => _instance;
 
-  late encrypt.Key _key;
-  late encrypt.IV _iv;
-  late encrypt.Encrypter _encrypter;
+  // v1 fixes the KDF, nonce and tag sizes; changes require a new version.
+  static const _prefix = 'con:v1:';
+  static final _header = Uint8List.fromList(utf8.encode(_prefix));
+  static const _nonceLength = 12;
+  static const _tagLength = 16;
+  late Uint8List _key;
+  late encrypt.IV _legacyIv;
+  late encrypt.Encrypter _legacyEncrypter;
   bool _initialized = false;
 
-  // Derive key from password and salt using PBKDF2-like approach
   void initializeWithPassword(String password, String salt) {
-    // Simple key derivation (in production, use proper PBKDF2)
-    final keyData = utf8.encode('$password:$salt');
-    final hash = sha256.convert(keyData);
-    _key = encrypt.Key.fromBase64(base64.encode(hash.bytes));
+    final derivator = pc.PBKDF2KeyDerivator(pc.HMac(pc.SHA256Digest(), 64))
+      ..init(pc.Pbkdf2Parameters(
+          Uint8List.fromList(utf8.encode('con:encryption:v1:$salt')),
+          600000,
+          32));
+    _key = derivator.process(Uint8List.fromList(utf8.encode(password)));
 
-    // Derive IV from salt
-    final ivData = utf8.encode('iv:$salt');
-    final ivHash = md5.convert(ivData);
-    _iv = encrypt.IV.fromBase64(base64.encode(ivHash.bytes));
-
-    _encrypter = encrypt.Encrypter(encrypt.AES(_key));
+    // Read compatibility only: old ciphertext has no authentication. Existing
+    // data is upgraded when it is next encrypted; never write this format.
+    final legacyKey = encrypt.Key(Uint8List.fromList(
+        sha256.convert(utf8.encode('$password:$salt')).bytes));
+    _legacyIv = encrypt
+        .IV(Uint8List.fromList(md5.convert(utf8.encode('iv:$salt')).bytes));
+    _legacyEncrypter = encrypt.Encrypter(encrypt.AES(legacyKey));
     _initialized = true;
     _instance = this;
   }
 
   bool get isInitialized => _initialized;
 
-  // Encrypt data to base64 string
-  String encryptString(String plainText) {
-    if (!_initialized) throw StateError('Encryption not initialized');
-    final encrypted = _encrypter.encrypt(plainText, iv: _iv);
-    return encrypted.base64;
+  String encryptString(String plainText) =>
+      _prefix + base64.encode(_encrypt(utf8.encode(plainText)));
+
+  String decryptString(String encryptedText) {
+    _requireInitialized();
+    if (encryptedText.startsWith(_prefix)) {
+      return utf8.decode(
+          _decrypt(base64.decode(encryptedText.substring(_prefix.length))));
+    }
+    if (encryptedText.startsWith('con:')) {
+      throw const FormatException('Unsupported encryption version');
+    }
+    return _legacyEncrypter.decrypt(encrypt.Encrypted.fromBase64(encryptedText),
+        iv: _legacyIv);
   }
 
-  // Decrypt base64 string to data
-  String decryptString(String encryptedBase64) {
-    if (!_initialized) throw StateError('Encryption not initialized');
-    final encrypted = encrypt.Encrypted.fromBase64(encryptedBase64);
-    return _encrypter.decrypt(encrypted, iv: _iv);
-  }
+  List<int> encryptBytes(List<int> data) => [..._header, ..._encrypt(data)];
 
-  // Encrypt bytes
-  List<int> encryptBytes(List<int> data) {
-    if (!_initialized) throw StateError('Encryption not initialized');
-    final plainText = base64.encode(data);
-    final encrypted = _encrypter.encrypt(plainText, iv: _iv);
-    return encrypted.bytes;
-  }
-
-  // Decrypt bytes
   Uint8List decryptBytes(List<int> encryptedData) {
-    if (!_initialized) throw StateError('Encryption not initialized');
-    final encrypted = encrypt.Encrypted(Uint8List.fromList(encryptedData));
-    final plainText = _encrypter.decrypt(encrypted, iv: _iv);
+    _requireInitialized();
+    final bytes = Uint8List.fromList(encryptedData);
+    if (bytes.length >= 4 &&
+        utf8.decode(bytes.sublist(0, 4), allowMalformed: true) == 'con:') {
+      if (bytes.length < _header.length ||
+          utf8.decode(bytes.sublist(0, _header.length), allowMalformed: true) !=
+              _prefix) {
+        throw const FormatException('Unsupported encryption version');
+      }
+      return _decrypt(bytes.sublist(_header.length));
+    }
+    final plainText =
+        _legacyEncrypter.decrypt(encrypt.Encrypted(bytes), iv: _legacyIv);
     return base64.decode(plainText);
   }
 
-  // Encrypt JSON object
-  String encryptJson(Map<String, dynamic> data) {
-    final jsonString = jsonEncode(data);
-    return encryptString(jsonString);
+  Uint8List _encrypt(List<int> data) {
+    _requireInitialized();
+    final random = Random.secure();
+    final nonce = Uint8List.fromList(
+        List.generate(_nonceLength, (_) => random.nextInt(256)));
+    final cipher = pc.GCMBlockCipher(pc.AESEngine())
+      ..init(
+          true, pc.AEADParameters(pc.KeyParameter(_key), 128, nonce, _header));
+    return Uint8List.fromList(
+        [...nonce, ...cipher.process(Uint8List.fromList(data))]);
   }
 
-  // Decrypt JSON object
-  Map<String, dynamic> decryptJson(String encryptedBase64) {
-    final jsonString = decryptString(encryptedBase64);
-    return jsonDecode(jsonString);
+  Uint8List _decrypt(Uint8List payload) {
+    if (payload.length < _nonceLength + _tagLength) {
+      throw const FormatException('Truncated encrypted data');
+    }
+    final cipher = pc.GCMBlockCipher(pc.AESEngine())
+      ..init(
+          false,
+          pc.AEADParameters(pc.KeyParameter(_key), 128,
+              payload.sublist(0, _nonceLength), _header));
+    // GCM verifies the tag before returning plaintext. Authentication failure
+    // must never fall back to the unauthenticated legacy decoder.
+    return cipher.process(payload.sublist(_nonceLength));
   }
 
-  // Calculate checksum for data integrity
-  String calculateChecksum(String data) {
-    final bytes = utf8.encode(data);
-    return sha256.convert(bytes).toString();
+  void _requireInitialized() {
+    if (!_initialized) throw StateError('Encryption not initialized');
   }
+
+  String encryptJson(Map<String, dynamic> data) =>
+      encryptString(jsonEncode(data));
+
+  Map<String, dynamic> decryptJson(String encryptedText) =>
+      jsonDecode(decryptString(encryptedText));
+
+  String calculateChecksum(String data) =>
+      sha256.convert(utf8.encode(data)).toString();
 }
