@@ -171,12 +171,16 @@ at least 32 characters and not the development placeholder.
 
 While a user records a story, the client sends short audio segments (~6s, WAV PCM 16kHz mono is the primary case; `webm`/`ogg`/`mp4`/`mpeg` are also accepted) and the backend streams each one straight through to a speech-to-text upstream and returns the text - it is a pass-through, not a store.
 
-* `GET /api/transcription/status` (authenticated) → `{ "available": true|false }`, so the app can show up front whether live text will work.
-* `POST /api/transcription/segment` (authenticated), body = raw audio bytes, `Content-Type` set to the audio format, optional `?language=xx` (two-letter ISO 639-1) → `{ "text": "..." }`.
+* `GET /api/transcription/status` (public) → `{ "available": true|false, "remainingRecordings": 0..3|null, "dailyLimit": 3, "maxDurationSeconds": 60 }`, so the app can show up front whether live text will work.
+* `POST /api/transcription/segment` (public; optional Bearer authentication), body = raw audio bytes, `Content-Type` set to the audio format, optional `?language=xx` (two-letter ISO 639-1) → `{ "text": "..." }`.
 
-**Privacy is a hard requirement, not just a preference:** audio is never written to disk or stored anywhere, transcript text is never stored, and logging never includes audio content or transcript text - only sizes, durations and status codes.
+Anonymous requests require `recordingId=<UUID>&segment=<0..63>` and valid PCM WAV audio. Each effective client IP receives three recordings per UTC day, each totaling at most 60 seconds across its segments. The server checks the WAV bytes, not client duration claims. Quotas use Cassandra compare-and-set operations and survive restarts or multiple replicas. Same-body retries reuse the recording slot; changed segment bytes are rejected. Signed-in users are exempt from the anonymous daily and duration limits. An invalid Bearer token returns 401 rather than falling back to guest access.
 
-Error responses (all `{ "slug": "...", "message": "..." }`): `503 transcription_not_configured` (no `Transcription:BaseUrl`), `415` unsupported content type, `400 invalid_language`, `429 too_many_requests` (per-user concurrency), `413 segment_too_large`, `502 transcription_failed` (upstream error or timeout).
+Audio and transcript text are never persisted on the server or included in logs. Anonymous successful results may remain in bounded volatile memory for 15 minutes to answer retries without repeating upstream recognition. Cassandra retains only a hashed IP/day key and recording/segment IDs, hashes, durations and retry metadata, with a two-day TTL. Client audio and photos remain local and are included in backups.
+
+`ReverseProxy:KnownProxies` (indexed environment variables `ReverseProxy__KnownProxies__0`, etc.) must name only trusted ingress peers. The application accepts one overwritten `X-Forwarded-For` hop from those peers; without a configured list, it trusts no forwarding header. Fleet pins the verified nginx node and Cilium host addresses. Update this exact list if ingress node routing changes.
+
+Error responses (all `{ "slug": "...", "message": "..." }`): `503 transcription_not_configured` (no `Transcription:BaseUrl`), `415` unsupported content type, `400 invalid_language`, `429 too_many_requests` (per-user concurrency), `413 segment_too_large`, `502 transcription_failed` (upstream error or timeout), `429 anonymous_daily_limit` (sign in or wait until the next UTC day), `413 anonymous_recording_too_long` (sign in or shorten the recording), and `503 recording_quota_unavailable` (retry later or sign in).
 
 ## Project Structure
 

@@ -171,10 +171,10 @@
 
   "liveTranscriptionNotStarted": "Recording…",
   "liveTranscriptionWorking": "The text is being written down as you talk.",
-  "liveTranscriptionOffline": "No internet connection - recording continues, just without the text.",
-  "liveTranscriptionNotSignedIn": "Sign in so the text can be written down automatically - recording continues without it.",
-  "liveTranscriptionNotConfigured": "The text can't be written down automatically right now. The recording continues.",
-  "liveTranscriptionFailing": "The text can't be written down reliably right now. The recording continues.",
+  "liveTranscriptionOffline": "The transcription server could not be reached. Check your internet connection and retry after stopping. Your audio stays on this device.",
+  "liveTranscriptionNotSignedIn": "Your sign-in has expired. Save your story, then sign in again in Settings. Your audio stays on this device.",
+  "liveTranscriptionNotConfigured": "Transcription is temporarily unavailable on the server. Save your audio and try again later; you can also type your story.",
+  "liveTranscriptionFailing": "Transcription failed. Save your audio and try again later, or type your story. Your recording is kept on this device.",
   "recordingPartsFailedLive": "{count, plural, =1{1 part could not be written down automatically. The audio was kept.} other{{count} parts could not be written down automatically. The audio was kept.}}",
   "@recordingPartsFailedLive": {"placeholders": {"count": {"type": "int"}}},
   "recordingAttachedWithDuration": "Recording attached ({duration})",
@@ -625,5 +625,8 @@
   "storyAddPhotos": "Add photos",
   "storyPhotosLocal": "Photos are saved on this device and included in backups.",
   "storyPhotoImportFailed": "Could not add the photo. Choose a PNG or JPEG image and try again. Check the free storage on this device.",
-  "storyPhotoUnavailable": "This photo is not available on this device. Restore a backup containing it, or edit the story to add the photo again."
+  "storyPhotoUnavailable": "This photo is not available on this device. Restore a backup containing it, or edit the story to add the photo again.",
+  "liveTranscriptionAnonymousLimit": "You have used the 3 daily recordings for this internet connection. Save your story, then sign in in Settings to record more, or try again tomorrow.",
+  "recordingAnonymousAllowance": "Without signing in: 3 recordings per day per internet connection, up to 1 minute each.",
+  "recordingAnonymousStopped": "The 1-minute limit was reached. Your recording will be saved with this story. Save your story, then sign in in Settings for longer recordings."
 }

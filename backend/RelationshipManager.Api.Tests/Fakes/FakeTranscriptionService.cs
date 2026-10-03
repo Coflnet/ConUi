@@ -6,6 +6,7 @@ namespace RelationshipManager.Api.Tests.Fakes;
 public class FakeTranscriptionService : ITranscriptionService
 {
     public bool IsConfigured { get; set; }
+    public int CallCount { get; private set; }
     public string ResultText { get; set; } = "hello world";
     public Exception? ThrowOnTranscribe { get; set; }
     public string? LastContentType { get; private set; }
@@ -17,6 +18,7 @@ public class FakeTranscriptionService : ITranscriptionService
 
     public async Task<string> TranscribeAsync(Stream audio, string contentType, string? language, CancellationToken cancellationToken)
     {
+        CallCount++;
         LastContentType = contentType;
         LastLanguage = language;
 

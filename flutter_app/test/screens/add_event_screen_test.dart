@@ -60,6 +60,48 @@ void main() {
     }
   });
 
+  testWidgets('anonymous quota failure explains sign-in and retains the recording',
+      (tester) async {
+    final db = createTestDatabaseService();
+    await tester.runAsync(db.initialize);
+    final capture = FakeAudioCapture();
+    final controller = RecorderController(
+      audioCapture: capture,
+      fileStore: NativeRecordingFileStore(baseDirectory: tempDir),
+      database: db,
+      transcriptionClient: TranscriptionClient(
+        baseUrl: 'https://api.example.com', getToken: () => null,
+        httpClient: MockClient((request) async => request.method == 'GET'
+            ? http.Response(jsonEncode({'available': true, 'remainingRecordings': 3}), 200)
+            : http.Response(jsonEncode({'slug': 'anonymous_daily_limit', 'message': 'Sign in to record more.'}), 429))),
+      maxSegmentRetries: 0,
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: ChangeNotifierProvider<DatabaseService>.value(
+        value: db, child: AddEventScreen(recorderController: controller)),
+    ));
+    await _pressAsync(tester, find.widgetWithIcon(IconButton, Icons.mic));
+    await tester.pump();
+    final l10n = AppLocalizations.of(
+        tester.element(find.byType(AddEventScreen)));
+    expect(find.text(l10n.recordingAnonymousAllowance), findsOneWidget);
+    await tester.runAsync(() async {
+      capture.emitChunk(Uint8List(1600));
+      await Future<void>.delayed(Duration.zero);
+    });
+    await _pressAsync(tester, find.widgetWithIcon(IconButton, Icons.stop_circle));
+    await tester.pump();
+    expect(find.text(l10n.liveTranscriptionAnonymousLimit), findsWidgets);
+    await tester.runAsync(() async {
+      final file = controller.lastStopResult!.attachedFile;
+      expect(await NativeRecordingFileStore(baseDirectory: tempDir).exists(file.id), isTrue);
+    });
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets(
       'records, shows the live transcript in the description, and attaches the recording on save',
       (tester) async {

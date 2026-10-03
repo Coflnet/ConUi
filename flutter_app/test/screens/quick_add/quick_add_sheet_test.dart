@@ -60,6 +60,8 @@ RecorderController _buildRecorder({
   required DatabaseService db,
   required Directory tempDir,
   String transcribedText = 'said hello',
+  String? Function()? getToken,
+  String? errorSlug,
 }) {
   return RecorderController(
     audioCapture: capture,
@@ -67,9 +69,13 @@ RecorderController _buildRecorder({
     database: db,
     transcriptionClient: TranscriptionClient(
       baseUrl: 'https://api.example.com',
-      getToken: () => 'tok',
+      getToken: getToken ?? () => 'tok',
       httpClient: MockClient(
-          (request) async => http.Response(jsonEncode({'text': transcribedText}), 200)),
+          (request) async => request.method == 'GET'
+              ? http.Response(jsonEncode({'available': true, 'remainingRecordings': 3}), 200)
+              : errorSlug != null
+                  ? http.Response(jsonEncode({'slug': errorSlug, 'message': 'Sign in to record more.'}), 429)
+                  : http.Response(jsonEncode({'text': transcribedText}), 200)),
     ),
     segmentDuration: const Duration(milliseconds: 100),
     backoff: (_) => Duration.zero,
@@ -380,6 +386,97 @@ void main() {
       // programmatic append at the end.
       expect(controller.selection, const TextSelection.collapsed(offset: 7));
     });
+  });
+
+  testWidgets(
+      'short recordings append final transcription and reset between recordings',
+      (tester) async {
+    final db = createTestDatabaseService();
+    await tester.runAsync(db.initialize);
+    final capture = FakeAudioCapture();
+    final recorder = _buildRecorder(capture: capture, db: db, tempDir: tempDir);
+    addTearDown(recorder.dispose);
+    final position = ValueNotifier(const LatLng(10, 10));
+    addTearDown(position.dispose);
+    await tester.pumpWidget(_wrap(
+        db, QuickAddSheet(position: position, recorderController: recorder)));
+    await _settle(tester);
+    final field = find.widgetWithText(TextField, 'What happened here?');
+    await tester.enterText(field, 'My notes.');
+    for (var i = 0; i < 2; i++) {
+      final start = tester
+          .widget<GestureDetector>(find.descendant(
+              of: find.bySemanticsLabel('Start recording'),
+              matching: find.byType(GestureDetector)))
+          .onTap!;
+      await tester.runAsync(() async => await (start as Function)());
+      await tester.pump();
+      await tester.runAsync(() async {
+        capture.emitChunk(Uint8List(1600));
+        await Future<void>.delayed(Duration.zero);
+      });
+      final stop = tester
+          .widget<GestureDetector>(find.descendant(
+              of: find.bySemanticsLabel('Stop recording'),
+              matching: find.byType(GestureDetector)))
+          .onTap!;
+      await tester.runAsync(() async => await (stop as Function)());
+      await tester.pump();
+      expect(tester.widget<TextField>(field).controller!.text,
+          'My notes.${List.filled(i + 1, ' said hello').join()}');
+    }
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'anonymous quota failure and retry explain sign-in without losing notes',
+      (tester) async {
+    final db = createTestDatabaseService();
+    await tester.runAsync(db.initialize);
+    final capture = FakeAudioCapture();
+    final recorder = _buildRecorder(
+        capture: capture, db: db, tempDir: tempDir, getToken: () => null,
+        errorSlug: 'anonymous_daily_limit');
+    addTearDown(recorder.dispose);
+    final position = ValueNotifier(const LatLng(10, 10));
+    addTearDown(position.dispose);
+    await tester.pumpWidget(_wrap(
+        db, QuickAddSheet(position: position, recorderController: recorder)));
+    await _settle(tester);
+    final field = find.widgetWithText(TextField, 'What happened here?');
+    await tester.enterText(field, 'My notes.');
+    await tester.runAsync(() async {
+      await recorder.start();
+      capture.emitChunk(Uint8List(1600));
+      await Future<void>.delayed(Duration.zero);
+    });
+    await tester.pump();
+    final stop = tester
+        .widget<GestureDetector>(find.descendant(
+            of: find.bySemanticsLabel('Stop recording'),
+            matching: find.byType(GestureDetector)))
+        .onTap!;
+    await tester.runAsync(() async => await (stop as Function)());
+    await tester.pump();
+    final l10n = AppLocalizations.of(tester.element(field));
+    expect(find.text(l10n.liveTranscriptionAnonymousLimit), findsWidgets);
+    final retry = find.widgetWithText(TextButton, l10n.quickAddTranscribeNow);
+    expect(retry, findsOneWidget);
+    ScaffoldMessenger.of(tester.element(field)).removeCurrentSnackBar();
+    await tester.pump();
+    await _pressAsync(tester, retry);
+    await tester.pump();
+    expect(find.text(l10n.liveTranscriptionAnonymousLimit), findsWidgets);
+    expect(tester.widget<TextButton>(retry).onPressed, isNotNull);
+    expect(tester.widget<TextField>(field).controller!.text, 'My notes.');
+    // Missing local audio must also release the retry control.
+    await tester.runAsync(() => NativeRecordingFileStore(baseDirectory: tempDir)
+        .delete(recorder.lastStopResult!.attachedFile.id));
+    await _pressAsync(tester, retry);
+    await tester.pump();
+    expect(tester.widget<TextButton>(retry).onPressed, isNotNull);
+    expect(tester.widget<TextField>(field).controller!.text, 'My notes.');
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   group('unsaved-content confirmation', () {

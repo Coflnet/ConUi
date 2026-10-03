@@ -10,8 +10,11 @@ enum TranscriptionErrorKind {
   /// No backend is configured, or the request never reached it.
   offline,
 
-  /// No token available, or the backend rejected it (401).
+  /// The backend rejected authentication (401).
   unauthorized,
+
+  /// Anonymous daily or recording-duration allowance exhausted.
+  anonymousLimit,
 
   /// The segment was too large (413).
   payloadTooLarge,
@@ -53,8 +56,9 @@ class TranscriptionException implements Exception {
 
 /// Client for the backend's transcription contract:
 /// - `POST {baseUrl}/api/transcription/segment` with the segment's WAV
-///   bytes as the body, `Authorization: Bearer <token>` and
-///   `Content-Type: audio/wav`, optional `?language=`; success is
+///   bytes as the body, optional `Authorization: Bearer <token>` and
+///   `Content-Type: audio/wav`, with language/recordingId/segment query fields;
+///   success is
 ///   `{"text": "..."}`; failure is `{"slug": "...", "message": "..."}`.
 /// - `GET {baseUrl}/api/transcription/status` -> `{"available": bool}`.
 class TranscriptionClient {
@@ -75,30 +79,33 @@ class TranscriptionClient {
   bool get isConfigured => baseUrl.isNotEmpty;
 
   /// Sends one WAV-wrapped audio segment and returns its transcribed text.
-  /// Throws [TranscriptionException] on any failure - offline, not signed
-  /// in, or a backend-reported error.
-  Future<String> transcribeSegment(Uint8List wavBytes, {String? language}) async {
+  /// Anonymous recordings carry stable recording/segment identities so
+  /// concurrent chunks and retries consume one recording allowance.
+  /// Throws [TranscriptionException] on offline or backend-reported errors.
+  Future<String> transcribeSegment(Uint8List wavBytes, {
+    String? language,
+    String? recordingId,
+    int? segment,
+  }) async {
     if (!isConfigured) {
       throw const TranscriptionException(
           TranscriptionErrorKind.offline, 'No backend address is configured.');
     }
     final token = getToken();
-    if (token == null) {
-      throw const TranscriptionException(TranscriptionErrorKind.unauthorized,
-          'Sign in to use live transcription.');
-    }
-
-    var uri = Uri.parse('$baseUrl/api/transcription/segment');
-    if (language != null && language.isNotEmpty) {
-      uri = uri.replace(queryParameters: {'language': language});
-    }
+    final uri = Uri.parse('$baseUrl/api/transcription/segment').replace(
+      queryParameters: {
+        if (language != null && language.isNotEmpty) 'language': language,
+        if (recordingId != null) 'recordingId': recordingId,
+        if (segment != null) 'segment': '$segment',
+      },
+    );
 
     final http.Response response;
     try {
       response = await _http.post(
         uri,
         headers: {
-          'Authorization': 'Bearer $token',
+          if (token != null) 'Authorization': 'Bearer $token',
           'Content-Type': 'audio/wav',
         },
         body: wavBytes,
@@ -126,14 +133,32 @@ class TranscriptionClient {
   /// as unavailable.
   Future<bool> isAvailable() async {
     if (!isConfigured) return false;
+    final token = getToken();
     try {
-      final response =
-          await _http.get(Uri.parse('$baseUrl/api/transcription/status'));
+      final response = await _http.get(
+        Uri.parse('$baseUrl/api/transcription/status'),
+        headers: {if (token != null) 'Authorization': 'Bearer $token'},
+      );
       if (response.statusCode != 200) return false;
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       return data['available'] == true;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Null means quota status could not be checked; offline capture stays usable.
+  Future<int?> remainingAnonymousRecordings() async {
+    if (!isConfigured) return null;
+    try {
+      final response = await _http.get(
+        Uri.parse('$baseUrl/api/transcription/status'),
+      ).timeout(const Duration(seconds: 3));
+      if (response.statusCode != 200) return null;
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return data['remainingRecordings'] as int?;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -148,6 +173,10 @@ class TranscriptionClient {
       // Non-JSON error body; keep the generic message.
     }
 
+    if (slug == 'anonymous_daily_limit' || slug == 'anonymous_recording_too_long') {
+      return TranscriptionException(TranscriptionErrorKind.anonymousLimit, message,
+          statusCode: response.statusCode, slug: slug);
+    }
     final TranscriptionErrorKind kind;
     switch (response.statusCode) {
       case 401:
@@ -166,7 +195,9 @@ class TranscriptionClient {
         kind = TranscriptionErrorKind.transcriptionFailed;
         break;
       case 503:
-        kind = TranscriptionErrorKind.notConfigured;
+        kind = slug == 'recording_quota_unavailable'
+            ? TranscriptionErrorKind.other
+            : TranscriptionErrorKind.notConfigured;
         break;
       default:
         kind = TranscriptionErrorKind.other;

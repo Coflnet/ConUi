@@ -31,6 +31,8 @@ String messageForTranscriptionReason(AppLocalizations l10n, LiveTranscriptionRea
       return l10n.liveTranscriptionOffline;
     case LiveTranscriptionReason.notSignedIn:
       return l10n.liveTranscriptionNotSignedIn;
+    case LiveTranscriptionReason.anonymousLimit:
+      return l10n.liveTranscriptionAnonymousLimit;
     case LiveTranscriptionReason.notConfigured:
       return l10n.liveTranscriptionNotConfigured;
     case LiveTranscriptionReason.failing:
@@ -145,6 +147,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   final _draftEvent = Event(title: '', dateTime: DateTime.now());
   final List<AttachedFile> _photos = [];
   bool _isTranscribingNow = false;
+  bool _hasFailedTranscription = false;
   bool _loadedLookups = false;
 
   @override
@@ -205,8 +208,16 @@ class QuickAddSheetState extends State<QuickAddSheet> {
 
   void _onRecorderChanged() {
     if (!mounted) return;
-    if (_recorder.state == RecorderState.recording) {
+    if (_recorder.state == RecorderState.recording ||
+        _recorder.state == RecorderState.finishing) {
       _appendLiveTranscriptDelta();
+    }
+    final result = _recorder.lastStopResult;
+    if (_recorder.state == RecorderState.idle && result != null &&
+        _pendingRecording?.id != result.attachedFile.id) {
+      _pendingRecording = result.attachedFile;
+      _hasFailedTranscription = result.failedSegments.isNotEmpty;
+      if (_hasFailedTranscription) _showTranscriptionFailure(result.failedSegments.length);
     }
     setState(() {});
   }
@@ -219,46 +230,75 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     final live = _recorder.liveTranscript;
     if (live.length <= _liveTextAlreadyShown.length) return;
     final delta = live.substring(_liveTextAlreadyShown.length);
+    final firstDelta = _liveTextAlreadyShown.isEmpty;
     _liveTextAlreadyShown = live;
     if (delta.isEmpty) return;
 
     final controller = _textController;
     final oldSelection = controller.selection;
-    final newText = controller.text.isEmpty ? delta : controller.text + delta;
-    final newSelection =
-        oldSelection.isValid ? oldSelection : TextSelection.collapsed(offset: newText.length);
+    final separator = firstDelta &&
+            controller.text.isNotEmpty &&
+            !controller.text.endsWith(' ')
+        ? ' '
+        : '';
+    final newText = '${controller.text}$separator$delta';
+    final newSelection = oldSelection.isValid
+        ? oldSelection
+        : TextSelection.collapsed(offset: newText.length);
     controller.value = TextEditingValue(text: newText, selection: newSelection);
   }
 
   Future<void> _toggleRecording() async {
     if (_recorder.state == RecorderState.recording) {
-      final result = await _recorder.stop();
-      _pendingRecording = result.attachedFile;
-      if (mounted && result.failedSegments.isNotEmpty) {
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.recordingPartsFailedLive(result.failedSegments.length))),
-        );
-      }
-      setState(() {});
+      await _recorder.stop();
       return;
     }
+    _liveTextAlreadyShown = '';
     await _recorder.start();
+    if (mounted && _recorder.liveTranscriptionReason == LiveTranscriptionReason.anonymousLimit) {
+      _showTranscriptionFailure(0);
+    }
+  }
+
+  void _showTranscriptionFailure(int failedCount) {
+    final l10n = AppLocalizations.of(context);
+    final reason = _recorder.liveTranscriptionReason;
+    final message = reason == LiveTranscriptionReason.anonymousLimit ||
+        reason == LiveTranscriptionReason.notSignedIn ||
+            reason == LiveTranscriptionReason.notConfigured ||
+            reason == LiveTranscriptionReason.offline
+        ? messageForTranscriptionReason(l10n, reason)
+        : l10n.recordingPartsFailedLive(failedCount);
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _transcribeNow() async {
     final recordingId = _pendingRecording?.id;
     if (recordingId == null || _isTranscribingNow) return;
     setState(() => _isTranscribingNow = true);
-    final result = await _recorder.transcribeStoredRecording(recordingId);
-    if (!mounted) return;
-    setState(() {
-      _isTranscribingNow = false;
+    try {
+      final result = await _recorder.transcribeStoredRecording(recordingId);
+      if (!mounted) return;
+      _hasFailedTranscription = result.failedSegments.isNotEmpty;
       if (result.transcript.isNotEmpty) {
         final sep = _textController.text.trim().isEmpty ? '' : ' ';
-        _textController.text = '${_textController.text}$sep${result.transcript}'.trim();
+        _textController.text =
+            '${_textController.text}$sep${result.transcript}'.trim();
+        _liveTextAlreadyShown = result.transcript;
       }
-    });
+      if (_hasFailedTranscription) {
+        _showTranscriptionFailure(result.failedSegments.length);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      _hasFailedTranscription = true;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text(AppLocalizations.of(context).liveTranscriptionFailing)));
+    } finally {
+      if (mounted) setState(() => _isTranscribingNow = false);
+    }
   }
 
   void _selectExistingPerson(Person person) {
@@ -455,7 +495,8 @@ class QuickAddSheetState extends State<QuickAddSheet> {
       return firstFew.length < trimmedText.length ? '$firstFew…' : firstFew;
     }
     if (placeName.trim().isNotEmpty) return placeName.trim();
-    return l10n.quickAddDefaultTitle(DateFormat.yMMMd(l10n.localeName).format(_date));
+    return l10n
+        .quickAddDefaultTitle(DateFormat.yMMMd(l10n.localeName).format(_date));
   }
 
   Future<void> _pickPhotos() async {
@@ -465,12 +506,13 @@ class QuickAddSheetState extends State<QuickAddSheet> {
           .pickPhotos(_draftEvent.id);
       if (mounted) setState(() => _photos.addAll(photos));
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content:
                   Text(AppLocalizations.of(context).storyPhotoImportFailed)),
         );
+      }
     } finally {
       if (mounted) setState(() => _isPickingPhotos = false);
     }
@@ -479,15 +521,16 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   bool get _canSave =>
       !_isSaving &&
       !_isPickingPhotos &&
-      (_recorder.state == RecorderState.idle || _recorder.state == RecorderState.failed);
+      (_recorder.state == RecorderState.idle ||
+          _recorder.state == RecorderState.failed);
 
   Future<void> _save() async {
     if (!_canSave) return;
     final l10n = AppLocalizations.of(context);
     final text = _textController.text.trim();
     if (text.isEmpty && _pendingRecording == null && _photos.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(l10n.quickAddNeedsTextOrRecording)));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.quickAddNeedsTextOrRecording)));
       return;
     }
 
@@ -517,7 +560,10 @@ class QuickAddSheetState extends State<QuickAddSheet> {
       }
     }
 
-    final files = <AttachedFile>[if (_pendingRecording != null) _pendingRecording!, ..._photos];
+    final files = <AttachedFile>[
+      if (_pendingRecording != null) _pendingRecording!,
+      ..._photos
+    ];
     final event = Event(
       id: _draftEvent.id,
       title: _deriveTitle(l10n, text, place.name),
@@ -698,7 +744,20 @@ class QuickAddSheetState extends State<QuickAddSheet> {
             textAlign: TextAlign.center,
           ),
         ],
-        if (!isRecording && _pendingRecording != null && _textController.text.trim().isEmpty)
+        if (_recorder.isAnonymousRecording && _pendingRecording == null)
+          Text(l10n.recordingAnonymousAllowance,
+              style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
+        if (!isRecording && _recorder.liveTranscriptionReason == LiveTranscriptionReason.anonymousLimit)
+          Text(l10n.liveTranscriptionAnonymousLimit),
+        if (!isRecording && _pendingRecording != null)
+          Text(l10n.recordingAttachedWithDuration(_formatElapsed(
+              Duration(milliseconds: _pendingRecording!.durationMs ?? 0)))),
+        if (_recorder.lastStopResult?.stopReason == StopReason.anonymousLimit)
+          Text(l10n.recordingAnonymousStopped, textAlign: TextAlign.center),
+        if (!isRecording &&
+            _pendingRecording != null &&
+            (_textController.text.trim().isEmpty ||
+                (_hasFailedTranscription && _liveTextAlreadyShown.isEmpty)))
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: TextButton(

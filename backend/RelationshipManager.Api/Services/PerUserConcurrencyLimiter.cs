@@ -9,7 +9,7 @@ namespace RelationshipManager.Api.Services;
 public class PerUserConcurrencyLimiter
 {
     private readonly int _maxConcurrent;
-    private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _semaphores = new();
+    private readonly ConcurrentDictionary<Guid, int> _active = new();
 
     public PerUserConcurrencyLimiter(IConfiguration config)
     {
@@ -19,15 +19,27 @@ public class PerUserConcurrencyLimiter
     /// <summary>Non-blocking: returns false immediately instead of waiting when the user is already at the limit.</summary>
     public bool TryEnter(Guid userId)
     {
-        var semaphore = _semaphores.GetOrAdd(userId, _ => new SemaphoreSlim(_maxConcurrent, _maxConcurrent));
-        return semaphore.Wait(0);
+        while (true)
+        {
+            if (!_active.TryGetValue(userId, out var count))
+            {
+                if (_active.TryAdd(userId, 1)) return true;
+                continue;
+            }
+            if (count >= _maxConcurrent) return false;
+            if (_active.TryUpdate(userId, count + 1, count)) return true;
+        }
     }
 
     public void Release(Guid userId)
     {
-        if (_semaphores.TryGetValue(userId, out var semaphore))
+        while (_active.TryGetValue(userId, out var count))
         {
-            semaphore.Release();
+            if (count == 1)
+            {
+                if (((ICollection<KeyValuePair<Guid, int>>)_active).Remove(new(userId, count))) return;
+            }
+            else if (_active.TryUpdate(userId, count - 1, count)) return;
         }
     }
 }

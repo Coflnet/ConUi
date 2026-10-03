@@ -163,7 +163,9 @@ void main() {
 
     // Let segment 1 (second) resolve well before segment 0 (first).
     await Future<void>.delayed(const Duration(milliseconds: 20));
-    expect(controller.liveTranscript, 'second');
+    expect(controller.liveTranscript, '',
+        reason:
+            'live text must remain an append-only prefix while earlier segments are pending');
 
     gate0.complete();
     final result = await controller.stop();
@@ -260,6 +262,7 @@ void main() {
     final controller = buildController(client: offlineClient, maxSegmentRetries: 0);
 
     await controller.start();
+    expect(controller.liveTranscriptionReason, LiveTranscriptionReason.offline);
     capture.emitChunk(_pcmChunk(7, _bytesPerSegment));
     await Future<void>.delayed(Duration.zero);
 
@@ -270,18 +273,115 @@ void main() {
     expect(result.attachedFile.size, wavHeaderLength + _bytesPerSegment);
   });
 
-  test('not signed in: recording works, reason says notSignedIn', () async {
-    final signedOutClient =
-        TranscriptionClient(baseUrl: 'https://api.example.com', getToken: () => null);
-    final controller = buildController(client: signedOutClient, maxSegmentRetries: 0);
+  test('anonymous recording transcribes without a preemptive sign-in failure', () async {
+    final anonymousClient = TranscriptionClient(
+      baseUrl: 'https://api.example.com', getToken: () => null,
+      httpClient: MockClient((request) async => http.Response('{"text":"guest"}', 200)),
+    );
+    final controller = buildController(client: anonymousClient, maxSegmentRetries: 0);
+    await controller.start();
+    expect(controller.liveTranscriptionReason, LiveTranscriptionReason.notStarted);
+    expect(controller.isAnonymousRecording, isTrue);
+    expect(controller.effectiveMaxDuration, const Duration(minutes: 1));
+    capture.emitChunk(_pcmChunk(7, _bytesPerSegment));
+    await Future<void>.delayed(Duration.zero);
+    final result = await controller.stop();
+    expect(controller.liveTranscriptionReason, LiveTranscriptionReason.working);
+    expect(result.transcript, 'guest');
+  });
 
+  test('anonymous audio stops at one minute and preserves the capped recording', () async {
+    final controller = buildController(client: TranscriptionClient(
+      baseUrl: 'https://api.example.com', getToken: () => null,
+      httpClient: MockClient((request) async => http.Response('{"text":"guest"}', 200)),
+    ), segmentDuration: const Duration(seconds: 6));
+    final stopped = Completer<void>();
+    controller.addListener(() {
+      if (controller.lastStopResult != null && !stopped.isCompleted) stopped.complete();
+    });
+    await controller.start();
+    capture.emitChunk(_pcmChunk(7, 61 * 32000));
+    await stopped.future.timeout(const Duration(seconds: 5));
+    final result = controller.lastStopResult!;
+    expect(result.stopReason, StopReason.anonymousLimit);
+    expect(result.attachedFile.durationMs, 60000);
+    expect(result.attachedFile.size, wavHeaderLength + 60 * 32000);
+    expect(await store.exists(result.attachedFile.id), isTrue);
+  });
+
+  test('exhausted guest allowance blocks microphone and clears previous stop result', () async {
+    var remaining = 1;
+    final controller = buildController(client: TranscriptionClient(
+      baseUrl: 'https://api.example.com', getToken: () => null,
+      httpClient: MockClient((request) async => http.Response(
+          request.method == 'GET' ? '{"remainingRecordings":$remaining}' : '{"text":"guest"}', 200)),
+    ));
+    await controller.start();
+    await controller.stop();
+    expect(controller.lastStopResult, isNotNull);
+    capture.failureOnStart = AudioCaptureException(
+        AudioCaptureFailureReason.permissionDenied, 'Microphone must not be requested');
+    remaining = 0;
+    await controller.start();
+    expect(capture.isRecording, isFalse);
+    expect(controller.failure, isNull);
+    expect(controller.lastStopResult, isNull);
+    expect(controller.state, RecorderState.idle);
+    expect(controller.liveTranscriptionReason, LiveTranscriptionReason.anonymousLimit);
+  });
+
+  test('segments and retries share one recording identity', () async {
+    final requests = <Map<String, String>>[];
+    final controller = buildController(client: echoClient(handler: (request) async {
+      requests.add(request.url.queryParameters);
+      if (requests.length == 1) return http.Response('{"slug":"transcription_failed"}', 502);
+      return http.Response('{"text":"ok"}', 200);
+    }));
+    await controller.start();
+    capture.emitChunk(_pcmChunk(7, _bytesPerSegment));
+    capture.emitChunk(_pcmChunk(8, _bytesPerSegment));
+    await Future<void>.delayed(Duration.zero);
+    final result = await controller.stop();
+    expect(requests.map((r) => r['recordingId']).toSet(), {result.attachedFile.id});
+    expect(requests.where((r) => r['segment'] == '0'), hasLength(2));
+    expect(requests.where((r) => r['segment'] == '1'), hasLength(1));
+  });
+
+  for (final status in [401, 413, 415, 503]) {
+    test('permanent transcription failure $status does not retry or lose audio', () async {
+      var requests = 0;
+      final controller = buildController(client: echoClient(handler: (request) async {
+        requests++;
+        return http.Response('{"slug":"transcription_not_configured"}', status);
+      }));
+      await controller.start();
+      capture.emitChunk(_pcmChunk(7, _bytesPerSegment));
+      await Future<void>.delayed(Duration.zero);
+      final result = await controller.stop();
+      expect(requests, 1);
+      expect(result.failedSegments, hasLength(1));
+      expect(await store.exists(result.attachedFile.id), isTrue);
+    });
+  }
+
+  test('anonymous quota exhaustion does not retry and asks for sign-in', () async {
+    var requests = 0;
+    final controller = buildController(client: TranscriptionClient(
+      baseUrl: 'https://api.example.com', getToken: () => null,
+      httpClient: MockClient((request) async {
+        if (request.method == 'GET') return http.Response('{"remainingRecordings":3}', 200);
+        requests++;
+        return http.Response('{"slug":"anonymous_daily_limit"}', 429);
+      }),
+    ));
     await controller.start();
     capture.emitChunk(_pcmChunk(7, _bytesPerSegment));
     await Future<void>.delayed(Duration.zero);
-
-    await controller.stop();
-
-    expect(controller.liveTranscriptionReason, LiveTranscriptionReason.notSignedIn);
+    final result = await controller.stop();
+    expect(requests, 1);
+    expect(controller.liveTranscriptionReason, LiveTranscriptionReason.anonymousLimit);
+    expect(result.failedSegments, hasLength(1));
+    expect(await store.exists(result.attachedFile.id), isTrue);
   });
 
   test('at most 2 transcription requests are in flight at once', () async {
@@ -339,6 +439,40 @@ void main() {
     expect(controller.state, RecorderState.idle);
     expect(controller.lastStopResult, isNotNull);
     expect(controller.lastStopResult!.stopReason, StopReason.maxDuration);
+  });
+
+  test('stored retry keeps live segment identity after an oversized microphone chunk', () async {
+    final liveBodies = <Uint8List>[];
+    final retryBodies = <Uint8List>[];
+    var retry = false;
+    final controller = buildController(client: echoClient(handler: (request) async {
+      (retry ? retryBodies : liveBodies).add(Uint8List.fromList(request.bodyBytes));
+      return http.Response('{"text":"ok"}', 200);
+    }));
+    await controller.start();
+    capture.emitChunk(_pcmChunk(7, 3600));
+    await Future<void>.delayed(Duration.zero);
+    final stopped = await controller.stop();
+    retry = true;
+    await controller.transcribeStoredRecording(stopped.attachedFile.id);
+    expect(retryBodies, liveBodies);
+  });
+
+  test('stored retry keeps live segment identity at an exact six-second quiet-cut boundary', () async {
+    final liveBodies = <Uint8List>[];
+    final retryBodies = <Uint8List>[];
+    var retry = false;
+    final controller = buildController(client: echoClient(handler: (request) async {
+      (retry ? retryBodies : liveBodies).add(Uint8List.fromList(request.bodyBytes));
+      return http.Response('{"text":"ok"}', 200);
+    }), segmentDuration: const Duration(seconds: 6));
+    await controller.start();
+    capture.emitChunk(_pcmChunk(7, 192000));
+    await Future<void>.delayed(Duration.zero);
+    final stopped = await controller.stop();
+    retry = true;
+    await controller.transcribeStoredRecording(stopped.attachedFile.id);
+    expect(retryBodies, liveBodies);
   });
 
   test('transcribeStoredRecording cuts a stored recording and transcribes it',

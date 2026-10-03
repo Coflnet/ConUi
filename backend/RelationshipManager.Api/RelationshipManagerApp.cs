@@ -4,6 +4,8 @@ using RelationshipManager.Api.Data;
 using RelationshipManager.Api.Errors;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Net;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -122,6 +124,9 @@ public static class RelationshipManagerApp
         builder.Services.AddHttpClient("transcription");
         builder.Services.TryAddSingleton<ITranscriptionService, TranscriptionService>();
         builder.Services.TryAddSingleton<PerUserConcurrencyLimiter>();
+        builder.Services.TryAddSingleton<IAnonymousQuotaStore, CassandraAnonymousQuotaStore>();
+        builder.Services.TryAddSingleton(TimeProvider.System);
+        builder.Services.TryAddSingleton<AnonymousRecordingQuota>();
 
         // Firebase: only initialize when a service account is actually configured, so
         // /api/auth/firebase can answer 503 instead of trusting an unverified token when it's
@@ -207,7 +212,20 @@ public static class RelationshipManagerApp
             });
         });
 
+        builder.Services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
+            options.ForwardLimit = 1;
+            options.KnownNetworks.Clear();
+            options.KnownProxies.Clear();
+            foreach (var proxy in builder.Configuration.GetSection("ReverseProxy:KnownProxies").Get<string[]>() ?? Array.Empty<string>())
+                options.KnownProxies.Add(IPAddress.Parse(proxy));
+            // An empty allowlist must trust nobody; ASP.NET otherwise treats it as trust-all.
+            if (options.KnownProxies.Count == 0) options.KnownProxies.Add(IPAddress.None);
+        });
+
         var app = builder.Build();
+        app.UseForwardedHeaders();
 
         if (app.Environment.IsDevelopment())
         {

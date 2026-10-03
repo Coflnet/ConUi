@@ -36,6 +36,8 @@ public class TestWebApplicationFactory : IAsyncDisposable
     public FakeCassandraConnection CassandraConnection { get; } = new();
     public FakeFirebaseTokenVerifier FirebaseVerifier { get; } = new();
     public FakeTranscriptionService TranscriptionService { get; } = new();
+    public InMemoryAnonymousQuotaStore AnonymousQuotaStore { get; set; } = new();
+    public TimeProvider Clock { get; set; } = TimeProvider.System;
 
     public string Environment { get; set; } = "Development";
     public HttpMessageHandler? OidcHttpHandler { get; set; }
@@ -75,6 +77,8 @@ public class TestWebApplicationFactory : IAsyncDisposable
             builder.Services.AddSingleton<ICassandraConnection>(CassandraConnection);
             builder.Services.AddSingleton<IFirebaseTokenVerifier>(FirebaseVerifier);
             builder.Services.AddSingleton<ITranscriptionService>(TranscriptionService);
+            builder.Services.AddSingleton<IAnonymousQuotaStore>(AnonymousQuotaStore);
+            builder.Services.AddSingleton(Clock);
         }, environmentName: Environment, contentRootPath: ContentRootPath);
 
         await _app.StartAsync();

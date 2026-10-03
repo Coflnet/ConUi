@@ -8,4 +8,7 @@ public class TranscriptionResult
 public class TranscriptionStatus
 {
     public bool Available { get; set; }
+    public int? RemainingRecordings { get; set; }
+    public int DailyLimit { get; set; } = 3;
+    public int MaxDurationSeconds { get; set; } = 60;
 }

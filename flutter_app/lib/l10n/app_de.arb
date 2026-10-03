@@ -144,10 +144,10 @@
 
   "liveTranscriptionNotStarted": "Aufnahme läuft…",
   "liveTranscriptionWorking": "Der Text wird automatisch mitgeschrieben.",
-  "liveTranscriptionOffline": "Keine Internetverbindung - die Aufnahme läuft weiter, nur ohne den mitgeschriebenen Text.",
-  "liveTranscriptionNotSignedIn": "Melden Sie sich an, damit der Text automatisch mitgeschrieben wird. Die Aufnahme läuft weiter.",
-  "liveTranscriptionNotConfigured": "Der Text kann gerade nicht automatisch mitgeschrieben werden. Die Aufnahme läuft weiter.",
-  "liveTranscriptionFailing": "Der Text kann gerade nicht zuverlässig mitgeschrieben werden. Die Aufnahme läuft weiter.",
+  "liveTranscriptionOffline": "Der Server für die Texterkennung ist nicht erreichbar. Prüfen Sie Ihre Internetverbindung und versuchen Sie es nach dem Beenden erneut. Ihre Aufnahme bleibt auf diesem Gerät.",
+  "liveTranscriptionNotSignedIn": "Ihre Anmeldung ist abgelaufen. Speichern Sie Ihre Geschichte und melden Sie sich in den Einstellungen erneut an. Ihre Aufnahme bleibt auf diesem Gerät.",
+  "liveTranscriptionNotConfigured": "Die Texterkennung ist auf dem Server vorübergehend nicht verfügbar. Speichern Sie Ihre Aufnahme und versuchen Sie es später erneut; Sie können Ihre Geschichte auch eintippen.",
+  "liveTranscriptionFailing": "Die Texterkennung ist fehlgeschlagen. Speichern Sie Ihre Aufnahme und versuchen Sie es später erneut oder tippen Sie Ihre Geschichte ein. Ihre Aufnahme bleibt auf diesem Gerät.",
   "recordingPartsFailedLive": "{count, plural, =1{Ein Teil konnte nicht automatisch mitgeschrieben werden. Die Aufnahme wurde behalten.} other{{count} Teile konnten nicht automatisch mitgeschrieben werden. Die Aufnahme wurde behalten.}}",
   "recordingAttachedWithDuration": "Aufnahme angehängt ({duration})",
   "recordingPlayerPlay": "Abspielen",
@@ -501,5 +501,8 @@
   "storyAddPhotos": "Fotos hinzufügen",
   "storyPhotosLocal": "Fotos werden auf diesem Gerät gespeichert und in Sicherungen aufgenommen.",
   "storyPhotoImportFailed": "Das Foto konnte nicht hinzugefügt werden. Wählen Sie ein PNG- oder JPEG-Bild und versuchen Sie es erneut. Prüfen Sie den freien Speicherplatz auf diesem Gerät.",
-  "storyPhotoUnavailable": "Dieses Foto ist auf diesem Gerät nicht verfügbar. Stellen Sie eine Sicherung mit dem Foto wieder her oder fügen Sie es beim Bearbeiten der Geschichte erneut hinzu."
+  "storyPhotoUnavailable": "Dieses Foto ist auf diesem Gerät nicht verfügbar. Stellen Sie eine Sicherung mit dem Foto wieder her oder fügen Sie es beim Bearbeiten der Geschichte erneut hinzu.",
+  "liveTranscriptionAnonymousLimit": "Die 3 täglichen Aufnahmen für diese Internetverbindung sind aufgebraucht. Speichern Sie Ihre Geschichte und melden Sie sich in den Einstellungen an, um weitere Aufnahmen zu machen, oder versuchen Sie es morgen erneut.",
+  "recordingAnonymousAllowance": "Ohne Anmeldung: 3 Aufnahmen pro Tag und Internetverbindung, jeweils bis zu 1 Minute.",
+  "recordingAnonymousStopped": "Die Grenze von 1 Minute wurde erreicht. Ihre Aufnahme wird mit dieser Geschichte gespeichert. Speichern Sie Ihre Geschichte und melden Sie sich in den Einstellungen für längere Aufnahmen an."
 }

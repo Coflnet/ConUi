@@ -104,7 +104,7 @@ public class TranscriptionControllerTests
     }
 
     [Test]
-    public async Task Segment_Returns401_WithoutAuthentication()
+    public async Task Segment_RequestsRecordingIdentity_WithoutAuthentication()
     {
         var factory = new TestWebApplicationFactory();
         factory.TranscriptionService.IsConfigured = true;
@@ -113,7 +113,8 @@ public class TranscriptionControllerTests
 
         var response = await client.PostAsync("/api/transcription/segment", WavContent());
 
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        Assert.That(await response.Content.ReadAsStringAsync(), Does.Contain("invalid_recording_segment"));
     }
 
     [Test]

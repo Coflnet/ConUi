@@ -45,24 +45,22 @@ void main() {
       expect(capturedUri!.queryParameters['language'], 'de');
     });
 
-    test('throws unauthorized without hitting the network when signed out',
-        () async {
-      var called = false;
+    test('sends anonymous recording identity without a bearer token', () async {
+      http.Request? captured;
       final client = TranscriptionClient(
         baseUrl: 'https://api.example.com',
         getToken: () => null,
         httpClient: MockClient((request) async {
-          called = true;
-          return http.Response('{}', 200);
+          captured = request;
+          return http.Response('{"text":"anonymous"}', 200);
         }),
       );
-
-      await expectLater(
-        () => client.transcribeSegment(Uint8List(0)),
-        throwsA(isA<TranscriptionException>().having(
-            (e) => e.kind, 'kind', TranscriptionErrorKind.unauthorized)),
-      );
-      expect(called, isFalse);
+      expect(await client.transcribeSegment(Uint8List(0),
+          recordingId: 'test-recording', segment: 2, language: 'de'), 'anonymous');
+      expect(captured!.headers.containsKey('Authorization'), isFalse);
+      expect(captured!.url.queryParameters, {
+        'recordingId': 'test-recording', 'segment': '2', 'language': 'de',
+      });
     });
 
     test('throws offline without hitting the network when baseUrl is empty',
@@ -108,6 +106,9 @@ void main() {
       await expectKind(429, 'rate_limited', TranscriptionErrorKind.rateLimited);
       await expectKind(
           502, 'transcription_failed', TranscriptionErrorKind.transcriptionFailed);
+      await expectKind(429, 'anonymous_daily_limit', TranscriptionErrorKind.anonymousLimit);
+      await expectKind(413, 'anonymous_recording_too_long', TranscriptionErrorKind.anonymousLimit);
+      await expectKind(503, 'recording_quota_unavailable', TranscriptionErrorKind.other);
       await expectKind(503, 'transcription_not_configured',
           TranscriptionErrorKind.notConfigured);
     });
@@ -129,6 +130,28 @@ void main() {
     });
   });
 
+  group('remainingAnonymousRecordings', () {
+    test('reads server remaining recordings without authentication', () async {
+      final client = TranscriptionClient(
+        baseUrl: 'https://api.example.com', getToken: () => null,
+        httpClient: MockClient((request) async {
+          expect(request.url.path, '/api/transcription/status');
+          expect(request.headers.containsKey('Authorization'), isFalse);
+          return http.Response('{"available":true,"remainingRecordings":0}', 200);
+        }),
+      );
+      expect(await client.remainingAnonymousRecordings(), 0);
+    });
+
+    test('network failure leaves anonymous allowance unknown', () async {
+      final client = TranscriptionClient(
+        baseUrl: 'https://api.example.com', getToken: () => null,
+        httpClient: MockClient((request) async { throw const SocketExceptionStub(); }),
+      );
+      expect(await client.remainingAnonymousRecordings(), isNull);
+    });
+  });
+
   group('isAvailable', () {
     test('true when the backend reports available', () async {
       final client = TranscriptionClient(
@@ -136,6 +159,7 @@ void main() {
         getToken: () => 'tok',
         httpClient: MockClient((request) async {
           expect(request.url.path, '/api/transcription/status');
+          expect(request.headers['Authorization'], 'Bearer tok');
           return http.Response(jsonEncode({'available': true}), 200);
         }),
       );
@@ -155,6 +179,18 @@ void main() {
       );
       expect(await client.isAvailable(), isFalse);
       expect(called, isFalse);
+    });
+
+    test('checks anonymous availability without a bearer token', () async {
+      final client = TranscriptionClient(
+        baseUrl: 'https://api.example.com',
+        getToken: () => null,
+        httpClient: MockClient((request) async {
+          expect(request.headers.containsKey('Authorization'), isFalse);
+          return http.Response(jsonEncode({'available': true}), 200);
+        }),
+      );
+      expect(await client.isAvailable(), isTrue);
     });
 
     test('false on any network error', () async {

@@ -29,6 +29,7 @@ enum LiveTranscriptionReason {
   offline,
   notSignedIn,
   notConfigured,
+  anonymousLimit,
 
   /// Segments keep failing for some other reason (rate limited, backend
   /// error, unsupported audio, ...).
@@ -41,6 +42,8 @@ LiveTranscriptionReason _reasonFor(TranscriptionErrorKind kind) {
       return LiveTranscriptionReason.offline;
     case TranscriptionErrorKind.unauthorized:
       return LiveTranscriptionReason.notSignedIn;
+    case TranscriptionErrorKind.anonymousLimit:
+      return LiveTranscriptionReason.anonymousLimit;
     case TranscriptionErrorKind.notConfigured:
       return LiveTranscriptionReason.notConfigured;
     case TranscriptionErrorKind.payloadTooLarge:
@@ -70,7 +73,7 @@ class TranscriptSegment {
   TranscriptSegment({required this.sequence, required this.pcmBytes});
 }
 
-enum StopReason { user, maxDuration }
+enum StopReason { user, maxDuration, anonymousLimit }
 
 /// Everything a caller needs after a recording stops: the file to attach to
 /// an Event, the transcript assembled so far, and which segments (if any)
@@ -179,14 +182,13 @@ class RecorderController extends ChangeNotifier {
   List<TranscriptSegment> get segments => List.unmodifiable(_segments);
   int _nextSequence = 0;
 
-  /// Always a pure function of the current segment states, so it self-heals
-  /// into the right order as out-of-order answers arrive: a segment that
-  /// resolves late simply reflows into its correct position next time this
-  /// is read.
+  /// An append-only prefix: later answers wait for earlier segments to
+  /// succeed or exhaust their retries before becoming visible.
   String get liveTranscript {
     final sorted = [..._segments]
       ..sort((a, b) => a.sequence.compareTo(b.sequence));
     return sorted
+        .takeWhile((s) => s.text != null || s.failed)
         .map((s) => s.text ?? '')
         .where((t) => t.isNotEmpty)
         .join(' ')
@@ -200,6 +202,13 @@ class RecorderController extends ChangeNotifier {
   StreamSubscription<double>? _amplitudeSubscription;
   Timer? _ticker;
   bool _autoStopping = false;
+  bool _anonymousRecording = false;
+  int _recordedPcmBytes = 0;
+  static const anonymousMaxDuration = Duration(minutes: 1);
+  bool get isAnonymousRecording => _state == RecorderState.idle || _state == RecorderState.failed
+      ? _transcriptionClient.getToken() == null : _anonymousRecording;
+  Duration get effectiveMaxDuration => _anonymousRecording && maxDuration > anonymousMaxDuration
+      ? anonymousMaxDuration : maxDuration;
   PageLifecycleUnsubscribe? _pageHideUnsubscribe;
 
   final Queue<TranscriptSegment> _pendingQueue = Queue();
@@ -223,7 +232,15 @@ class RecorderController extends ChangeNotifier {
 
     _state = RecorderState.requestingPermission;
     _failure = null;
+    _lastStopResult = null;
+    _anonymousRecording = _transcriptionClient.getToken() == null;
     notifyListeners();
+    if (_anonymousRecording && await _transcriptionClient.remainingAnonymousRecordings() == 0) {
+      _liveTranscriptionReason = LiveTranscriptionReason.anonymousLimit;
+      _state = RecorderState.idle;
+      notifyListeners();
+      return;
+    }
 
     final Stream<Uint8List> chunkStream;
     try {
@@ -242,7 +259,10 @@ class RecorderController extends ChangeNotifier {
     _nextSequence = 0;
     _currentSegmentPcm = BytesBuilder();
     _appendChain = Future.value();
-    _liveTranscriptionReason = LiveTranscriptionReason.notStarted;
+    _recordedPcmBytes = 0;
+    _liveTranscriptionReason = !_transcriptionClient.isConfigured
+        ? LiveTranscriptionReason.offline
+        : LiveTranscriptionReason.notStarted;
     _elapsed = Duration.zero;
     _startedAt = DateTime.now();
     _autoStopping = false;
@@ -286,9 +306,10 @@ class RecorderController extends ChangeNotifier {
     if (_startedAt == null) return;
     _elapsed = DateTime.now().difference(_startedAt!);
     notifyListeners();
-    if (!_autoStopping && _elapsed >= maxDuration) {
+    if (!_autoStopping && _elapsed >= effectiveMaxDuration) {
       _autoStopping = true;
-      unawaited(stop(reason: StopReason.maxDuration));
+      unawaited(stop(reason: _anonymousRecording && effectiveMaxDuration == anonymousMaxDuration
+          ? StopReason.anonymousLimit : StopReason.maxDuration));
     }
   }
 
@@ -299,17 +320,27 @@ class RecorderController extends ChangeNotifier {
   Future<void> _handleChunk(Uint8List chunk) async {
     // Crash safety first: the byte is durable before anything else happens
     // to it. Transcription problems below never affect this.
+    final byteLimit = anonymousMaxDuration.inSeconds * format.bytesPerSecond;
+    if (_anonymousRecording) {
+      final remaining = (byteLimit - _recordedPcmBytes).clamp(0, byteLimit);
+      if (chunk.length > remaining) chunk = Uint8List.sublistView(chunk, 0, remaining);
+    }
     await _fileStore.appendChunk(_recordingId!, chunk);
+    _recordedPcmBytes += chunk.length;
     _currentSegmentPcm.add(chunk);
     _maybeCutSegment();
+    if (_anonymousRecording && !_autoStopping && _recordedPcmBytes >= byteLimit) {
+      _autoStopping = true;
+      unawaited(stop(reason: StopReason.anonymousLimit));
+    }
   }
 
   void _maybeCutSegment() {
     final targetBytes =
         (format.sampleRate * segmentDuration.inMicroseconds / 1000000).round() *
             format.bytesPerSample;
-    if (_currentSegmentPcm.length >= targetBytes) {
-      _cutAndEnqueueCurrentSegment();
+    while (_currentSegmentPcm.length >= targetBytes) {
+      _cutAndEnqueueCurrentSegment(targetBytes: targetBytes);
     }
   }
 
@@ -324,14 +355,15 @@ class RecorderController extends ChangeNotifier {
     return scaled < oneSecond ? scaled : oneSecond;
   }
 
-  void _cutAndEnqueueCurrentSegment({bool force = false}) {
+  void _cutAndEnqueueCurrentSegment({bool force = false, int? targetBytes}) {
     final bytes = _currentSegmentPcm.toBytes();
     if (bytes.isEmpty) return;
 
     final cutPoint = force
         ? bytes.length
-        : findQuietestCutPoint(bytes, format: format, searchWindow: _cutSearchWindow);
-    final effectiveCut = cutPoint > 0 ? cutPoint : bytes.length;
+        : findQuietestCutPoint(Uint8List.sublistView(bytes, 0, targetBytes),
+            format: format, searchWindow: _cutSearchWindow);
+    final effectiveCut = cutPoint > 0 ? cutPoint : targetBytes ?? bytes.length;
 
     final segmentBytes = bytes.sublist(0, effectiveCut);
     final remainder = bytes.sublist(effectiveCut);
@@ -350,7 +382,7 @@ class RecorderController extends ChangeNotifier {
     while (_pendingQueue.isNotEmpty && _activeJobs.length < maxConcurrentRequests) {
       final job = _pendingQueue.removeFirst();
       late final Future<void> future;
-      future = _resolveJob(job).whenComplete(() {
+      future = _resolveJob(job, recordingId: _recordingId!).whenComplete(() {
         _activeJobs.remove(future);
         _pumpQueue();
       });
@@ -361,28 +393,40 @@ class RecorderController extends ChangeNotifier {
   /// Transcribes one segment, retrying with backoff up to
   /// [maxSegmentRetries] times before giving up on it. Never throws -
   /// failure just marks the segment [TranscriptSegment.failed].
-  Future<void> _resolveJob(TranscriptSegment job, {String? language}) async {
+  Future<void> _resolveJob(TranscriptSegment job, {
+    required String recordingId,
+    String? language,
+  }) async {
     while (true) {
       try {
         final wav = WavHeader.wrap(job.pcmBytes, format: format);
         final text = await _transcriptionClient.transcribeSegment(
           wav,
           language: language ?? this.language,
+          recordingId: recordingId,
+          segment: job.sequence,
         );
         job.text = text;
-        _liveTranscriptionReason = LiveTranscriptionReason.working;
+        if (_liveTranscriptionReason != LiveTranscriptionReason.anonymousLimit) {
+          _liveTranscriptionReason = LiveTranscriptionReason.working;
+        }
         notifyListeners();
         return;
       } catch (e) {
         job.attempts++;
         final kind = e is TranscriptionException ? e.kind : TranscriptionErrorKind.other;
         _liveTranscriptionReason = _reasonFor(kind);
-        notifyListeners();
-
-        if (job.attempts > maxSegmentRetries) {
+        if (kind == TranscriptionErrorKind.anonymousLimit ||
+            kind == TranscriptionErrorKind.unauthorized ||
+            kind == TranscriptionErrorKind.notConfigured ||
+            kind == TranscriptionErrorKind.payloadTooLarge ||
+            kind == TranscriptionErrorKind.unsupportedMedia ||
+            job.attempts > maxSegmentRetries) {
           job.failed = true;
+          notifyListeners();
           return;
         }
+        notifyListeners();
         await Future<void>.delayed(backoff(job.attempts));
       }
     }
@@ -482,7 +526,7 @@ class RecorderController extends ChangeNotifier {
       while (queue.isNotEmpty && active.length < maxConcurrentRequests) {
         final job = queue.removeFirst();
         late final Future<void> future;
-        future = _resolveJob(job, language: language).whenComplete(() => active.remove(future));
+        future = _resolveJob(job, recordingId: recordingId, language: language).whenComplete(() => active.remove(future));
         active.add(future);
       }
     }
@@ -518,7 +562,7 @@ class RecorderController extends ChangeNotifier {
     while (offset < pcm.length) {
       final remaining = pcm.length - offset;
       int cutLength;
-      if (remaining <= targetBytes) {
+      if (remaining < targetBytes) {
         cutLength = remaining;
       } else {
         final window = Uint8List.sublistView(pcm, offset, offset + targetBytes);

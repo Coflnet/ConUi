@@ -98,10 +98,30 @@ class _AddEventScreenState extends State<AddEventScreen> {
     if (_recorder.state == RecorderState.recording) {
       final live = _recorder.liveTranscript;
       if (live.isNotEmpty) {
-        _descriptionController.text = live;
+        _descriptionController.text = [
+          if (_descriptionBeforeRecording?.trim().isNotEmpty ?? false) _descriptionBeforeRecording!.trim(),
+          live,
+        ].join(' ');
       }
     }
+    final result = _recorder.lastStopResult;
+    if (_recorder.state == RecorderState.idle && result != null &&
+        _pendingRecording?.id != result.attachedFile.id) {
+      _pendingRecording = result.attachedFile;
+      if (result.transcript.isNotEmpty) {
+        _descriptionController.text = [
+          if (_descriptionBeforeRecording?.trim().isNotEmpty ?? false) _descriptionBeforeRecording!.trim(),
+          result.transcript,
+        ].join(' ');
+      }
+      if (result.failedSegments.isNotEmpty) _showTranscriptionFailure();
+    }
     setState(() {});
+  }
+
+  void _showTranscriptionFailure() {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        messageForTranscriptionReason(AppLocalizations.of(context), _recorder.liveTranscriptionReason))));
   }
 
   @override
@@ -117,24 +137,15 @@ class _AddEventScreenState extends State<AddEventScreen> {
 
   Future<void> _toggleRecording() async {
     if (_recorder.state == RecorderState.recording) {
-      final result = await _recorder.stop();
-      _pendingRecording = result.attachedFile;
-      if (result.transcript.isNotEmpty) {
-        _descriptionController.text = result.transcript;
-      } else if (_descriptionBeforeRecording != null) {
-        _descriptionController.text = _descriptionBeforeRecording!;
-      }
-      if (mounted && result.failedSegments.isNotEmpty) {
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.recordingPartsFailedLive(result.failedSegments.length))),
-        );
-      }
+      await _recorder.stop();
       return;
     }
 
     _descriptionBeforeRecording = _descriptionController.text;
     await _recorder.start();
+    if (mounted && _recorder.liveTranscriptionReason == LiveTranscriptionReason.anonymousLimit) {
+      _showTranscriptionFailure();
+    }
   }
 
   Future<void> _pickPhotos() async {
@@ -144,12 +155,13 @@ class _AddEventScreenState extends State<AddEventScreen> {
           .pickPhotos(_draftEvent.id);
       if (mounted) setState(() => _photos.addAll(photos));
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content:
                   Text(AppLocalizations.of(context).storyPhotoImportFailed)),
         );
+      }
     } finally {
       if (mounted) setState(() => _isPickingPhotos = false);
     }
@@ -179,7 +191,8 @@ class _AddEventScreenState extends State<AddEventScreen> {
   bool get _canSave =>
       !_isSaving &&
       !_isPickingPhotos &&
-      (_recorder.state == RecorderState.idle || _recorder.state == RecorderState.failed);
+      (_recorder.state == RecorderState.idle ||
+          _recorder.state == RecorderState.failed);
 
   Future<void> _save() async {
     if (!_canSave) return;
@@ -415,6 +428,13 @@ class _AddEventScreenState extends State<AddEventScreen> {
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
+            if (_recorder.isAnonymousRecording && _pendingRecording == null)
+              Text(l10n.recordingAnonymousAllowance,
+                  style: Theme.of(context).textTheme.bodySmall),
+            if (!isRecording && _recorder.liveTranscriptionReason == LiveTranscriptionReason.anonymousLimit)
+              Text(l10n.liveTranscriptionAnonymousLimit),
+            if (_recorder.lastStopResult?.stopReason == StopReason.anonymousLimit)
+              Text(l10n.recordingAnonymousStopped),
             if (_pendingRecording != null && !isRecording)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
