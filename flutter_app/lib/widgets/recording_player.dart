@@ -64,6 +64,10 @@ class RecordingPlayerState extends State<RecordingPlayer> {
   Future<void> _load() async {
     try {
       final source = await widget.store.openPlaybackSource(widget.file.id);
+      if (!mounted) {
+        source.release();
+        return;
+      }
       _source = source;
       final playerSource = source.filePath != null
           ? DeviceFileSource(source.filePath!)
@@ -71,33 +75,54 @@ class RecordingPlayerState extends State<RecordingPlayer> {
       await _player.setSource(playerSource);
       if (mounted) setState(() => _loading = false);
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = '$e';
-          _loading = false;
-        });
-      }
+      _showError(e);
+    }
+  }
+
+  void _showError(Object error) {
+    if (mounted) {
+      setState(() {
+        _error = '$error';
+        _loading = false;
+        _isPlaying = false;
+      });
     }
   }
 
   Future<void> _togglePlayPause() async {
-    if (_isPlaying) {
-      await _player.pause();
-    } else {
-      await _player.resume();
+    try {
+      if (_isPlaying) {
+        await _player.pause();
+      } else {
+        await _player.resume();
+      }
+    } catch (e) {
+      _showError(e);
     }
   }
 
   Future<void> _seek(double positionMs) async {
-    await _player.seek(Duration(milliseconds: positionMs.round()));
+    try {
+      await _player.seek(Duration(milliseconds: positionMs.round()));
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  Future<void> _disposePlayer() async {
+    try {
+      await _player.dispose();
+    } catch (_) {
+      // Teardown cannot show an error after this widget has been removed.
+    } finally {
+      // Revoke the URL only after the media element has stopped using it.
+      _source?.release();
+    }
   }
 
   @override
   void dispose() {
-    // On web this revokes the blob: object URL; on native it's a no-op.
-    // See PlaybackSource's doc comment.
-    _source?.release();
-    _player.dispose();
+    _disposePlayer();
     super.dispose();
   }
 
