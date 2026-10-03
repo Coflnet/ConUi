@@ -16,6 +16,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:relationship_manager/l10n/gen/app_localizations.dart';
+import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/screens/map/map_screen.dart';
 import 'package:relationship_manager/services/database_service.dart';
 import 'package:relationship_manager/services/location_service.dart';
@@ -90,6 +91,26 @@ void main() {
         await tester.pump();
       }
     }
+
+    testWidgets('multiple places at the same coordinates keep a finite useful camera',
+        (tester) async {
+      late DatabaseService db;
+      await tester.runAsync(() async {
+        db = createTestDatabaseService();
+        await db.initialize();
+        for (final id in ['first', 'second']) {
+          await db.savePlace(Place(id: id, name: id, latitude: 50, longitude: 10));
+        }
+      });
+      await pumpMap(tester, db, _FakeLocationService());
+      final map = tester.widget<FlutterMap>(find.byType(FlutterMap));
+      final camera = map.mapController!.camera;
+      expect(camera.zoom.isFinite, isTrue);
+      expect(camera.zoom, 14);
+      expect(camera.center.latitude, closeTo(50, 0.000001));
+      expect(camera.center.longitude, closeTo(10, 0.000001));
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets('without location permission, centers on central Europe at a wide zoom',
         (tester) async {

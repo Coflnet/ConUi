@@ -144,6 +144,7 @@ class MapScreenState extends State<MapScreen> {
         _mapController.fitCamera(CameraFit.coordinates(
           coordinates: places.map((p) => LatLng(p.latitude, p.longitude)).toList(),
           padding: const EdgeInsets.all(48),
+          maxZoom: 14,
         ));
       }
     });
