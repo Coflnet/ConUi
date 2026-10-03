@@ -53,7 +53,8 @@ void main() {
     expect(find.text('Bert'), findsOneWidget);
   });
 
-  testWidgets('stops listening once disposed (no leaked listener/late setState)',
+  testWidgets(
+      'stops listening once disposed (no leaked listener/late setState)',
       (tester) async {
     final db = FakeDatabaseService();
     await _pumpPersonsScreen(tester, db);
@@ -72,5 +73,40 @@ void main() {
     // State.
     await db.savePerson(Person(id: 'carla', name: 'Carla'));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets(
+      'returning from person detail after the list is disposed does not reload it',
+      (tester) async {
+    final db = FakeDatabaseService();
+    db.persons['anna'] = Person(id: 'anna', name: 'Anna');
+    final showPersons = ValueNotifier(true);
+    addTearDown(showPersons.dispose);
+    await tester.pumpWidget(ChangeNotifierProvider<DatabaseService>.value(
+      value: db,
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ValueListenableBuilder<bool>(
+          valueListenable: showPersons,
+          builder: (_, visible, __) => visible
+              ? const PersonsScreen()
+              : const Scaffold(body: Text('Replacement list')),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Anna'));
+    await tester.pumpAndSettle();
+
+    // Changing Home's responsive layout recreates its PersonsScreen subtree
+    // while the detail route stays open. Dispose only that underlying list.
+    showPersons.value = false;
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Replacement list'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

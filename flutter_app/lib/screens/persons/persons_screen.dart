@@ -44,6 +44,7 @@ class _PersonsScreenState extends State<PersonsScreen> {
   }
 
   Future<void> _loadPersons() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     final persons = await _db.getPersons();
     if (mounted) {
