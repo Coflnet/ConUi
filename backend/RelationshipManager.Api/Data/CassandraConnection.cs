@@ -68,6 +68,9 @@ public class CassandraConnection : ICassandraConnection
                 false,
                 (sender, certificate, chain, errors) => certificate != null && chain != null && (certificateValidator?.Validate(certificate, chain, errors) ?? true)
             ).SetCertificateCollection(new X509Certificate2Collection(certificatePaths.Split(',').Select(p => new X509Certificate2(p, password)).ToArray()));
+            var tlsServerName = section["TLS_SERVER_NAME"];
+            if (!string.IsNullOrWhiteSpace(tlsServerName))
+                sslOptions.SetHostNameResolver(_ => tlsServerName);
             builder.WithSSL(sslOptions);
             logger.LogInformation("Using Cassandra client certificate TLS");
         }

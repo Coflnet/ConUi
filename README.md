@@ -107,6 +107,7 @@ Every key below can be set via `appsettings*.json` or the matching environment v
 | `CASSANDRA:X509Certificate_PATHS` | `CASSANDRA__X509Certificate_PATHS` | Comma-separated client certificate file(s) for TLS. Production Scylla requires this. | unset (TLS off) |
 | `CASSANDRA:X509Certificate_PASSWORD` | `CASSANDRA__X509Certificate_PASSWORD` | Password for the client certificate(s). Required if `X509Certificate_PATHS` is set. | - |
 | `CASSANDRA:X509Certificate_VALIDATION_PATH` | `CASSANDRA__X509Certificate_VALIDATION_PATH` | Root CA certificate to pin server validation to, instead of the system trust store. | unset |
+| `CASSANDRA:TLS_SERVER_NAME` | `CASSANDRA__TLS_SERVER_NAME` | Expected server certificate name when contact points are IP addresses. Certificate name and CA validation still apply. | unset (driver resolves host name) |
 | `S3:ENDPOINT` / `S3:ACCESS_KEY` / `S3:SECRET_KEY` / `S3:BUCKET` | `S3__ENDPOINT` / `S3__ACCESS_KEY` / `S3__SECRET_KEY` / `S3__BUCKET` | S3-compatible blob storage. Provision the bucket before enabling S3; the app checks only that bucket and never lists or creates buckets. S3 is optional: if any of these is blank, or the bucket can't be reached, blob-related endpoints answer `503` instead of failing to start. | MinIO dev values (Development) |
 | `S3:USE_PATH_STYLE` | `S3__USE_PATH_STYLE` | Path-style S3 addressing (needed for MinIO). | `true` |
 | `Transcription:BaseUrl` | `Transcription__BaseUrl` | Upstream speech-to-text base URL. Empty disables the feature (`503 transcription_not_configured`). | unset |

@@ -1,12 +1,12 @@
 using System.Net.Security;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
 namespace RelationshipManager.Api.Data;
 
 /// <summary>
 /// Validates a server certificate chain against a pinned root CA instead of the system trust
-/// store. Mirrors CoflnetCore/Cassandra/CustomRootCaCertificateValidator.cs so production Scylla
-/// TLS behaves the same as every other Coflnet service without taking a dependency on that package.
+/// store, including when the server omits its root certificate from the presented chain.
 /// </summary>
 public class CustomRootCaCertificateValidator
 {
@@ -19,11 +19,6 @@ public class CustomRootCaCertificateValidator
 
     public bool Validate(X509Certificate cert, X509Chain chain, SslPolicyErrors errors)
     {
-        if (errors == SslPolicyErrors.None)
-        {
-            return true;
-        }
-
         if ((errors & SslPolicyErrors.RemoteCertificateNotAvailable) != 0)
         {
             Console.WriteLine("SSL validation failed due to SslPolicyErrors.RemoteCertificateNotAvailable.");
@@ -36,29 +31,14 @@ public class CustomRootCaCertificateValidator
             return false;
         }
 
-        if ((errors & SslPolicyErrors.RemoteCertificateChainErrors) != 0)
-        {
-            foreach (var status in chain.ChainStatus)
-            {
-                if (status.Status is X509ChainStatusFlags.NoError or X509ChainStatusFlags.UntrustedRoot)
-                {
-                    // Acceptable status
-                }
-                else
-                {
-                    Console.WriteLine("Certificate chain validation failed. Found chain status {0} ({1}).", status.Status, status.StatusInformation);
-                    return false;
-                }
-            }
-
-            var rootCertThumbprint = chain.ChainElements[chain.ChainElements.Count - 1].Certificate.Thumbprint;
-            if (rootCertThumbprint != _trustedRootCertificateAuthority.Thumbprint)
-            {
-                Console.WriteLine("Root certificate thumbprint mismatch. Expected {0} but found {1}.", _trustedRootCertificateAuthority.Thumbprint, rootCertThumbprint);
-                return false;
-            }
-        }
-
-        return true;
+        using var trustedChain = new X509Chain();
+        trustedChain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+        trustedChain.ChainPolicy.CustomTrustStore.Add(_trustedRootCertificateAuthority);
+        trustedChain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+        trustedChain.ChainPolicy.ApplicationPolicy.Add(new Oid("1.3.6.1.5.5.7.3.1")); // TLS server authentication
+        foreach (var element in chain.ChainElements)
+            trustedChain.ChainPolicy.ExtraStore.Add(element.Certificate);
+        using var serverCertificate = new X509Certificate2(cert);
+        return trustedChain.Build(serverCertificate);
     }
 }
