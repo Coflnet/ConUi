@@ -100,14 +100,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               : syncService.needsEncryptionPassword
                   ? l10n.homeSyncPasswordRequired
                   : syncService.lastError != null
-                      ? l10n.settingsSyncFailed(syncService.lastError!)
+                      ? l10n.settingsSyncRecovery
                       : l10n.settingsSyncCompleted)),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.settingsSyncFailed(e.toString()))),
+          SnackBar(content: Text(l10n.settingsSyncRecovery)),
         );
       }
     } finally {

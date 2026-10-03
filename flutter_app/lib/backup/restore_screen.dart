@@ -31,6 +31,14 @@ class RestoreScreen extends StatefulWidget {
   State<RestoreScreen> createState() => _RestoreScreenState();
 }
 
+String _restoreErrorMessage(AppLocalizations l10n, Object? error) => switch (error) {
+  UnsupportedBackupVersionException() => l10n.backupRestoreVersionRecovery,
+  BackupTooLargeException() => l10n.backupRestoreSizeRecovery,
+  BackupArchiveCorruptException() || BackupFormatException() =>
+    l10n.backupRestoreInvalidRecovery,
+  _ => l10n.backupRestoreRecovery,
+};
+
 enum _Step { pickFile, preview, running, done }
 
 class _RestoreScreenState extends State<RestoreScreen> {
@@ -150,7 +158,7 @@ class _RestoreScreenState extends State<RestoreScreen> {
             Text(l10n.backupRestoreFailedTitle,
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            Text(error is BackupRestoreException ? error.message : error.toString()),
+            Text(_restoreErrorMessage(l10n, error)),
             const Spacer(),
             SizedBox(
               width: double.infinity,
@@ -257,7 +265,7 @@ class _RestoreScreenState extends State<RestoreScreen> {
             Text(l10n.backupRestoreFailedTitle,
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            Text(error is BackupRestoreException ? error.message : '$error'),
+            Text(_restoreErrorMessage(l10n, error)),
             const Spacer(),
             SizedBox(
               width: double.infinity,

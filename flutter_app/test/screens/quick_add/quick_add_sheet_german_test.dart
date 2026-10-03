@@ -103,7 +103,7 @@ void main() {
     await tester.runAsync(() => recorder.start());
     await tester.pump();
 
-    expect(find.text('Der Zugriff auf das Mikrofon wurde nicht erlaubt.'), findsOneWidget);
+    expect(find.text('Der Mikrofonzugriff wurde verweigert. Erlauben Sie den Zugriff in den Browser- oder Geräteeinstellungen und versuchen Sie es erneut.'), findsOneWidget);
   });
 
   testWidgets('shows the German "recording" message while recording starts', (tester) async {

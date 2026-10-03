@@ -194,8 +194,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               : syncService.needsEncryptionPassword
                                   ? l10n.homeSyncPasswordRequired
                                   : syncService.lastError != null
-                                      ? l10n.settingsSyncFailed(
-                                          syncService.lastError!)
+                                      ? l10n.settingsSyncRecovery
                                       : l10n.homeSyncComplete)),
                     );
                   }

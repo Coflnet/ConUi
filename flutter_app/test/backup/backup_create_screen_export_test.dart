@@ -177,4 +177,23 @@ void main() {
     expect(find.text('Share…'), findsOneWidget);
     expect(exportOffer.deletedPaths, isEmpty);
   });
+
+  testWidgets('failed export keeps the backup and gives recovery without raw details',
+      (tester) async {
+    late BackupService service;
+    await tester.runAsync(() async {
+      service = await buildService(isPrivateAppStorage: true);
+    });
+    final offer = FakeBackupExportOffer()
+      ..saveAsError = StateError('private technical failure');
+    await runBackupToDone(tester, service, offer);
+    await tester.tap(find.text('Save to…'));
+    await _settle(tester);
+
+    expect(find.text('Could not save the backup outside the app. Choose another save location or try Share. The backup remains inside the app.'), findsOneWidget);
+    expect(find.textContaining('private technical failure'), findsNothing);
+    expect(find.text('Share…'), findsOneWidget);
+    expect(offer.deletedPaths, isEmpty);
+  });
+
 }

@@ -128,12 +128,18 @@ void main() {
     expect(find.text('Sync complete'), findsNothing);
   });
 
-  testWidgets('failed sync reports the error without success', (tester) async {
+  testWidgets(
+      'failed sync explains recovery without technical details or success',
+      (tester) async {
     await pumpHome(tester, const Size(390, 844), signIn: true, password: true);
     await tester.tap(find.byTooltip('Sync now'));
     await _settle(tester);
-    expect(find.text('Sync failed: Bad state: Sync updates failed (503)'),
+    expect(
+        find.textContaining(
+            'Could not sync. Check your internet connection and try Sync now again.'),
         findsOneWidget);
+    expect(find.textContaining('503'), findsNothing);
+    expect(find.textContaining('Bad state'), findsNothing);
     expect(find.text('Sync complete'), findsNothing);
   });
   testWidgets('opening another route has no duplicate Hero tags',

@@ -30,7 +30,7 @@
   "loginPasswordHelper": "Used for encrypting your data",
   "loginButton": "Login",
   "loginButtonBusy": "Logging in…",
-  "loginFailed": "Login failed. Make sure the server is running.",
+  "loginFailed": "Could not sign in. Check your details and internet connection, then try again.",
   "loginContinueWithoutAccount": "Continue without account",
   "loginContinueExplainer": "Your stories and recordings stay saved on this device. With an account, you can sync your data securely between your devices using encryption.",
   "loginDevNote": "Account sign-in uses Coflnet. Your encryption password remains separate.",
@@ -165,9 +165,9 @@
   "backupRecordingInvalidIdWarning": "Recording entry \"{id}\" has an invalid id and was ignored.",
   "@backupRecordingInvalidIdWarning": {"placeholders": {"id": {"type": "String"}}},
 
-  "micPermissionDenied": "Microphone permission was denied.",
-  "micNoMicrophone": "No microphone is available on this device.",
-  "micOtherError": "Could not start recording.",
+  "micPermissionDenied": "Microphone access was denied. Allow microphone access in your browser or device settings, then try again.",
+  "micNoMicrophone": "No microphone was found. Connect or enable a microphone, then try again.",
+  "micOtherError": "Could not start recording. Close other apps using the microphone and try again, or reload the app.",
 
   "liveTranscriptionNotStarted": "Recording…",
   "liveTranscriptionWorking": "The text is being written down as you talk.",
@@ -181,7 +181,7 @@
   "@recordingAttachedWithDuration": {"placeholders": {"duration": {"type": "String"}}},
   "recordingPlayerPlay": "Play",
   "recordingPlayerPause": "Pause",
-  "recordingPlayerFailedToLoad": "Could not load this recording",
+  "recordingPlayerFailedToLoad": "Could not play this recording. Reopen the story and try again. If it is missing on this device, restore a backup containing the recording.",
 
   "quickAddTitle": "New story",
   "quickAddStartRecording": "Start recording",
@@ -613,7 +613,7 @@
   "eventDetailRelationshipsEmpty": "Save relationships separately so you can find them again under each person.",
   "eventDetailChooseRelationshipPerson": "Whose relationship would you like to add?",
   "loginAccountButton": "Sign in with your account",
-  "loginAccountUnavailable": "Account sign-in is currently unavailable. You can keep using this device locally.",
+  "loginAccountUnavailable": "Account sign-in is currently unavailable. Check your internet connection and try again later. You can keep using this device locally.",
   "loginAccountFailed": "Sign-in could not be completed. Please try again or continue without an account.",
   "eventsYearOverview": "Years",
   "eventsPreviousYear": "Previous year",
@@ -621,12 +621,26 @@
   "eventsYearStories": "{count, plural, =1{1 story} other{{count} stories}}",
   "eventsPreviousMonth": "Previous month",
   "eventsNextMonth": "Next month",
-  "@eventsYearStories": {"placeholders": {"count": {"type": "int"}}},
   "storyAddPhotos": "Add photos",
   "storyPhotosLocal": "Photos are saved on this device and included in backups.",
   "storyPhotoImportFailed": "Could not add the photo. Choose a PNG or JPEG image and try again. Check the free storage on this device.",
-  "storyPhotoUnavailable": "This photo is not available on this device. Restore a backup containing it, or edit the story to add the photo again.",
+  "@eventsYearStories": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "liveTranscriptionAnonymousLimit": "You have used the 3 daily recordings for this internet connection. Save your story, then sign in in Settings to record more, or try again tomorrow.",
   "recordingAnonymousAllowance": "Without signing in: 3 recordings per day per internet connection, up to 1 minute each.",
-  "recordingAnonymousStopped": "The 1-minute limit was reached. Your recording will be saved with this story. Save your story, then sign in in Settings for longer recordings."
+  "recordingAnonymousStopped": "The 1-minute limit was reached. Your recording will be saved with this story. Save your story, then sign in in Settings for longer recordings.",
+  "settingsSyncRecovery": "Could not sync. Check your internet connection and try Sync now again. If the service is unavailable, try again later.",
+  "backupPrepareRecovery": "Could not prepare the backup. Close this screen and try again. Check that this device has free storage.",
+  "backupCreateRecovery": "Could not create the backup. Check the free storage on this device and try again.",
+  "backupExportRecovery": "Could not save the backup outside the app. Choose another save location or try Share. The backup remains inside the app.",
+  "backupRestoreInvalidRecovery": "This file is incomplete, damaged, or not an app backup. Choose the original backup ZIP file, or download it again and retry.",
+  "backupRestoreVersionRecovery": "This backup uses a newer format. Update the app, then try restoring it again.",
+  "backupRestoreSizeRecovery": "This backup exceeds the safety limits. Choose a smaller backup file.",
+  "backupRestoreRecovery": "Could not restore the backup. Check the free storage on this device and choose the original backup file to try again.",
+  "storyPhotoUnavailable": "This photo is not available on this device. Restore a backup containing it, or edit the story to add the photo again."
 }

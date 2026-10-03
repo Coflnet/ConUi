@@ -46,7 +46,6 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
   late final BackupExportOffer _exportOffer;
   _Step _step = _Step.loadingPlan;
   BackupPlan? _plan;
-  Object? _planError;
 
   bool _cancelRequested = false;
   BackupProgress? _progress;
@@ -76,10 +75,9 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
         _plan = plan;
         _step = _Step.showingPlan;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
-        _planError = e;
         _step = _Step.showingPlan;
       });
     }
@@ -148,7 +146,7 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
     final l10n = AppLocalizations.of(context);
     final plan = _plan;
     if (plan == null) {
-      return Center(child: Text(l10n.backupCouldNotPreparePlan(_planError.toString())));
+      return Center(child: Text(l10n.backupPrepareRecovery));
     }
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -248,7 +246,7 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
             ],
           ),
         ),
-      BackupCreateFailed(:final message) => Padding(
+      BackupCreateFailed() => Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -258,7 +256,7 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
               Text(l10n.backupCreateFailedTitle,
                   style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
-              Text(message),
+              Text(l10n.backupCreateRecovery),
               const Spacer(),
               SizedBox(
                 width: double.infinity,
@@ -344,7 +342,7 @@ class _BackupCreateScreenState extends State<BackupCreateScreen> {
           if (_exportError != null) ...[
             const SizedBox(height: 12),
             Text(
-              l10n.backupExportFailed(_exportError.toString()),
+              l10n.backupExportRecovery,
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ],

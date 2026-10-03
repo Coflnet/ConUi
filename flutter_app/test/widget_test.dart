@@ -73,6 +73,6 @@ void main() {
       await tester.pump();
     }
 
-    expect(find.textContaining('Login failed'), findsOneWidget);
+    expect(find.textContaining('Could not sign in'), findsOneWidget);
   });
 }

@@ -62,7 +62,7 @@ void main() {
     for (var i = 0; i < 5; i++) {
       await tester.pump();
     }
-    expect(find.textContaining('Login failed'), findsOneWidget);
+    expect(find.textContaining('Could not sign in'), findsOneWidget);
     expect(authService.continuedWithoutAccount, isFalse);
     final signInButton = find.byKey(const Key('account-sign-in'));
     await tester.ensureVisible(signInButton);
@@ -115,7 +115,7 @@ void main() {
 
     expect(find.text('Ohne Konto fortfahren'), findsOneWidget);
     expect(find.text('Entwicklungs-Anmeldung'), findsOneWidget);
-    expect(find.textContaining('Anmeldung fehlgeschlagen'), findsOneWidget);
+    expect(find.textContaining('Die Anmeldung ist fehlgeschlagen'), findsOneWidget);
     // Nothing from the English strings must leak through.
     expect(find.text('Continue without account'), findsNothing);
     expect(find.text('Development Login'), findsNothing);

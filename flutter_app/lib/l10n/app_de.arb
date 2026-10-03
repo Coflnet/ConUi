@@ -28,7 +28,7 @@
   "loginPasswordHelper": "Wird zur Verschlüsselung Ihrer Daten verwendet",
   "loginButton": "Anmelden",
   "loginButtonBusy": "Anmeldung läuft…",
-  "loginFailed": "Anmeldung fehlgeschlagen. Bitte stellen Sie sicher, dass der Server läuft.",
+  "loginFailed": "Die Anmeldung ist fehlgeschlagen. Prüfen Sie Ihre Angaben und Ihre Internetverbindung und versuchen Sie es erneut.",
   "loginContinueWithoutAccount": "Ohne Konto fortfahren",
   "loginContinueExplainer": "Ihre Geschichten und Aufnahmen bleiben auf diesem Gerät gespeichert. Mit einem Konto können Sie Ihre Daten verschlüsselt zwischen Ihren Geräten abgleichen.",
   "loginDevNote": "Die Konto-Anmeldung erfolgt über Coflnet. Ihr Verschlüsselungspasswort bleibt davon getrennt.",
@@ -138,9 +138,9 @@
   "backupRecordingChecksumWarning": "Aufnahme {id}: Die Daten im Archiv sind beschädigt (Prüfsumme fehlgeschlagen) und wurden nicht wiederhergestellt.",
   "backupRecordingInvalidIdWarning": "Der Aufnahmeeintrag „{id}“ hat eine ungültige ID und wurde ignoriert.",
 
-  "micPermissionDenied": "Der Zugriff auf das Mikrofon wurde nicht erlaubt.",
-  "micNoMicrophone": "Auf diesem Gerät ist kein Mikrofon verfügbar.",
-  "micOtherError": "Die Aufnahme konnte nicht gestartet werden.",
+  "micPermissionDenied": "Der Mikrofonzugriff wurde verweigert. Erlauben Sie den Zugriff in den Browser- oder Geräteeinstellungen und versuchen Sie es erneut.",
+  "micNoMicrophone": "Es wurde kein Mikrofon gefunden. Schließen Sie ein Mikrofon an oder aktivieren Sie es und versuchen Sie es erneut.",
+  "micOtherError": "Die Aufnahme konnte nicht gestartet werden. Schließen Sie andere Apps, die das Mikrofon verwenden, und versuchen Sie es erneut oder laden Sie die App neu.",
 
   "liveTranscriptionNotStarted": "Aufnahme läuft…",
   "liveTranscriptionWorking": "Der Text wird automatisch mitgeschrieben.",
@@ -152,7 +152,7 @@
   "recordingAttachedWithDuration": "Aufnahme angehängt ({duration})",
   "recordingPlayerPlay": "Abspielen",
   "recordingPlayerPause": "Pause",
-  "recordingPlayerFailedToLoad": "Diese Aufnahme konnte nicht geladen werden",
+  "recordingPlayerFailedToLoad": "Diese Aufnahme konnte nicht abgespielt werden. Öffnen Sie die Geschichte erneut und versuchen Sie es noch einmal. Fehlt sie auf diesem Gerät, stellen Sie eine Sicherung mit dieser Aufnahme wieder her.",
 
   "quickAddTitle": "Neue Geschichte",
   "quickAddStartRecording": "Aufnahme starten",
@@ -490,7 +490,7 @@
   "eventDetailRelationshipsEmpty": "Halten Sie Beziehungen separat fest, damit Sie sie bei den Personen wiederfinden.",
   "eventDetailChooseRelationshipPerson": "Für wen möchten Sie eine Beziehung festhalten?",
   "loginAccountButton": "Mit Ihrem Konto anmelden",
-  "loginAccountUnavailable": "Die Anmeldung ist derzeit nicht verfügbar. Sie können Ihre Geschichten weiter lokal nutzen.",
+  "loginAccountUnavailable": "Die Anmeldung ist derzeit nicht verfügbar. Prüfen Sie Ihre Internetverbindung und versuchen Sie es später erneut. Sie können dieses Gerät weiterhin lokal verwenden.",
   "loginAccountFailed": "Die Anmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut oder fahren Sie ohne Konto fort.",
   "eventsYearOverview": "Jahre",
   "eventsPreviousYear": "Vorheriges Jahr",
@@ -501,8 +501,16 @@
   "storyAddPhotos": "Fotos hinzufügen",
   "storyPhotosLocal": "Fotos werden auf diesem Gerät gespeichert und in Sicherungen aufgenommen.",
   "storyPhotoImportFailed": "Das Foto konnte nicht hinzugefügt werden. Wählen Sie ein PNG- oder JPEG-Bild und versuchen Sie es erneut. Prüfen Sie den freien Speicherplatz auf diesem Gerät.",
-  "storyPhotoUnavailable": "Dieses Foto ist auf diesem Gerät nicht verfügbar. Stellen Sie eine Sicherung mit dem Foto wieder her oder fügen Sie es beim Bearbeiten der Geschichte erneut hinzu.",
   "liveTranscriptionAnonymousLimit": "Die 3 täglichen Aufnahmen für diese Internetverbindung sind aufgebraucht. Speichern Sie Ihre Geschichte und melden Sie sich in den Einstellungen an, um weitere Aufnahmen zu machen, oder versuchen Sie es morgen erneut.",
   "recordingAnonymousAllowance": "Ohne Anmeldung: 3 Aufnahmen pro Tag und Internetverbindung, jeweils bis zu 1 Minute.",
-  "recordingAnonymousStopped": "Die Grenze von 1 Minute wurde erreicht. Ihre Aufnahme wird mit dieser Geschichte gespeichert. Speichern Sie Ihre Geschichte und melden Sie sich in den Einstellungen für längere Aufnahmen an."
+  "recordingAnonymousStopped": "Die Grenze von 1 Minute wurde erreicht. Ihre Aufnahme wird mit dieser Geschichte gespeichert. Speichern Sie Ihre Geschichte und melden Sie sich in den Einstellungen für längere Aufnahmen an.",
+  "settingsSyncRecovery": "Der Abgleich konnte nicht abgeschlossen werden. Prüfen Sie Ihre Internetverbindung und versuchen Sie „Jetzt abgleichen“ erneut. Wenn der Dienst nicht verfügbar ist, versuchen Sie es später erneut.",
+  "backupPrepareRecovery": "Die Sicherung konnte nicht vorbereitet werden. Schließen Sie diese Ansicht und versuchen Sie es erneut. Prüfen Sie den freien Speicherplatz auf diesem Gerät.",
+  "backupCreateRecovery": "Die Sicherung konnte nicht erstellt werden. Prüfen Sie den freien Speicherplatz auf diesem Gerät und versuchen Sie es erneut.",
+  "backupExportRecovery": "Die Sicherung konnte nicht außerhalb der App gespeichert werden. Wählen Sie einen anderen Speicherort oder versuchen Sie „Teilen“. Die Sicherung bleibt in der App.",
+  "backupRestoreInvalidRecovery": "Diese Datei ist unvollständig, beschädigt oder keine Sicherung der App. Wählen Sie die ursprüngliche ZIP-Sicherung oder laden Sie sie erneut herunter und versuchen Sie es noch einmal.",
+  "backupRestoreVersionRecovery": "Diese Sicherung verwendet ein neueres Format. Aktualisieren Sie die App und versuchen Sie die Wiederherstellung erneut.",
+  "backupRestoreSizeRecovery": "Diese Sicherung überschreitet die Sicherheitsgrenzen. Wählen Sie eine kleinere Sicherungsdatei.",
+  "backupRestoreRecovery": "Die Sicherung konnte nicht wiederhergestellt werden. Prüfen Sie den freien Speicherplatz auf diesem Gerät und wählen Sie die ursprüngliche Sicherungsdatei, um es erneut zu versuchen.",
+  "storyPhotoUnavailable": "Dieses Foto ist auf diesem Gerät nicht verfügbar. Stellen Sie eine Sicherung mit dem Foto wieder her oder fügen Sie es beim Bearbeiten der Geschichte erneut hinzu."
 }

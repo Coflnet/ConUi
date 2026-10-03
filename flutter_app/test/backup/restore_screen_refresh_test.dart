@@ -28,6 +28,7 @@ import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/test_database.dart';
+import '../support/localized_app.dart';
 import 'fake_destination.dart';
 
 /// Hands back [path] from pickFiles(), exactly as file_picker would once
@@ -187,4 +188,20 @@ void main() {
     final restoredPerson = await tester.runAsync(() => destDb.getPerson('p1'));
     expect(restoredPerson?.name, 'Ada'); // sanity: the restore itself really ran
   }, timeout: const Timeout(Duration(seconds: 30)));
+
+  testWidgets('damaged backup shows German recovery instead of the archive exception',
+      (tester) async {
+    final file = File('${tempRoot.path}/damaged.zip')..writeAsStringSync('not a ZIP');
+    final service = BackupService(databaseService: createTestDatabaseService());
+    FilePicker.platform = _FakeFilePickerWithPath(file.path);
+    await tester.pumpWidget(wrapLocalized(
+      RestoreScreen(backupService: service), locale: const Locale('de')));
+    await _settle(tester);
+
+    expect(find.text('Diese Datei ist unvollständig, beschädigt oder keine Sicherung der App. Wählen Sie die ursprüngliche ZIP-Sicherung oder laden Sie sie erneut herunter und versuchen Sie es noch einmal.'), findsOneWidget);
+    expect(find.textContaining('FormatException'), findsNothing);
+    expect(find.textContaining('archive'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
 }
