@@ -47,3 +47,6 @@ backend/RelationshipManager.Api/bin/
 backend/RelationshipManager.Api/obj/
 backend/RelationshipManager.Api.Tests/bin/
 backend/RelationshipManager.Api.Tests/obj/
+
+# Python deployment tooling
+__pycache__/
