@@ -93,7 +93,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _loadSyncStatus();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.settingsSyncCompleted)),
+          SnackBar(content: Text(syncService.needsSignIn
+              ? l10n.homeSyncSignInRequired
+              : syncService.needsEncryptionPassword
+                  ? l10n.homeSyncPasswordRequired
+                  : syncService.lastError != null
+                      ? l10n.settingsSyncFailed(syncService.lastError!)
+                      : l10n.settingsSyncCompleted)),
         );
       }
     } catch (e) {

@@ -137,7 +137,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? _buildSearchResults(l10n)
         : IndexedStack(
             index: _selectedIndex,
-            children: _screens,
+            children: [
+              for (final (index, screen) in _screens.indexed)
+                HeroMode(enabled: index == _selectedIndex, child: screen),
+            ],
           );
 
     return Scaffold(
@@ -185,7 +188,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   await syncService.forceFullSync();
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(l10n.homeSyncComplete)),
+                      SnackBar(
+                          content: Text(syncService.needsSignIn
+                              ? l10n.homeSyncSignInRequired
+                              : syncService.needsEncryptionPassword
+                                  ? l10n.homeSyncPasswordRequired
+                                  : syncService.lastError != null
+                                      ? l10n.settingsSyncFailed(
+                                          syncService.lastError!)
+                                      : l10n.homeSyncComplete)),
                     );
                   }
                 },

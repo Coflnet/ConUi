@@ -223,6 +223,8 @@
   "homeSearchOpen": "Suchen",
   "homeSyncNow": "Jetzt abgleichen",
   "homeSyncComplete": "Abgleich abgeschlossen",
+  "homeSyncSignInRequired": "Für den Abgleich ist ein Konto erforderlich. Ihre Geschichten bleiben auf diesem Gerät gespeichert.",
+  "homeSyncPasswordRequired": "Geben Sie vor dem Abgleich Ihr Verschlüsselungspasswort ein.",
   "homeNavMap": "Karte",
   "homeNavPeople": "Personen",
   "homeNavStories": "Geschichten",

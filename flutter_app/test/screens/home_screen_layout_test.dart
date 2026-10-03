@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/screens/home_screen.dart';
@@ -18,7 +20,8 @@ import '../support/test_database.dart';
 
 Future<void> _settle(WidgetTester tester, {int rounds = 30}) async {
   for (var i = 0; i < rounds; i++) {
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
     await tester.pump();
   }
 }
@@ -28,7 +31,8 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  Future<void> pumpHome(WidgetTester tester, Size size) async {
+  Future<void> pumpHome(WidgetTester tester, Size size,
+      {bool signIn = false, bool password = false}) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -39,8 +43,15 @@ void main() {
       db = createTestDatabaseService();
       await db.initialize();
     });
-    final auth = AuthService();
+    if (signIn) {
+      SharedPreferences.setMockInitialValues(
+          {'auth_token': 'fake.token.value', 'user_id': 'u1'});
+    }
+    final auth = AuthService(
+        httpClient: MockClient((_) async => http.Response('{}', 503)));
+    await tester.runAsync(auth.initialize);
     final sync = SyncService(db, auth);
+    if (password) sync.initializeEncryption('password');
     final appSettings = AppSettingsService();
 
     await tester.pumpWidget(
@@ -78,7 +89,8 @@ void main() {
     expect(find.byType(NavigationBar), findsNothing);
   });
 
-  testWidgets('tapping a NavigationRail destination switches tabs like the bottom bar does',
+  testWidgets(
+      'tapping a NavigationRail destination switches tabs like the bottom bar does',
       (tester) async {
     await pumpHome(tester, const Size(1440, 900));
 
@@ -94,5 +106,45 @@ void main() {
     await _settle(tester);
 
     expect(find.text('People'), findsWidgets); // AppBar title now "People"
+  });
+  testWidgets('offline sync explains that an account is needed',
+      (tester) async {
+    await pumpHome(tester, const Size(390, 844));
+    await tester.tap(find.byTooltip('Sync now'));
+    await _settle(tester);
+    expect(
+        find.text(
+            'Sync requires an account. Your stories remain saved on this device.'),
+        findsOneWidget);
+    expect(find.text('Sync complete'), findsNothing);
+  });
+
+  testWidgets('locked sync asks for encryption password', (tester) async {
+    await pumpHome(tester, const Size(390, 844), signIn: true);
+    await tester.tap(find.byTooltip('Sync now'));
+    await _settle(tester);
+    expect(find.text('Enter your encryption password before syncing.'),
+        findsOneWidget);
+    expect(find.text('Sync complete'), findsNothing);
+  });
+
+  testWidgets('failed sync reports the error without success', (tester) async {
+    await pumpHome(tester, const Size(390, 844), signIn: true, password: true);
+    await tester.tap(find.byTooltip('Sync now'));
+    await _settle(tester);
+    expect(find.text('Sync failed: Bad state: Sync updates failed (503)'),
+        findsOneWidget);
+    expect(find.text('Sync complete'), findsNothing);
+  });
+  testWidgets('opening another route has no duplicate Hero tags',
+      (tester) async {
+    await pumpHome(tester, const Size(390, 844));
+    Navigator.of(tester.element(find.byType(HomeScreen))).push(
+      MaterialPageRoute<void>(
+          builder: (_) => const Scaffold(body: Text('New page'))),
+    );
+    await _settle(tester);
+    expect(find.text('New page'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

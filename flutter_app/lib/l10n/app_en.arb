@@ -258,6 +258,8 @@
   "homeSearchOpen": "Search",
   "homeSyncNow": "Sync now",
   "homeSyncComplete": "Sync complete",
+  "homeSyncSignInRequired": "Sync requires an account. Your stories remain saved on this device.",
+  "homeSyncPasswordRequired": "Enter your encryption password before syncing.",
   "homeNavMap": "Map",
   "homeNavPeople": "People",
   "homeNavStories": "Stories",

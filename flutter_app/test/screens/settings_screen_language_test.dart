@@ -32,7 +32,7 @@ Widget _wrap({
       providers: [
         ChangeNotifierProvider<DatabaseService>.value(value: db),
         ChangeNotifierProvider<AuthService>(create: (_) => AuthService()),
-        Provider<SyncService>(create: (_) => SyncService(db, AuthService())),
+        ChangeNotifierProvider<SyncService>(create: (_) => SyncService(db, AuthService())),
         ChangeNotifierProvider<AppSettingsService>.value(value: appSettings),
       ],
       child: SettingsScreen(backupService: backupService),
@@ -42,7 +42,8 @@ Widget _wrap({
 
 Future<void> _settle(WidgetTester tester, {int rounds = 40}) async {
   for (var i = 0; i < rounds; i++) {
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
     await tester.pump();
   }
 }
@@ -72,7 +73,8 @@ void main() {
 
   testWidgets('starts on System / Automatic and shows both language tiles',
       (tester) async {
-    await tester.pumpWidget(_wrap(db: db, backupService: backupService, appSettings: appSettings));
+    await tester.pumpWidget(
+        _wrap(db: db, backupService: backupService, appSettings: appSettings));
     await _settle(tester);
 
     expect(find.text('App language'), findsOneWidget);
@@ -81,9 +83,11 @@ void main() {
     expect(find.text('Automatic'), findsOneWidget);
   });
 
-  testWidgets('picking Deutsch as the app language persists it and updates the subtitle',
+  testWidgets(
+      'picking Deutsch as the app language persists it and updates the subtitle',
       (tester) async {
-    await tester.pumpWidget(_wrap(db: db, backupService: backupService, appSettings: appSettings));
+    await tester.pumpWidget(
+        _wrap(db: db, backupService: backupService, appSettings: appSettings));
     await _settle(tester);
 
     await tester.tap(find.text('App language'));
@@ -105,9 +109,11 @@ void main() {
     expect(reloaded.languageOverride, const Locale('de'));
   });
 
-  testWidgets('picking English for the recording language persists it independently',
+  testWidgets(
+      'picking English for the recording language persists it independently',
       (tester) async {
-    await tester.pumpWidget(_wrap(db: db, backupService: backupService, appSettings: appSettings));
+    await tester.pumpWidget(
+        _wrap(db: db, backupService: backupService, appSettings: appSettings));
     await _settle(tester);
 
     await tester.tap(find.text('Language of recordings'));
@@ -123,5 +129,18 @@ void main() {
     final reloaded = AppSettingsService();
     await reloaded.initialize();
     expect(reloaded.recordingLanguageOverride, 'en');
+  });
+  testWidgets('offline sync explains account requirement instead of success',
+      (tester) async {
+    await tester.pumpWidget(
+        _wrap(db: db, backupService: backupService, appSettings: appSettings));
+    await _settle(tester);
+    await tester.tap(find.text('Force Sync'));
+    await _settle(tester);
+    expect(
+        find.text(
+            'Sync requires an account. Your stories remain saved on this device.'),
+        findsOneWidget);
+    expect(find.text('Sync completed successfully'), findsNothing);
   });
 }
