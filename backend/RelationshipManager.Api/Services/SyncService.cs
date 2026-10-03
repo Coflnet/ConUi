@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using RelationshipManager.Api.Data;
 using RelationshipManager.Api.Models;
 
@@ -60,7 +62,7 @@ public class SyncService
         }
 
         var newVersion = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var s3Key = $"{userId}/{request.BlobType}/{request.BlobId}_{newVersion}";
+        var s3Key = $"{GetBlobKey(userId, request.BlobType, request.BlobId)}_{newVersion}";
 
         var uploadUrl = await _s3Service.GetUploadUrlAsync(s3Key, TimeSpan.FromMinutes(15));
 
@@ -92,6 +94,15 @@ public class SyncService
 
     public async Task CommitUploadAsync(Guid userId, CommitEntry commit)
     {
+        var key = GetBlobKey(userId, commit.BlobType, commit.BlobId);
+        var suffix = commit.S3Key[(commit.S3Key.LastIndexOf('_') + 1)..];
+        if (commit.S3Key != key &&
+            (!long.TryParse(suffix, NumberStyles.None, CultureInfo.InvariantCulture, out var uploadVersion) ||
+             uploadVersion <= 0 || commit.S3Key != $"{key}_{uploadVersion}"))
+        {
+            throw new ArgumentException("The blob key does not match this user's upload.");
+        }
+
         var version = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var now = DateTime.UtcNow;
 
@@ -145,6 +156,16 @@ public class SyncService
 
         _logger.LogInformation("Committed blob: {BlobType}/{BlobId} for user {UserId}",
             commit.BlobType, commit.BlobId, userId);
+    }
+
+    public static string GetBlobKey(Guid userId, string blobType, string blobId)
+    {
+        if (!Regex.IsMatch(blobType, @"\A[A-Za-z0-9_-]+\z") ||
+            !Regex.IsMatch(blobId, @"\A[A-Za-z0-9_-]+\z"))
+        {
+            throw new ArgumentException("Blob type and ID must be safe storage key segments.");
+        }
+        return $"{userId}/{blobType}/{blobId}";
     }
 
     public async Task BatchCommitAsync(Guid userId, BatchCommitRequest request)

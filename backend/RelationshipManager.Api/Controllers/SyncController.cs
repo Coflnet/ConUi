@@ -62,6 +62,10 @@ public class SyncController : ControllerBase
             var response = await _syncService.GetUploadUrlAsync(userId.Value, request);
             return Ok(response);
         }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ApiError("invalid_blob_key", ex.Message));
+        }
         catch (InvalidOperationException ex)
         {
             return Conflict(new ApiError("version_conflict", ex.Message));
@@ -108,8 +112,15 @@ public class SyncController : ControllerBase
         var userId = GetUserId();
         if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
-        await _syncService.CommitUploadAsync(userId.Value, commit);
-        return Ok();
+        try
+        {
+            await _syncService.CommitUploadAsync(userId.Value, commit);
+            return Ok();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ApiError("invalid_blob_key", ex.Message));
+        }
     }
 
     /// <summary>
@@ -121,8 +132,15 @@ public class SyncController : ControllerBase
         var userId = GetUserId();
         if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
-        await _syncService.BatchCommitAsync(userId.Value, request);
-        return Ok();
+        try
+        {
+            await _syncService.BatchCommitAsync(userId.Value, request);
+            return Ok();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ApiError("invalid_blob_key", ex.Message));
+        }
     }
 
     /// <summary>
@@ -189,7 +207,7 @@ public class SyncController : ControllerBase
 
         try
         {
-            var key = $"{userId}/{blobType}/{blobId}";
+            var key = SyncService.GetBlobKey(userId.Value, blobType, blobId);
             
             // Verify version conflict before uploading
             var existingEntry = await _syncService.GetEntryAsync(userId.Value, blobType, blobId);
@@ -204,6 +222,10 @@ public class SyncController : ControllerBase
             _logger.LogInformation("Proxy uploaded blob {BlobType}/{BlobId} for user {UserId}", blobType, blobId, userId);
 
             return Ok(new { key, message = "Upload successful" });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ApiError("invalid_blob_key", ex.Message));
         }
         catch (S3UnavailableException ex)
         {
@@ -228,7 +250,7 @@ public class SyncController : ControllerBase
 
         try
         {
-            var key = $"{userId}/{blobType}/{blobId}";
+            var key = SyncService.GetBlobKey(userId.Value, blobType, blobId);
             var stream = await _s3Service.DownloadAsync(key);
 
             if (stream == null)
@@ -237,6 +259,10 @@ public class SyncController : ControllerBase
             }
 
             return File(stream, "application/octet-stream");
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ApiError("invalid_blob_key", ex.Message));
         }
         catch (S3UnavailableException ex)
         {
