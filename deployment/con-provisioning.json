@@ -32,9 +32,12 @@
     "pushed": false,
     "deployedE2eRun": false,
     "blockedOn": [
-      "explicit CI secret destination approval",
-      "explicit ConUi/Fleet main push approval",
+      "explicit ConUi main source push approval",
       "Con-only S3 credentials"
-    ]
+    ],
+    "fleetPublishedCommit": "3b21422780b48fab74b2fff022014d9e809b9826",
+    "ciWebhookSecretConfigured": true,
+    "publicConIssuerVerified": true,
+    "namespaceCreated": true
   }
 }

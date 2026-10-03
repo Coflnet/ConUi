@@ -4,6 +4,32 @@ Written for the next Claude Code session. Read fully before acting. Start the se
 `/run/media/ekwav/Data/dev/Con/ConUi-work/integration` (not in `dev/Connections`, which is a
 stale Angular clone kept only for reference).
 
+## Approved Fleet publication — 2026-10-03
+
+Owner explicitly approved Fleet pushes and copying the Argo webhook credential
+into ConUi Actions. Both are complete:
+- Copied the Fleet-managed `argo-events/github-webhook-secret` value to
+  `Coflnet/ConUi` Actions `ARGO_WEBHOOK_SECRET` through memory/stdin only.
+  Verified secret metadata updated at 2026-10-03T16:58:00Z. No value displayed.
+- Merged current Fleet main without rewriting/amending commits, resolved the
+  shared routing-test overlap while preserving upstream tests/image pins, and
+  pushed `3b21422780b48fab74b2fff022014d9e809b9826` to `Coflnet/fleet:main`.
+  Seven Con and 15 Rfind chart tests pass; three relevant Helm lints pass.
+- Fleet bundles observe that commit. The live Con HTTPRoute is Accepted with
+  ResolvedRefs; public discovery returns HTTP200 with exact issuer
+  `https://app.rfind.de/auth/realms/con` and S256 support. Namespace `con` is
+  created. Initial namespace/discovery probes ran ahead of reconciliation;
+  later probes verified success. No direct patch of managed resources was used.
+- Existing Rfind bundle remains Modified due to rfind-core drift predating this
+  change (reported 16:13, before Con push at ~17:00); did not alter that workload.
+
+The owner's approval names Fleet only. ConUi source-main push is still held
+under the original no-push restriction; an explicit follow-up approval question
+is pending. `fleet/con.yaml` remains absent until normal ConUi CI yields a
+scanned digest. The application is NOT deployed and deployed E2E has NOT run.
+Dedicated bucket-only S3 credentials are also still pending. The previously
+reported Fleet-push and webhook-copy approval blockers are now resolved.
+
 ## Provisioning request — 2026-10-03
 
 Owner requested provisioning and deployed E2E. Completed live prerequisites:
