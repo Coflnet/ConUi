@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Hosting;
+using Microsoft.IdentityModel.Tokens;
 using RelationshipManager.Api.Auth;
 using RelationshipManager.Api.Errors;
 using RelationshipManager.Api.Models;
@@ -16,19 +17,66 @@ public class AuthController : ControllerBase
     private readonly IHostEnvironment _environment;
     private readonly ILogger<AuthController> _logger;
     private readonly IConfiguration _config;
+    private readonly OidcSettings _oidcSettings;
+    private readonly OidcTokenVerifier _oidcVerifier;
 
     public AuthController(
         AuthService authService,
         IFirebaseTokenVerifier firebaseVerifier,
         IHostEnvironment environment,
         ILogger<AuthController> logger,
-        IConfiguration config)
+        IConfiguration config,
+        OidcSettings oidcSettings,
+        OidcTokenVerifier oidcVerifier)
     {
         _authService = authService;
         _firebaseVerifier = firebaseVerifier;
         _environment = environment;
         _logger = logger;
         _config = config;
+        _oidcSettings = oidcSettings;
+        _oidcVerifier = oidcVerifier;
+    }
+
+    [HttpGet("config")]
+    public object GetSignInConfiguration() => new
+    {
+        enabled = _oidcSettings.Enabled,
+        issuer = _oidcSettings.Issuer,
+        clientId = _oidcSettings.ClientId
+    };
+
+    [HttpPost("oidc")]
+    public async Task<ActionResult<TokenContainer>> LoginWithOidc([FromBody] OidcLoginRequest request, CancellationToken cancellationToken)
+    {
+        if (!_oidcSettings.Enabled)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new ApiError("sign_in_not_configured", "Sign-in is not configured on this server."));
+        OidcIdentity identity;
+        try
+        {
+            identity = await _oidcVerifier.VerifyAsync(request.AccessToken, cancellationToken);
+        }
+        catch (SecurityTokenException)
+        {
+            return Unauthorized(new ApiError("invalid_token", "The provided access token could not be verified."));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning("OIDC verification unavailable ({ExceptionType})", ex.GetType().Name);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new ApiError("sign_in_unavailable", "Sign-in is temporarily unavailable."));
+        }
+        var user = await _authService.GetUser(identity.ProviderId);
+        Guid userId;
+        if (user == null)
+            userId = await _authService.CreateUser(identity.ProviderId, identity.Name, identity.Email);
+        else
+        {
+            userId = user.Id;
+            await _authService.UpdateUserLastSeen(user);
+        }
+        return Ok(new TokenContainer { AuthToken = _authService.CreateTokenFor(userId) });
     }
 
     /// <summary>

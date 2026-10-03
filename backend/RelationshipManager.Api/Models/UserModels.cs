@@ -28,3 +28,9 @@ public class DevLoginRequest
     public string? Name { get; set; }
     public string? Email { get; set; }
 }
+
+public class OidcLoginRequest
+{
+    [System.ComponentModel.DataAnnotations.Required]
+    public string AccessToken { get; set; } = string.Empty;
+}

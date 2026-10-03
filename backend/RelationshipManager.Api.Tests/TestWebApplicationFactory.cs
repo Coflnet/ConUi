@@ -38,6 +38,7 @@ public class TestWebApplicationFactory : IAsyncDisposable
     public FakeTranscriptionService TranscriptionService { get; } = new();
 
     public string Environment { get; set; } = "Development";
+    public HttpMessageHandler? OidcHttpHandler { get; set; }
 
     /// <summary>Override the content root (where wwwroot is looked up from) to test the static-file/SPA-fallback behaviour.</summary>
     public string? ContentRootPath { get; set; }
@@ -64,6 +65,8 @@ public class TestWebApplicationFactory : IAsyncDisposable
         {
             builder.WebHost.UseKestrel(o => o.Listen(IPAddress.Loopback, 0));
             builder.Configuration.AddInMemoryCollection(ConfigOverrides);
+            if (OidcHttpHandler != null)
+                builder.Services.AddHttpClient("oidc").ConfigurePrimaryHttpMessageHandler(() => OidcHttpHandler);
 
             // RelationshipManagerApp registers its Cassandra-backed defaults with TryAddSingleton,
             // so registering the fakes here first (before the real ones are added) makes them win.
