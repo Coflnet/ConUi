@@ -6,6 +6,8 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:relationship_manager/l10n/gen/app_localizations_de.dart';
 import 'package:relationship_manager/l10n/gen/app_localizations_en.dart';
 import 'package:relationship_manager/models/event.dart';
+import 'package:relationship_manager/screens/map/nearby_place.dart';
+import 'package:latlong2/latlong.dart';
 
 void main() {
   final en = AppLocalizationsEn();
@@ -18,6 +20,12 @@ void main() {
   setUpAll(() async {
     await initializeDateFormatting('en');
     await initializeDateFormatting('de');
+  });
+
+  test('unnamed places use the active language', () {
+    const point = LatLng(50, 10);
+    expect(defaultPlaceName(point, de), 'Unbenannter Ort (50.000, 10.000)');
+    expect(defaultPlaceName(point, en), 'Unnamed place (50.000, 10.000)');
   });
 
   group('ICU plurals render correctly in German, not just English', () {

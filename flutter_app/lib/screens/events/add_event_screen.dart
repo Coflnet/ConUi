@@ -547,8 +547,9 @@ class _AddEventScreenState extends State<AddEventScreen> {
       }
     }
 
+    if (!mounted) return;
     final place = Place(
-      name: defaultPlaceName(position),
+      name: defaultPlaceName(position, AppLocalizations.of(context)),
       latitude: position.latitude,
       longitude: position.longitude,
     );

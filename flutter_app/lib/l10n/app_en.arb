@@ -597,5 +597,16 @@
   "objectsInvolvedInCount": "{count, plural, =1{Involved in 1 story} other{Involved in {count} stories}}",
   "@objectsInvolvedInCount": {"placeholders": {"count": {"type": "int"}}},
   "objectsStoryCountChip": "{count, plural, =1{1 story} other{{count} stories}}",
-  "@objectsStoryCountChip": {"placeholders": {"count": {"type": "int"}}}
+  "@objectsStoryCountChip": {"placeholders": {"count": {"type": "int"}}},
+  "placeDefaultName": "Unnamed place ({latitude}, {longitude})",
+  "@placeDefaultName": {
+    "placeholders": {
+      "latitude": {
+        "type": "String"
+      },
+      "longitude": {
+        "type": "String"
+      }
+    }
+  }
 }

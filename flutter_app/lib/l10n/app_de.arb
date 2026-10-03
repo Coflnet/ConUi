@@ -484,5 +484,6 @@
   "objectsNameLabel": "Name *",
   "objectsDescriptionLabel": "Beschreibung",
   "objectsInvolvedInCount": "{count, plural, =1{Kommt in 1 Geschichte vor} other{Kommt in {count} Geschichten vor}}",
-  "objectsStoryCountChip": "{count, plural, =1{1 Geschichte} other{{count} Geschichten}}"
+  "objectsStoryCountChip": "{count, plural, =1{1 Geschichte} other{{count} Geschichten}}",
+  "placeDefaultName": "Unbenannter Ort ({latitude}, {longitude})"
 }

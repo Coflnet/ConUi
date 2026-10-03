@@ -1,6 +1,7 @@
 import 'package:latlong2/latlong.dart';
 
 import '../../models/models.dart';
+import '../../l10n/gen/app_localizations.dart';
 
 /// A place is proposed as a match when an existing one lies within this
 /// many meters of a picked position - close enough that it's almost
@@ -27,5 +28,6 @@ Place? findNearbyPlace(List<Place> places, LatLng point) {
 
 /// A sensible default name for a place the user didn't name, derived from
 /// its coordinates so it's still identifiable until they rename it.
-String defaultPlaceName(LatLng point) =>
-    'Unnamed place (${point.latitude.toStringAsFixed(3)}, ${point.longitude.toStringAsFixed(3)})';
+String defaultPlaceName(LatLng point, AppLocalizations l10n) =>
+    l10n.placeDefaultName(point.latitude.toStringAsFixed(3),
+        point.longitude.toStringAsFixed(3));

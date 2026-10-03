@@ -471,7 +471,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     } else {
       final name = _placeNameController.text.trim().isNotEmpty
           ? _placeNameController.text.trim()
-          : defaultPlaceName(position);
+          : defaultPlaceName(position, l10n);
       place = Place(name: name, latitude: position.latitude, longitude: position.longitude);
       await db.savePlace(place);
     }
