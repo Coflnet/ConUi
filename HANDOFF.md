@@ -4,92 +4,74 @@ Written for the next Claude Code session. Read fully before acting. Start the se
 `/run/media/ekwav/Data/dev/Con/ConUi-work/integration` (not in `dev/Connections`, which is a
 stale Angular clone kept only for reference).
 
-## Approved Fleet publication — 2026-10-03
+## Live rollout status — 2026-10-03
 
-Owner explicitly approved Fleet pushes and copying the Argo webhook credential
-into ConUi Actions. Both are complete:
-- Copied the Fleet-managed `argo-events/github-webhook-secret` value to
-  `Coflnet/ConUi` Actions `ARGO_WEBHOOK_SECRET` through memory/stdin only.
-  Verified secret metadata updated at 2026-10-03T16:58:00Z. No value displayed.
-- Merged current Fleet main without rewriting/amending commits, resolved the
-  shared routing-test overlap while preserving upstream tests/image pins, and
-  pushed `3b21422780b48fab74b2fff022014d9e809b9826` to `Coflnet/fleet:main`.
-  Seven Con and 15 Rfind chart tests pass; three relevant Helm lints pass.
-- Fleet bundles observe that commit. The live Con HTTPRoute is Accepted with
-  ResolvedRefs; public discovery returns HTTP200 with exact issuer
-  `https://app.rfind.de/auth/realms/con` and S256 support. Namespace `con` is
-  created. Initial namespace/discovery probes ran ahead of reconciliation;
-  later probes verified success. No direct patch of managed resources was used.
-- Existing Rfind bundle remains Modified due to rfind-core drift predating this
-  change (reported 16:13, before Con push at ~17:00); did not alter that workload.
+Owner approved rollout pushes across all affected repositories and the Argo
+webhook credential copy. The old no-push restriction is superseded for this work.
+- ConUi main `d648f6b728640db9542d062ed0726ceee4425e92` is published. GitHub run
+  `37145347333` and Argo `promote-lmf7f` passed build, OIDC verification, mandatory
+  image scan and digest promotion. Fleet image digest:
+  `sha256:9e9e6fafc7a533393ffaa5bbd085ab5ee8213b7947071cc0a301ac89922c87ee`.
+- Fleet worktree is `dev/fleet-work/con-provision`, branch `con-provision`.
+  Published registration `91e9cc8b`; `a69505e3` renames `fleet/con.yaml` to
+  `fleet/con-app.yaml` after Fleet rejected the former path during checkout.
+  Parent reconciliation recovered; `con/con-con-chart` deployment now exists.
+- Workload is blocked at `Init:ErrImagePull`: both private images require
+  registry authentication and `con/regcred` is missing. Automatic approval
+  review rejected copying `rfind-demo/regcred` across namespaces because it
+  broadens credential access. Explicit approval question is pending; do not
+  bypass that rejection or indirectly reuse the credential.
+- Argo webhook credential was copied through memory/stdin to ConUi Actions
+  `ARGO_WEBHOOK_SECRET`; metadata verified, no value displayed.
+- Ansible helper commit `8464f83` is published to main. Unrelated uncommitted
+  infrastructure work was not included. Rfind checkout has unrelated local
+  commits/work; it was not pushed wholesale.
+- Deployed E2E has NOT run. `deployment/e2e/hosted.py` is preparatory only until
+  selectors and workflows pass against the hosted release. No synthetic users
+  have been created for the deployed run.
 
-The owner's approval names Fleet only. ConUi source-main push is still held
-under the original no-push restriction; an explicit follow-up approval question
-is pending. `fleet/con.yaml` remains absent until normal ConUi CI yields a
-scanned digest. The application is NOT deployed and deployed E2E has NOT run.
-Dedicated bucket-only S3 credentials are also still pending. The previously
-reported Fleet-push and webhook-copy approval blockers are now resolved.
+## Provisioning receipt — 2026-10-03
 
-## Provisioning request — 2026-10-03
+- Separate Keycloak realm `con` / public PKCE client `con-app` verified. Shared
+  RFInD/Wald realm representations unchanged. Password reset remains disabled
+  until Con SMTP exists. Includes `basic` subject scope, exact callbacks,
+  S256 and audience `con-api`. Public discovery returns HTTP200 with exact
+  issuer `https://app.rfind.de/auth/realms/con`. Python urllib gets HTTP403 on
+  the same public route; browser/.NET verification still requires live E2E.
+- Legacy Scylla `con` data/user untouched. Isolated `con_stories` keyspace uses
+  datacenter1 RF3; dedicated nonsuperuser has CREATE/SELECT/MODIFY only there.
+  Credentials tested over TLS with the public CA.
+- OpenBao `kv/con/con-backend`, policy `con-backend`, and role
+  `auth/jwt-talos-eu/role/con-backend` provisioned and read-back verified.
+  Leaf contains generated JWT signing secret, dedicated database credentials,
+  and CA PFX/config under `files`. Existing objects are verified; changes use
+  CAS patches preserving unrelated fields. Repeatable helper:
+  `ansible/scripts/provision-con-openbao.sh`.
+- Protected eu-cluster predecessor authority was used only through
+  `fleet/openbao/scripts/openbao-local-session.sh` to mint a nonrenewable
+  900-second task child. Self-revocation proven by HTTP403; token artifacts and
+  local credential/config files removed. No raw secret values displayed.
+- Private EU R2 bucket `con-stories` exists, public access off. Durable
+  bucket-only S3 credentials remain unavailable; a protected input-file path
+  was requested. Do not reuse the DNS API token or another application's key.
+  S3 remains disabled; cloud sync and cross-user sharing are not verified.
+- Namespace/CA distribution and public identity route are provisioned. Con TLS
+  certificate is Ready; public HTTPS returns 503 while the image pull is blocked.
+  Workload readiness is not verified.
+  Rfind's pre-existing Modified drift was not changed.
 
-Owner requested provisioning and deployed E2E. Completed live prerequisites:
-- Created and verified separate Keycloak realm `con` / client `con-app`. The
-  existing RFInD and Wald realm representations remained identical. Password
-  reset is disabled until Con SMTP is configured. Generator/verifier includes
-  `basic` subject scope, exact callbacks, public code flow/S256, audience `con-api`.
-- Legacy Scylla keyspace/user `con` already existed with old tables; left untouched.
-  Created isolated `con_stories` keyspace (datacenter1 RF3) and non-superuser
-  `con_stories`, with only CREATE/SELECT/MODIFY on that keyspace. New credentials
-  were tested successfully over TLS through existing local CQL configuration.
-- Created and read-back verified `kv/con/con-backend`, workload policy
-  `con-backend`, and `auth/jwt-talos-eu/role/con-backend`. Leaf contains generated
-  JWT signing secret, dedicated DB credentials and CA PFX/config under `files`.
-  Existing-object checks and CAS-protected writes preserve unrelated fields.
-  Repeatable helper: `ansible/scripts/provision-con-openbao.sh`, executed only
-  within the required `fleet/openbao/scripts/openbao-local-session.sh` flow.
-  Protected eu-cluster predecessor authority minted a nonrenewable 900-second
-  exact-task child. On exit self-revocation returned HTTP403; token artifacts
-  removed. No raw values were displayed. Local credential/config files removed.
-- Created private EU R2 bucket `con-stories` in existing Cloudflare account
-  `fd03721f31d7dccb9201acb6d9840d6d`. No public access was enabled. S3 credentials
-  are NOT provisioned: existing Wrangler OAuth lacks token-management authority.
+Latest checks before rollout: 450 Flutter gate tests pass, two memory-tagged RSS
+checks skipped by default; 105 backend and 12 realm/provisioning tests pass.
+Analyzer has nine baseline findings; web release and debug APK builds passed.
+CI then independently passed the image test/build/scan gate. Con chart seven
+and Rfind chart fifteen tests passed, with relevant Helm lints.
 
-Deployment is NOT completed; deployed E2E has NOT run. No Git push succeeded.
-Automatic approval review specifically rejected (1) copying the existing Argo
-webhook credential to Coflnet/ConUi Actions `ARGO_WEBHOOK_SECRET`, and (2) pushing
-Con-only Fleet changes to main because the original no-push instruction remains
-an explicit boundary. Async approval questions are pending for the secret copy
-and ConUi/Fleet main pushes. Do not bypass these rejections without approval.
-A third question requests a protected local credential path for either suitable
-Cloudflare token-management authority or Con-only bucket S3 credentials; never
-ask for credential values in chat. No unrelated app credentials may be reused.
-
-Ready local work:
-- Integration `b36056c`: reusable Con-only realm provisioning and owned synthetic
-  user cleanup, 12 tests pass; all callbacks must match regardless of server order.
-- Integration `777c71f`: S3 checks only its preprovisioned bucket (bounded object
-  listing); removes broad ListBuckets/auto-create. Three real SDK HTTP regressions;
-  full backend suite now 105/105 passes.
-- Fresh Fleet worktree `/run/media/ekwav/Data/dev/fleet-work/con-provision`, branch
-  `con-provision`, based on current upstream (older worktree is shallow/outdated).
-  Commits `d49f718a` chart/PSA, `878a3460` exact Con public realm route, `80d8de03`
-  enable OIDC/Scylla/readiness and Con-only database-egress exemption. Seven Con
-  chart tests, 14 Rfind routing tests and relevant Helm lints pass. Other database
-  policy rules/clients compare unchanged. `fleet/con.yaml` deliberately absent;
-  image remains placeholder until the normal scanned ConUi CI promotion.
-- Fleet auth init image remains digest-pinned; CA distribution automatically
-  covers Con. Namespace/registry credential and actual workload rollout remain
-  pending Fleet publication. The identity tunnel launched for provisioning was
-  recorded and stopped after command-line verification. No synthetic users added.
-
-After explicit publication approval: publish Fleet contract first, configure the
-CI webhook secret via memory/stdin, push reviewed ConUi main, verify GitHub plus
-Argo OIDC/mandatory scan/digest promotion, then publish the Con GitRepo registration.
-Provision bucket-only S3 credentials via protected input, exact origin CORS for
-browser GET/PUT, and CAS-patch only S3 config. Enable S3 only after verification.
-Test deployed login, map/story/audio, same-account second-browser sync, account
-isolation, backup/restore and indexed relationships. Cross-user sharing remains
-unimplemented and must not be reported as passing.
+Next: obtain registry-copy approval or a dedicated Con pull credential; wait for
+init/readiness, verify public API, create owned synthetic users through a narrow
+OpenBao child, run the hosted browser harness, then clean users and artifacts.
+For real cloud-sync E2E, first provision Con-only S3 credentials and exact-origin
+CORS, CAS-patch only S3 fields and enable the chart gate. Cross-user sharing and
+non-recording attachment transfer remain unimplemented.
 
 ## Shared identity follow-up — 2026-10-03
 

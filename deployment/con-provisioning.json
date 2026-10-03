@@ -29,15 +29,24 @@
     "credentialsProvisioned": false
   },
   "deployment": {
-    "pushed": false,
+    "pushed": true,
     "deployedE2eRun": false,
     "blockedOn": [
-      "explicit ConUi main source push approval",
-      "Con-only S3 credentials"
+      "Con registry pull credential approval or dedicated credential",
+      "Con-only S3 credentials for cloud sync"
     ],
-    "fleetPublishedCommit": "3b21422780b48fab74b2fff022014d9e809b9826",
+    "fleetPublishedCommit": "a69505e396670e8a16ce4c98810bcfeb51807bf6",
     "ciWebhookSecretConfigured": true,
     "publicConIssuerVerified": true,
-    "namespaceCreated": true
+    "namespaceCreated": true,
+    "sourcePublishedCommit": "d648f6b728640db9542d062ed0726ceee4425e92",
+    "githubRun": 37145347333,
+    "argoWorkflow": "promote-lmf7f",
+    "imageScanPassed": true,
+    "workload": "con/con-con-chart",
+    "workloadReady": false,
+    "workloadStatus": "Init:ErrImagePull",
+    "tlsCertificateReady": true,
+    "publicHttpsStatus": 503
   }
 }
