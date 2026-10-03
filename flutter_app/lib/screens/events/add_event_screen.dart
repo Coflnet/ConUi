@@ -152,7 +152,12 @@ class _AddEventScreenState extends State<AddEventScreen> {
     });
   }
 
+  bool get _canSave =>
+      !_isSaving &&
+      (_recorder.state == RecorderState.idle || _recorder.state == RecorderState.failed);
+
   Future<void> _save() async {
+    if (!_canSave) return;
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);
@@ -222,7 +227,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
         title: Text(widget.existingEvent != null ? l10n.addEventTitleEdit : l10n.addEventTitleNew),
         actions: [
           TextButton(
-            onPressed: _isSaving ? null : _save,
+            onPressed: _canSave ? _save : null,
             child: _isSaving
                 ? const SizedBox(
                     width: 20,

@@ -452,7 +452,12 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     return l10n.quickAddDefaultTitle(DateFormat.yMMMd(l10n.localeName).format(_date));
   }
 
+  bool get _canSave =>
+      !_isSaving &&
+      (_recorder.state == RecorderState.idle || _recorder.state == RecorderState.failed);
+
   Future<void> _save() async {
+    if (!_canSave) return;
     final l10n = AppLocalizations.of(context);
     final text = _textController.text.trim();
     if (text.isEmpty && _pendingRecording == null) {
@@ -580,7 +585,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
                 ),
                 const SizedBox(height: 24),
                 FilledButton(
-                  onPressed: _isSaving ? null : _save,
+                  onPressed: _canSave ? _save : null,
                   style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
                   child: _isSaving
                       ? const SizedBox(
