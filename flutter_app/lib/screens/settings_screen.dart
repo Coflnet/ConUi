@@ -10,6 +10,7 @@ import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import '../services/database_service.dart';
+import 'login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   /// Overridable so tests can supply a BackupService backed by a temp-dir
@@ -348,6 +349,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSectionHeader(l10n.settingsAccountSection),
           Consumer<AuthService>(
             builder: (context, auth, _) {
+              if (!auth.isAuthenticated) {
+                return ListTile(
+                  leading: const Icon(Icons.login),
+                  title: Text(l10n.loginAccountButton),
+                  subtitle: Text(l10n.loginContinueExplainer),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const LoginScreen())),
+                );
+              }
               return ListTile(
                 leading: const Icon(Icons.person),
                 title: Text(l10n.settingsLoggedInAs),
@@ -355,12 +366,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
-          ListTile(
-            leading: const Icon(Icons.logout, color: Colors.orange),
-            title: Text(l10n.settingsLogout),
-            subtitle: Text(l10n.settingsLogoutSubtitle),
-            onTap: _logout,
-          ),
+          if (context.watch<AuthService>().isAuthenticated)
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.orange),
+              title: Text(l10n.settingsLogout),
+              subtitle: Text(l10n.settingsLogoutSubtitle),
+              onTap: _logout,
+            ),
 
           const Divider(),
 

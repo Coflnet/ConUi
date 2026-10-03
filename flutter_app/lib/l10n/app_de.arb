@@ -30,8 +30,8 @@
   "loginButtonBusy": "Anmeldung läuft…",
   "loginFailed": "Anmeldung fehlgeschlagen. Bitte stellen Sie sicher, dass der Server läuft.",
   "loginContinueWithoutAccount": "Ohne Konto fortfahren",
-  "loginContinueExplainer": "Aufnahmen und lokale Daten funktionieren auch ohne Konto. Anmeldung und Abgleich zwischen Geräten folgen später.",
-  "loginDevNote": "In der Produktivversion erfolgt die Anmeldung über Firebase.",
+  "loginContinueExplainer": "Ihre Geschichten und Aufnahmen bleiben auf diesem Gerät gespeichert. Mit einem Konto können Sie Ihre Daten verschlüsselt zwischen Ihren Geräten abgleichen.",
+  "loginDevNote": "Die Konto-Anmeldung erfolgt über Coflnet. Ihr Verschlüsselungspasswort bleibt davon getrennt.",
 
   "settingsTitle": "Einstellungen",
   "settingsSyncSection": "Abgleich",
@@ -488,5 +488,8 @@
   "placeDefaultName": "Unbenannter Ort ({latitude}, {longitude})",
   "eventDetailRelationshipsHeading": "Beziehungen aus dieser Geschichte",
   "eventDetailRelationshipsEmpty": "Halten Sie Beziehungen separat fest, damit Sie sie bei den Personen wiederfinden.",
-  "eventDetailChooseRelationshipPerson": "Für wen möchten Sie eine Beziehung festhalten?"
+  "eventDetailChooseRelationshipPerson": "Für wen möchten Sie eine Beziehung festhalten?",
+  "loginAccountButton": "Mit Ihrem Konto anmelden",
+  "loginAccountUnavailable": "Die Anmeldung ist derzeit nicht verfügbar. Sie können Ihre Geschichten weiter lokal nutzen.",
+  "loginAccountFailed": "Die Anmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut oder fahren Sie ohne Konto fort."
 }

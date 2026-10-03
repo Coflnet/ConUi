@@ -2,7 +2,7 @@
 // or http://10.0.2.2:5000 (everywhere else), which meant a real device or
 // a release build could never reach any backend at all. It's now derived
 // from API_BASE_URL (--dart-define), falling back to the web origin on
-// web, the Android emulator address in debug builds, and empty otherwise.
+// web, the Android emulator address in debug builds, and Con production otherwise.
 //
 // `flutter test` always runs in debug mode against the native (non-web)
 // target, so this test exercises the "no override, debug, non-web" branch
@@ -34,8 +34,5 @@ void main() {
   // - API_BASE_URL set -> baseUrl returns it verbatim, on every platform.
   // - kIsWeb -> baseUrl returns Uri.base.origin (the origin the app was
   //   served from).
-  // - release build, no API_BASE_URL, not web -> baseUrl is '' and
-  //   TranscriptionClient.isConfigured / SyncService's guards report
-  //   sync and transcription as unavailable rather than hitting a
-  //   relative/invalid URL.
+  // - release native build, no override -> https://con.coflnet.com.
 }

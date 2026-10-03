@@ -64,6 +64,15 @@ void main() {
     }
     expect(find.textContaining('Login failed'), findsOneWidget);
     expect(authService.continuedWithoutAccount, isFalse);
+    final signInButton = find.byKey(const Key('account-sign-in'));
+    await tester.ensureVisible(signInButton);
+    await tester.tap(signInButton);
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+    }
+    expect(authService.signInUnavailable, isTrue);
+    expect(find.textContaining('Account sign-in is currently unavailable'),
+        findsOneWidget);
 
     final continueButton = find.text('Continue without account');
     await tester.ensureVisible(continueButton);

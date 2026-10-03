@@ -32,8 +32,8 @@
   "loginButtonBusy": "Logging in…",
   "loginFailed": "Login failed. Make sure the server is running.",
   "loginContinueWithoutAccount": "Continue without account",
-  "loginContinueExplainer": "Recording and local data work without an account. Sign-in and syncing between devices come later.",
-  "loginDevNote": "For production, Firebase authentication will be used.",
+  "loginContinueExplainer": "Your stories and recordings stay saved on this device. With an account, you can sync your data securely between your devices using encryption.",
+  "loginDevNote": "Account sign-in uses Coflnet. Your encryption password remains separate.",
 
   "settingsTitle": "Settings",
   "settingsSyncSection": "Sync",
@@ -611,5 +611,8 @@
   },
   "eventDetailRelationshipsHeading": "Relationships mentioned in this story",
   "eventDetailRelationshipsEmpty": "Save relationships separately so you can find them again under each person.",
-  "eventDetailChooseRelationshipPerson": "Whose relationship would you like to add?"
+  "eventDetailChooseRelationshipPerson": "Whose relationship would you like to add?",
+  "loginAccountButton": "Sign in with your account",
+  "loginAccountUnavailable": "Account sign-in is currently unavailable. You can keep using this device locally.",
+  "loginAccountFailed": "Sign-in could not be completed. Please try again or continue without an account."
 }

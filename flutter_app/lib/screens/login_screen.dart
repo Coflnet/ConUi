@@ -84,6 +84,16 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _signIn() async {
+    setState(() => _isLoading = true);
+    final success = await context
+        .read<AuthService>()
+        .signIn(locale: Localizations.localeOf(context).languageCode);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    if (success && Navigator.canPop(context)) Navigator.pop(context);
+  }
+
   Future<void> _continueWithoutAccount() async {
     final authService = context.read<AuthService>();
     await authService.continueWithoutAccount();
@@ -94,6 +104,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final auth = context.watch<AuthService>();
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -127,12 +138,25 @@ class _LoginScreenState extends State<LoginScreen> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 48),
-                  // The development login form only exists in debug
-                  // builds: it talks to a local dev server no production
-                  // user has, and must never be offered as a real sign-in
-                  // option - see the production rollout brief's item 6a.
-                  // "Continue without account" is release's only, and so
-                  // main, action.
+                  if (auth.signInFailed || auth.signInUnavailable) ...[
+                    Text(
+                        auth.signInUnavailable
+                            ? l10n.loginAccountUnavailable
+                            : l10n.loginAccountFailed,
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.error)),
+                    const SizedBox(height: 16),
+                  ],
+                  FilledButton.icon(
+                    key: const Key('account-sign-in'),
+                    onPressed: _isLoading ? null : _signIn,
+                    icon: const Icon(Icons.login),
+                    label: Text(_isLoading
+                        ? l10n.loginButtonBusy
+                        : l10n.loginAccountButton),
+                  ),
+                  const SizedBox(height: 12),
+                  // Development credentials only reach the debug endpoint.
                   if (kDebugMode) ...[
                     Card(
                       child: Padding(
@@ -194,7 +218,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Text(
                           _error!,
                           style: TextStyle(
-                            color: Theme.of(context).colorScheme.onErrorContainer,
+                            color:
+                                Theme.of(context).colorScheme.onErrorContainer,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -213,7 +238,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             )
                           : const Icon(Icons.login),
-                      label: Text(_isLoading ? l10n.loginButtonBusy : l10n.loginButton),
+                      label: Text(
+                          _isLoading ? l10n.loginButtonBusy : l10n.loginButton),
                     ),
                     const SizedBox(height: 12),
                     OutlinedButton(
@@ -221,7 +247,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: Text(l10n.loginContinueWithoutAccount),
                     ),
                   ] else
-                    FilledButton(
+                    OutlinedButton(
                       onPressed: _continueWithoutAccount,
                       child: Text(l10n.loginContinueWithoutAccount),
                     ),

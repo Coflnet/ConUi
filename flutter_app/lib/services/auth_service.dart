@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'oidc/oidc_flow.dart';
+import 'oidc/oidc_platform.dart' as oidc;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
@@ -14,7 +16,18 @@ class AuthService extends ChangeNotifier {
   /// behaviour is unchanged.
   final http.Client _http;
 
-  AuthService({http.Client? httpClient}) : _http = httpClient ?? http.Client();
+  final Future<String?> Function(OidcConfig, String, http.Client) _beginSignIn;
+  final Future<String?> Function(http.Client) _finishSignIn;
+  AuthService(
+      {http.Client? httpClient,
+      Future<String?> Function(OidcConfig, String, http.Client)? beginSignIn,
+      Future<String?> Function(http.Client)? finishSignIn})
+      : _http = httpClient ?? http.Client(),
+        _beginSignIn = beginSignIn ?? oidc.beginOidcLogin,
+        _finishSignIn = finishSignIn ?? oidc.completeOidcLogin;
+
+  bool signInFailed = false;
+  bool signInUnavailable = false;
 
   String? _token;
   String? _userId;
@@ -39,6 +52,8 @@ class AuthService extends ChangeNotifier {
   /// asked again on the next launch. Signing in for real later
   /// ([_saveToken]) or [logout] both clear it.
   Future<void> continueWithoutAccount() async {
+    signInFailed = false;
+    signInUnavailable = false;
     _continuedWithoutAccount = true;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_continuedWithoutAccountKey, true);
@@ -52,16 +67,13 @@ class AuthService extends ChangeNotifier {
   // 2. On web, the origin the app itself was loaded from - a web build is
   //    normally served from the same host as its backend.
   // 3. In debug builds on Android, the emulator's host-loopback address.
-  // 4. Otherwise (e.g. a release build with no API_BASE_URL configured):
-  //    empty. Callers must treat an empty baseUrl as "no backend
-  //    configured" and report sync/transcription as unavailable rather
-  //    than attempting a request against a relative/invalid URL.
+  // 4. Release native builds use the production Con backend.
   String get baseUrl {
     const configured = String.fromEnvironment('API_BASE_URL');
     if (configured.isNotEmpty) return configured;
     if (kIsWeb) return Uri.base.origin;
     if (kDebugMode) return 'http://10.0.2.2:5000';
-    return '';
+    return 'https://con.coflnet.com';
   }
 
   Future<void> initialize() async {
@@ -69,9 +81,74 @@ class AuthService extends ChangeNotifier {
     _token = prefs.getString(_tokenKey);
     _userId = prefs.getString(_userIdKey);
     _encryptionSalt = prefs.getString(_encryptionSaltKey);
-    _continuedWithoutAccount = prefs.getBool(_continuedWithoutAccountKey) ?? false;
+    _continuedWithoutAccount =
+        prefs.getBool(_continuedWithoutAccountKey) ?? false;
+    try {
+      final accessToken = await _finishSignIn(_http);
+      if (accessToken != null) await _acceptOidcToken(accessToken);
+    } catch (_) {
+      signInFailed = true;
+    }
     _initialized = true;
     notifyListeners();
+  }
+
+  Future<bool> signIn({String locale = 'de'}) async {
+    signInFailed = false;
+    signInUnavailable = false;
+    OidcConfig config;
+    try {
+      final response = await _http
+          .get(Uri.parse('$baseUrl/api/auth/config'))
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) {
+        throw const FormatException('Unavailable');
+      }
+      config = OidcConfig.fromJson(
+          jsonDecode(response.body) as Map<String, dynamic>);
+    } catch (_) {
+      signInUnavailable = true;
+      notifyListeners();
+      return false;
+    }
+    try {
+      final accessToken = await _beginSignIn(config, locale, _http);
+      if (accessToken == null) return false; // Browser is redirecting.
+      await _acceptOidcToken(accessToken);
+      return true;
+    } catch (_) {
+      signInFailed = true;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> _acceptOidcToken(String accessToken) async {
+    final response = await _http
+        .post(Uri.parse('$baseUrl/api/auth/oidc'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'accessToken': accessToken}))
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) {
+      throw const FormatException('Sign-in rejected');
+    }
+    final token = (jsonDecode(response.body)
+        as Map<String, dynamic>)['authToken'] as String;
+    final me = await _http.get(Uri.parse('$baseUrl/api/auth/me'), headers: {
+      'Authorization': 'Bearer $token'
+    }).timeout(const Duration(seconds: 15));
+    if (me.statusCode != 200) {
+      throw const FormatException('Account verification failed');
+    }
+    final user = jsonDecode(me.body) as Map<String, dynamic>;
+    final id = user['id'] as String;
+    final salt = user['encryptionKeySalt'] as String;
+    final payload = jsonDecode(utf8
+        .decode(base64Url.decode(base64Url.normalize(token.split('.')[1]))));
+    if (id.isEmpty || salt.isEmpty || payload['sub'] != id) {
+      throw const FormatException('Account mismatch');
+    }
+    await _saveToken(token, encryptionSalt: salt);
   }
 
   Future<bool> loginWithFirebase(String firebaseToken) async {
@@ -151,26 +228,38 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  Future<void> _saveToken(String token) async {
-    _token = token;
-    _continuedWithoutAccount = false;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
-    await prefs.remove(_continuedWithoutAccountKey);
-
-    // Decode token to get user ID
+  Future<void> _saveToken(String token, {String? encryptionSalt}) async {
+    String? userId;
     try {
       final parts = token.split('.');
       if (parts.length == 3) {
-        final payload = utf8.decode(base64.decode(base64.normalize(parts[1])));
-        final data = jsonDecode(payload);
-        _userId = data['sub'];
-        await prefs.setString(_userIdKey, _userId!);
+        final payload =
+            utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+        userId =
+            (jsonDecode(payload) as Map<String, dynamic>)['sub'] as String?;
       }
     } catch (e) {
       debugPrint('Token decode error: $e');
     }
-
+    final salt = encryptionSalt ?? (userId == _userId ? _encryptionSalt : null);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_tokenKey, token);
+    await prefs.remove(_continuedWithoutAccountKey);
+    if (userId == null) {
+      await prefs.remove(_userIdKey);
+    } else {
+      await prefs.setString(_userIdKey, userId);
+    }
+    if (salt == null) {
+      await prefs.remove(_encryptionSaltKey);
+    } else {
+      await prefs.setString(_encryptionSaltKey, salt);
+    }
+    // Publish one coherent identity after all asynchronous work is complete.
+    _token = token;
+    _userId = userId;
+    _encryptionSalt = salt;
+    _continuedWithoutAccount = false;
     notifyListeners();
   }
 
