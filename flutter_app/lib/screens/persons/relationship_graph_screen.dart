@@ -82,7 +82,8 @@ class _RelationshipGraphScreenState extends State<RelationshipGraphScreen> {
 
             return Scaffold(
               appBar: AppBar(
-                title: Text(l10n.graphScreenPersonName(centerPerson.name)),
+                title: Text(l10n.graphScreenPersonName(centerPerson.name),
+                    maxLines: 2, style: const TextStyle(fontSize: 18)),
                 actions: [
                   IconButton(
                     icon: Icon(_showTextAlternative ? Icons.account_tree_outlined : Icons.list_alt),
