@@ -1,0 +1,163 @@
+# Handoff: Relationship Manager (Coflnet/ConUi) rollout
+
+Written for the next Claude Code session. Read fully before acting. Start the session in
+`/run/media/ekwav/Data/dev/Con/ConUi-work/integration` (not in `dev/Connections`, which is a
+stale Angular clone kept only for reference).
+
+## Verification update — 2026-10-03
+
+This section supersedes the original handoff state and TODO status below. Work remains on
+`integration/stories-map-rollout`; 17 incremental commits were added (83 ahead of `origin/main`
+including this handoff commit), all with the requested trailer.
+Nothing was pushed, amended, or deployed. Fleet and the owner's checkout are untouched.
+
+Completed:
+- Backup gate: deterministic 200 MiB streaming write/restore buffer checks (maximum 4 MiB),
+  whole-file reads rejected. RSS checks retain the `memory` tag and skip by default. Docker runs
+  the identical plain `flutter test` gate. Five consecutive runs passed (384 tests each at that point).
+- Playback: instrumented actual media objects over CDP, including detached `Audio` elements;
+  absence of a DOM `<audio>` is expected. Validated canonical WAV headers and PCM lengths.
+  Normal, tab-crash recovered, and backup-restored recordings all advance in headless Chromium.
+  A plain static audio page plays identical bytes in headless, muted-headless, and visible Chromium.
+  Original/restored SHA-256: `8767d7fb698ce1b7c865289f81dad7b39006b4a88159f0e02986695ad259c673`.
+- Source-mapped profile identified a disposed people-screen reload after returning from a detail
+  route across the phone/desktop breakpoint. Added a mounted guard and reproducing regression test.
+  The entire `persons_screen.dart` build/search region remains byte-identical to `69a5c97`; direct
+  comparison from `Widget build(BuildContext context)` through EOF passes (the only edit is a
+  mounted guard in `_loadPersons`, above that region).
+- German review covers phone 390x844 and desktop 1440x900: map, people, stories, places, objects,
+  quick add, recording, story/person detail, relationships/graph, settings, and backup/restore.
+  Fixed German unnamed-place defaults, sibling sentences, narrow graph title, nearby-place chip
+  wrapping, and place-hint overlap with attribution. Existing saved English place names remain data.
+  The protected persons search hint and owner-pending duplicate add controls are unchanged.
+- Stories expose separately indexed relationships with the originating story/date preselected.
+  Main-screen FAB navigation and sync feedback now report actual offline/password/error states.
+- New sync ciphertext uses PBKDF2-HMAC-SHA256 (600,000 iterations) and AES-256-GCM with fresh
+  nonces in versioned authenticated envelopes. Legacy decryption remains read-compatible; legacy
+  ciphertext has no authentication until rewritten. All participating clients must be upgraded.
+- Backend commits validate authenticated-owner blob keys. Failed uploads/commits/downloads keep
+  pending work/cursors for retry; tombstones apply without download or requeue loops.
+- Original recordings sync in independently authenticated 1 MiB chunks, verified by canonical WAV
+  header, size, and whole-file SHA-256 before import. Conflicting originals are preserved. Text-only
+  edits reuse committed chunks. Explicit permanent deletion drops audio references from tombstones.
+- Further source-mapped review reproduced nonfinite map zoom for two places at the same coordinates.
+  Auto-fit now caps zoom at 14; a real MapScreen regression fails before and passes after the fix.
+- Chromium auto-loaded KDE/Plasma extension `cimiefiiaegbelhefglklhhakcgmhkai`; its
+  `page-script.js:182` removes/replays detached Audio elements and caused intermittent AbortError.
+  Final browser checks disable extensions. This is an environment issue, not invalid WAV data.
+- Rejected playback could propagate an empty uncaught AbortError. Player controls now show the
+  localized error, late sources are released, and URL revocation waits for media disposal. Six
+  lifecycle/control regressions all fail before and pass after this fix.
+- Browser recording streaming/finalization uses bounded IndexedDB pages and per-chunk transactions.
+  Two real-Chromium IndexedDB tests verify multi-page reads with asynchronous consumers and cleanup.
+
+Final verification: 424 Flutter tests pass, two RSS tests skipped; 70 backend tests pass; real
+IndexedDB browser tests 2/2 pass; analyzer has the same 9 baseline issues; release web and debug APK
+build successfully. The final release opens colocated places without an uncaught exception.
+With browser extensions disabled, playback advances normally; a controlled rejected play displays
+German feedback without an uncaught exception. The release UI still supports local use only.
+An earlier final attempt failed two deletion-test I/O waits and a 30-second crypto-test timeout;
+these harness issues were fixed and the complete gate passed afterward. Logs retain both attempts.
+
+### Remaining product and rollout requirements
+
+The app is NOT ready to claim secure sharing between users or deployed end-to-end verification:
+- Release login currently offers local use only. Production Firebase sign-in configuration is missing;
+  the debug login form is not a production account flow. AuthService's Firebase-token exchange is
+  currently unused by release UI. Owner must identify Con's Firebase project/public web+Android
+  config, enabled sign-in provider, authorized domain, and backend verifier identity. If using OIDC
+  instead, provide the Con issuer and public client ID. Other Coflnet projects are not interchangeable.
+- Current sync is same-account only. Cross-user recipient authorization, grants/revocation, and key
+  exchange remain unimplemented and must be completed and independently tested after identity setup.
+  Non-recording attachments still need an equivalent blob-transfer path for cloud sharing.
+- Fleet still references hand-created con Secrets. Con-scoped OpenBao updates via ansible are
+  authorized, but no authoritative existing Con KV leaf or workload OpenBao-to-Secret wiring was
+  found. Do not invent a path or use broad admin credentials. Read the current leaf, CAS-patch only
+  required fields with a short-lived narrow child token, revoke/prove invalid/remove artifact.
+  No secrets were read or changed during this verification session.
+- Stage 1 needs `con-secrets.jwt_secret` (at least 32 characters) and `regcred`; enabling stage 2 also
+  requires `scylla-credentials`, `scylla-pfx`, and `scylla-config`. Scylla/transcription remain disabled.
+- Preserve the explicit no-push/no-cluster-mutation boundary. Rollout still requires owner approval;
+  deployed multi-user E2E remains pending. The `tab`/`ane` password-rotation decision remains with owner.
+
+Durable review evidence (logs, screenshots, synthetic WAV/backup fixtures, CDP tooling) is outside
+`/tmp`, at `/run/media/ekwav/Data/dev/Con/ConUi-work/review-2026-10-03`. Browser profiles are excluded.
+Raw `browser-events.jsonl` repeats historical errors whenever CDP Runtime is enabled; deduplicate by
+exception timestamp and use fresh page contexts before interpreting the log as new failures.
+
+## Product and goal
+Flutter app (`flutter_app/`, web + Android) with an ASP.NET 8 backend (`RelationshipManager.Api`).
+Purpose: tap a place on a map, record a relative telling what happened there, keep the original
+recording, listen back later; relationship graph explorable from any person; backup and restore
+including recordings. Audience: German-speaking, often older, non-technical. German uses formal "Sie".
+
+## Original handoff — repositories and branches (historical)
+| Path | Branch | State |
+|---|---|---|
+| `dev/Con/ConUi-work/integration` | `integration/stories-map-rollout`, 66 commits ahead of `origin/main`, nothing pushed | All features merged. Last verified: 368 Flutter tests + 54 backend tests pass; `flutter analyze` 9 old issues (baseline, none new allowed). |
+| same tree, uncommitted | `Dockerfile`, `flutter_app/README.md`, `flutter_app/test/backup/large_recording_test.dart`, new `flutter_app/dart_test.yaml` | Half-finished attempt to isolate the flaky memory test (see TODO 1). |
+| `dev/fleet-work/con` | `con-rollout`, 4 local commits, not pushed | Chart reworked into one deployment, `con` namespace in pod security list, chart registered in Fleet, network policies to scylla and whisper-trained. |
+| `dev/Con/ConUi` | owner's checkout | Has the owner's UNCOMMITTED work (contacts import in `persons_screen.dart`, one line in `AndroidManifest.xml`). Never touch. In the integration tree the search-field region of `persons_screen.dart` `build()` must stay byte-identical so it merges cleanly. |
+| `dev/Connections` | `main`, dirty | Stale Angular clone. Ignore. |
+
+Rules from the owner: small incremental commits on the integration branch were explicitly requested
+(subject in imperative, `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` as last line; one
+earlier commit `4d06465` lacks the trailer, left as is, never amend/rebase/stash). Never push. Never
+mutate cluster state; Fleet-managed resources only via the fleet repo. Read `fleet/argo-workflow/CI.md`
+before building/publishing.
+
+## Original handoff — TODOs (historical; see update above)
+1. **Make the test gate reliable.** `test/backup/large_recording_test.dart` measures process RSS and
+   fails ~1 in 5 even alone with `--concurrency=1`. Plan: add deterministic tests (fake source serving a
+   ~200 MB recording as chunks, record largest buffer on write and restore paths, assert <= 4 MB bound,
+   assert the whole-read method is never called); keep RSS tests tagged `memory` but skipped by default
+   (`dart_test.yaml` tag `skip`, verify a plain `flutter test` really skips them); Dockerfile
+   `flutter-test` stage runs exactly the gate suite; README documents the manual memory run. Decide what
+   to keep of the uncommitted files. Run the gate 5 times; must pass 5/5. Commit.
+2. **Prove browser playback or find the defect.** Play button toggles but position never advanced in
+   headless Chromium; no `<audio>` element found in DOM; playback worked on the Android emulator.
+   Method: `flutter build web --profile --source-maps --no-web-resources-cdn`, serve `build/web` on a
+   free 127.0.0.1 port, Chromium with remote debugging and own `--user-data-dir`, inject via
+   `Page.addScriptToEvaluateOnNewDocument` wrapping `HTMLMediaElement.prototype.play/load`, `src`
+   setter, `Audio`, `createElement('audio')`, `AudioContext`, `URL.createObjectURL/revokeObjectURL`.
+   Record with fake mic flags (`--use-fake-ui-for-media-stream --use-fake-device-for-media-stream
+   --use-file-for-fake-audio-capture=<16 kHz mono 16-bit WAV>`), then read src/readyState/networkState/
+   error/duration/currentTime/paused and play() promise result; fetch the blob URL and validate the
+   44-byte WAV header and MIME type. Control: a plain static `<audio>` page with the same bytes.
+   Compare headless vs `--mute-audio` vs `xvfb-run` non-headless. Test 3 recordings: normal, recovered
+   after closing the tab mid-recording, restored from backup into a fresh profile. Read how
+   `audioplayers_web` plays `UrlSource`. Fix with regression test if it is an app defect.
+   Reusable scratch files: `scratchpad/playback-check/cdp.js` (dependency-free Node CDP client), `smoke.js`.
+3. **Console error.** One `[SEVERE] main.dart.js` entry with empty message once per interactive
+   session, not on idle load. Capture `Runtime.exceptionThrown`, `Log.entryAdded`,
+   `Runtime.consoleAPICalled` with stacks against the source-mapped build while walking all screens.
+   Fix with regression test if app defect.
+4. **German screenshot review** at 390x844 and 1440x900 with `--lang=de`: map, quick add idle and
+   recording, place sheet, story detail, person detail with relationships, graph, add connection dialog,
+   settings, backup. Fix English leftovers, truncation, overflow. Known deliberate English: OSM
+   attribution (must stay), persons search hint (owner's merge area).
+5. **Final checks**: `flutter analyze` (no new issues), gate suite, `flutter build web --release
+   --no-web-resources-cdn`, `flutter build apk --debug`, backend `dotnet test`.
+6. **Rollout** (only after 1 to 5 and owner approval): push integration branch -> PR to ConUi main
+   (shared CI builds, Argo scans/publishes and pins the image in Fleet); push `con-rollout` in fleet.
+   BLOCKED on the owner: two hand-created Secrets in namespace `con` (Scylla credentials and JWT
+   secret) need the owner's explicit "approved" or the owner creates them. Ask before anything.
+
+## Owner decisions still pending (do not decide yourself)
+- The two `con` Secrets above.
+- People and stories lists show "add" twice (last list row + FAB); original design, left as is. Objects list does not.
+- Consider rotating Scylla passwords of `tab` and `ane`: a read-only cluster agent printed Secret contents into its transcript.
+
+## Incidents and hard process rules for agents
+- An agent ran `kill -9 $(pgrep -f "9333")` and killed VS Code helper processes (2026-09-29 ~00:19).
+  Rule: never `pkill`/`killall`/`kill $(pgrep ...)`. Record PIDs at launch in the scratchpad, verify
+  `/proc/<pid>/cmdline` (own `--user-data-dir` path) before `kill`, TERM first. Bind servers to 127.0.0.1
+  on a port checked free with `ss -ltn`.
+- Two agents were stopped by declined permission prompts; confirm with the owner before relaunching.
+- Scratchpad of the old session (`/tmp/claude-1000/.../e90b4bda.../scratchpad`) holds `final-e2e/`
+  screenshots + `RESULTS.md` and `playback-check/`; it disappears on reboot and will not be in the new session.
+
+## Machine facts
+Flutter 3.44.4; only .NET 10 SDK installed while backend targets net8.0 (`DOTNET_ROLL_FORWARD=LatestMajor`);
+Chromium at `/usr/bin/chromium`; Node 22+; Docker available; port 18000 is taken by an unrelated local process.
+Use `implementer` agents for coding, `scout` for searching, `cluster-explorer` (read-only, explicit context) for cluster questions.
