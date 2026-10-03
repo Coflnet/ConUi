@@ -68,6 +68,39 @@ class WebRecordingFileStore implements RecordingFileStore {
     return values.cast<Uint8List>();
   }
 
+  // Read each chunk in its own transaction: consumers may await network or
+  // disk work between yields, after an IndexedDB transaction has expired.
+  Stream<Uint8List> _pcmChunks(String id) async* {
+    final db = await _open();
+    Object? after;
+    while (true) {
+      final keysTxn = db.transaction(_chunksStoreName, idbModeReadOnly);
+      final range = after == null ? _rangeFor(id)
+          : KeyRange.bound(after, '$id$_keySeparator￿', true);
+      final keys = await keysTxn.objectStore(_chunksStoreName).getAllKeys(range, 64);
+      await keysTxn.completed;
+      if (keys.isEmpty) {
+        if (after == null) throw StateError('No recording found for "$id"');
+        return;
+      }
+      for (final key in keys) {
+        final txn = db.transaction(_chunksStoreName, idbModeReadOnly);
+        final value = await txn.objectStore(_chunksStoreName).getObject(key);
+        await txn.completed;
+        yield value as Uint8List;
+      }
+      after = keys.last;
+    }
+  }
+
+  Future<int> _pcmLength(String id) async {
+    var length = 0;
+    await for (final chunk in _pcmChunks(id)) {
+      length += chunk.length;
+    }
+    return length;
+  }
+
   @override
   Future<void> beginRecording(String id,
       {WavFormat format = WavFormat.standard}) async {
@@ -103,17 +136,14 @@ class WebRecordingFileStore implements RecordingFileStore {
   @override
   Future<RecordingFinalizeResult> finalizeRecording(String id,
       {WavFormat format = WavFormat.standard}) async {
-    final chunks = await _orderedChunks(id);
-    if (chunks.isEmpty) {
-      throw StateError('No recording found for "$id"');
-    }
-    final dataLength = chunks.fold<int>(0, (sum, c) => sum + c.length);
+    final dataLength = await _pcmLength(id);
     final header = WavHeader.build(dataLength: dataLength, format: format);
-    return hashWavStream(
-      Stream.fromIterable([header, ...chunks]),
-      dataLength: dataLength,
-      format: format,
-    );
+    Stream<List<int>> wav() async* {
+      yield header;
+      yield* _pcmChunks(id);
+    }
+
+    return hashWavStream(wav(), dataLength: dataLength, format: format);
   }
 
   @override
@@ -121,20 +151,23 @@ class WebRecordingFileStore implements RecordingFileStore {
 
   @override
   Stream<List<int>> openReadStream(String id) async* {
-    yield await _assembleWithHeader(id);
+    yield WavHeader.build(dataLength: await _pcmLength(id));
+    yield* _pcmChunks(id);
   }
 
   @override
   Future<int> size(String id) async {
-    final chunks = await _orderedChunks(id);
-    if (chunks.isEmpty) throw StateError('No recording found for "$id"');
-    return wavHeaderLength + chunks.fold<int>(0, (sum, c) => sum + c.length);
+    return wavHeaderLength + await _pcmLength(id);
   }
 
   @override
   Future<bool> exists(String id) async {
-    final chunks = await _orderedChunks(id);
-    return chunks.isNotEmpty;
+    final db = await _open();
+    final txn = db.transaction(_chunksStoreName, idbModeReadOnly);
+    final keys =
+        await txn.objectStore(_chunksStoreName).getAllKeys(_rangeFor(id), 1);
+    await txn.completed;
+    return keys.isNotEmpty;
   }
 
   @override
