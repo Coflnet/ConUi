@@ -28,6 +28,7 @@ Future<bool?> showAddConnectionDialog(
   required List<Person> allPersons,
   required List<Connection> allConnections,
   required List<Event> allEvents,
+  Event? initialEvent,
 }) {
   final otherPersons = allPersons.where((p) => p.id != viewedPerson.id).toList()
     ..sort((a, b) => a.name.compareTo(b.name));
@@ -37,7 +38,10 @@ Future<bool?> showAddConnectionDialog(
       viewedPerson: viewedPerson,
       otherPersons: otherPersons,
       allConnections: allConnections,
-      events: allEvents,
+      events: initialEvent == null
+          ? allEvents
+          : [initialEvent, ...allEvents.where((e) => e.id != initialEvent.id)],
+      initialEvent: initialEvent,
     ),
   );
 }
@@ -47,12 +51,14 @@ class _AddConnectionDialog extends StatefulWidget {
   final List<Person> otherPersons;
   final List<Connection> allConnections;
   final List<Event> events;
+  final Event? initialEvent;
 
   const _AddConnectionDialog({
     required this.viewedPerson,
     required this.otherPersons,
     required this.allConnections,
     required this.events,
+    this.initialEvent,
   });
 
   @override
@@ -72,6 +78,14 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
   bool _createNewEvent = false;
   final _newEventTitleController = TextEditingController();
   bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedEvent = widget.initialEvent;
+    _linkEvent = _selectedEvent != null;
+    if (_selectedEvent != null) _startDate = _selectedEvent!.dateTime;
+  }
 
   @override
   void dispose() {
@@ -198,8 +212,8 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
                   final date = await showDatePicker(
                     context: context,
                     initialDate: _startDate,
-                    firstDate: DateTime(1900),
-                    lastDate: DateTime.now(),
+                    firstDate: _startDate.isBefore(DateTime(1900)) ? _startDate : DateTime(1900),
+                    lastDate: _startDate.isAfter(DateTime.now()) ? _startDate : DateTime.now(),
                   );
                   if (date != null) setState(() => _startDate = date);
                 },
@@ -220,6 +234,7 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
               ),
               if (_linkEvent && !_createNewEvent) ...[
                 DropdownButtonFormField<Event?>(
+                  isExpanded: true,
                   decoration: InputDecoration(labelText: l10n.connectionDialogSelectEvent),
                   // ignore: deprecated_member_use
                   value: _selectedEvent,
@@ -227,7 +242,8 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
                     DropdownMenuItem<Event?>(value: null, child: Text(l10n.commonNone)),
                     ...widget.events.map((e) => DropdownMenuItem(
                           value: e,
-                          child: Text('${e.title} (${DateFormat.yMMMd(locale).format(e.dateTime)})'),
+                          child: Text('${e.title} (${DateFormat.yMMMd(locale).format(e.dateTime)})',
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
                         )),
                   ],
                   onChanged: (e) => setState(() => _selectedEvent = e),

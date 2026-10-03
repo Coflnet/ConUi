@@ -608,5 +608,8 @@
         "type": "String"
       }
     }
-  }
+  },
+  "eventDetailRelationshipsHeading": "Relationships mentioned in this story",
+  "eventDetailRelationshipsEmpty": "Save relationships separately so you can find them again under each person.",
+  "eventDetailChooseRelationshipPerson": "Whose relationship would you like to add?"
 }

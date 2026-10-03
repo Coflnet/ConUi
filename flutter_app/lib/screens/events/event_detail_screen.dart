@@ -4,12 +4,14 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
+import '../../relationships/relationship_text.dart';
 import '../../services/database_service.dart';
 import '../../services/recording_file_store.dart';
 import '../../widgets/recording_player.dart';
 import '../map/map_tile_layer.dart';
 import '../places/place_sheet.dart';
 import '../persons/person_detail_screen.dart';
+import '../persons/add_connection_dialog.dart';
 import 'add_event_screen.dart';
 import 'events_screen.dart' show eventTypeLabel;
 
@@ -90,6 +92,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     ],
                     if (event.participantIds.isNotEmpty)
                       _buildParticipantsSection(context, l10n, db, event),
+                    const SizedBox(height: 16),
+                    _buildRelationshipsSection(context, l10n, db, event),
                     if (event.placeId != null)
                       _buildPlaceSection(context, l10n, db, event),
                     if (event.files.isNotEmpty) ...[
@@ -187,6 +191,113 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             )),
       ],
     );
+  }
+
+  Widget _buildRelationshipsSection(BuildContext context, AppLocalizations l10n,
+      DatabaseService db, Event event) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(l10n.eventDetailRelationshipsHeading,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        FutureBuilder<List<Connection>>(
+          future: db.getConnectionsForEvent(event.id),
+          builder: (context, snapshot) {
+            final connections = snapshot.data;
+            if (connections == null) return const SizedBox.shrink();
+            if (connections.isEmpty) {
+              return Text(l10n.eventDetailRelationshipsEmpty);
+            }
+            return Column(
+                children: connections
+                    .map((connection) => FutureBuilder<List<Person?>>(
+                          future: Future.wait([
+                            db.getPerson(connection.person1Id),
+                            db.getPerson(connection.person2Id),
+                          ]),
+                          builder: (context, people) => Card(
+                              child: ListTile(
+                            leading: const Icon(Icons.people),
+                            title: Text(RelationshipText.sentenceForRaw(
+                              l10n,
+                              people.data?[0]?.name ??
+                                  l10n.eventDetailUnknownPerson,
+                              people.data?[1]?.name ??
+                                  l10n.eventDetailUnknownPerson,
+                              connection.relationshipType,
+                            )),
+                            subtitle: connection.description == null
+                                ? null
+                                : Text(connection.description!),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PersonDetailScreen(
+                                      personId: connection.person1Id),
+                                )),
+                          )),
+                        ))
+                    .toList());
+          },
+        ),
+        OutlinedButton.icon(
+          key: const Key('story-add-relationship'),
+          onPressed: () => _addRelationship(context, db, event),
+          icon: const Icon(Icons.person_add),
+          label: Text(l10n.connectionDialogAddTitle),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _addRelationship(
+      BuildContext context, DatabaseService db, Event event) async {
+    final persons = await db.getPersons();
+    if (!context.mounted) return;
+    final l10n = AppLocalizations.of(context);
+    if (persons.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(l10n.personsEmptySubtitle)));
+      return;
+    }
+    persons.sort((a, b) {
+      final aParticipant = event.participantIds.contains(a.id);
+      final bParticipant = event.participantIds.contains(b.id);
+      if (aParticipant != bParticipant) return aParticipant ? -1 : 1;
+      return a.name.compareTo(b.name);
+    });
+    final participants =
+        persons.where((p) => event.participantIds.contains(p.id)).toList();
+    final person = participants.length == 1
+        ? participants.single
+        : await showDialog<Person>(
+            context: context,
+            builder: (context) => SimpleDialog(
+              title: Text(l10n.eventDetailChooseRelationshipPerson),
+              children: persons
+                  .map((person) => SimpleDialogOption(
+                        onPressed: () => Navigator.pop(context, person),
+                        child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Text(person.name)),
+                      ))
+                  .toList(),
+            ),
+          );
+    if (person == null || !context.mounted) return;
+    final connections = await db.getConnections();
+    final events = await db.getEvents();
+    if (!context.mounted) return;
+    final saved = await showAddConnectionDialog(
+      context,
+      viewedPerson: person,
+      allPersons: persons,
+      allConnections: connections,
+      allEvents: events,
+      initialEvent: event,
+    );
+    if (saved == true && mounted) _refresh();
   }
 
   Widget _buildFilesSection(AppLocalizations l10n, Event event) {

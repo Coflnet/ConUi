@@ -485,5 +485,8 @@
   "objectsDescriptionLabel": "Beschreibung",
   "objectsInvolvedInCount": "{count, plural, =1{Kommt in 1 Geschichte vor} other{Kommt in {count} Geschichten vor}}",
   "objectsStoryCountChip": "{count, plural, =1{1 Geschichte} other{{count} Geschichten}}",
-  "placeDefaultName": "Unbenannter Ort ({latitude}, {longitude})"
+  "placeDefaultName": "Unbenannter Ort ({latitude}, {longitude})",
+  "eventDetailRelationshipsHeading": "Beziehungen aus dieser Geschichte",
+  "eventDetailRelationshipsEmpty": "Halten Sie Beziehungen separat fest, damit Sie sie bei den Personen wiederfinden.",
+  "eventDetailChooseRelationshipPerson": "Für wen möchten Sie eine Beziehung festhalten?"
 }
