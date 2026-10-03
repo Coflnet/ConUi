@@ -211,7 +211,7 @@
   "quickAddDiscardBodyWithRecording": "The recording stays saved on this device (you can attach it to a story later); everything else will be lost.",
   "quickAddKeepEditing": "Keep editing",
   "quickAddDiscard": "Discard",
-  "quickAddNeedsTextOrRecording": "Add some text or record something first.",
+  "quickAddNeedsTextOrRecording": "Add text, a recording, or a photo before saving.",
   "quickAddUsingNearbyPlace": "Use \"{name}\" (nearby)",
   "@quickAddUsingNearbyPlace": {"placeholders": {"name": {"type": "String"}}},
   "quickAddUseDifferentPlace": "Use a different place",
@@ -621,5 +621,9 @@
   "eventsYearStories": "{count, plural, =1{1 story} other{{count} stories}}",
   "eventsPreviousMonth": "Previous month",
   "eventsNextMonth": "Next month",
-  "@eventsYearStories": {"placeholders": {"count": {"type": "int"}}}
+  "@eventsYearStories": {"placeholders": {"count": {"type": "int"}}},
+  "storyAddPhotos": "Add photos",
+  "storyPhotosLocal": "Photos are saved on this device and included in backups.",
+  "storyPhotoImportFailed": "Could not add the photo. Choose a PNG or JPEG image and try again. Check the free storage on this device.",
+  "storyPhotoUnavailable": "This photo is not available on this device. Restore a backup containing it, or edit the story to add the photo again."
 }

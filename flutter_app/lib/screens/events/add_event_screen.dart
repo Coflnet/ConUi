@@ -7,6 +7,8 @@ import '../../models/models.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
+import '../../services/story_photo_service.dart';
+import '../../widgets/story_photo.dart';
 import '../../services/record_package_audio_capture.dart';
 import '../../services/recorder_controller.dart';
 import '../../services/recording_file_store.dart';
@@ -40,6 +42,9 @@ class _AddEventScreenState extends State<AddEventScreen> {
   List<String> _participantIds = [];
   String? _placeId;
   bool _isSaving = false;
+  bool _isPickingPhotos = false;
+  late final Event _draftEvent;
+  final List<AttachedFile> _photos = [];
 
   late final RecorderController _recorder;
   bool _ownsRecorder = false;
@@ -49,6 +54,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
   @override
   void initState() {
     super.initState();
+    _draftEvent = widget.existingEvent ?? Event(title: '', dateTime: _dateTime);
     if (widget.existingEvent != null) {
       final e = widget.existingEvent!;
       _titleController.text = e.title;
@@ -131,6 +137,24 @@ class _AddEventScreenState extends State<AddEventScreen> {
     await _recorder.start();
   }
 
+  Future<void> _pickPhotos() async {
+    setState(() => _isPickingPhotos = true);
+    try {
+      final photos = await StoryPhotoService(context.read<DatabaseService>())
+          .pickPhotos(_draftEvent.id);
+      if (mounted) setState(() => _photos.addAll(photos));
+    } catch (_) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content:
+                  Text(AppLocalizations.of(context).storyPhotoImportFailed)),
+        );
+    } finally {
+      if (mounted) setState(() => _isPickingPhotos = false);
+    }
+  }
+
   Future<void> _selectDateTime() async {
     final date = await showDatePicker(
       context: context,
@@ -154,6 +178,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
 
   bool get _canSave =>
       !_isSaving &&
+      !_isPickingPhotos &&
       (_recorder.state == RecorderState.idle || _recorder.state == RecorderState.failed);
 
   Future<void> _save() async {
@@ -166,6 +191,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
     final newFiles = <AttachedFile>[
       ...(widget.existingEvent?.files ?? const []),
       if (_pendingRecording != null) _pendingRecording!,
+      ..._photos,
     ];
     final event = widget.existingEvent != null
         ? widget.existingEvent!.copyWith(
@@ -181,6 +207,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
             files: newFiles,
           )
         : Event(
+            id: _draftEvent.id,
             title: _titleController.text.trim(),
             description: _descriptionController.text.trim().isEmpty
                 ? null
@@ -281,6 +308,22 @@ class _AddEventScreenState extends State<AddEventScreen> {
             ),
             const SizedBox(height: 16),
             _buildRecordingCard(l10n),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: _isPickingPhotos || _isSaving ? null : _pickPhotos,
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+              label: Text(l10n.storyAddPhotos),
+            ),
+            Text(l10n.storyPhotosLocal,
+                style: Theme.of(context).textTheme.bodySmall),
+            if ([..._draftEvent.files, ..._photos].any((file) => file.isImage))
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final file in [..._draftEvent.files, ..._photos])
+                    if (file.isImage) StoryPhoto(file: file),
+                ]),
+              ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _descriptionController,

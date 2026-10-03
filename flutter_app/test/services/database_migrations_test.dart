@@ -9,6 +9,7 @@
 // snapshot of migration 1 (not a call into db_migrations.dart), so this
 // test still catches an accidental change to migration 1's SQL.
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -17,6 +18,13 @@ import 'package:relationship_manager/services/database_service.dart';
 import 'package:relationship_manager/services/db_migrations.dart';
 
 const _oldSchemaSql = [
+  '''
+    CREATE TABLE files (
+      id TEXT PRIMARY KEY, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
+      file_name TEXT NOT NULL, file_path TEXT NOT NULL, mime_type TEXT NOT NULL,
+      size INTEGER NOT NULL, version INTEGER DEFAULT 0, created_at TEXT NOT NULL
+    )
+  ''',
   '''
     CREATE TABLE persons (
       id TEXT PRIMARY KEY,
@@ -127,14 +135,56 @@ void main() {
     final tableNames = tables.map((t) => t['name']).toSet();
     expect(
       tableNames,
-      containsAll(
-          ['persons', 'events', 'pending_changes', 'local_recordings']),
+      containsAll(['persons', 'events', 'pending_changes', 'local_recordings']),
     );
 
     final version = await db.getVersion();
     expect(version, latestDbVersion);
 
     await db.close();
+  });
+
+  test(
+      'upgrade from version 2 preserves files and stories and enables photo bytes',
+      () async {
+    final oldDb = await databaseFactoryFfi.openDatabase(dbPath,
+        options: OpenDatabaseOptions(
+            version: 2,
+            onCreate: (db, _) async {
+              for (final migration in dbMigrations
+                  .where((migration) => migration.version <= 2)) {
+                await migration.up(db);
+              }
+            }));
+    await oldDb.insert('files', {
+      'id': 'photo',
+      'entity_type': 'event',
+      'entity_id': 'story',
+      'file_name': 'family.png',
+      'file_path': 'legacy/path',
+      'mime_type': 'image/png',
+      'size': 3,
+      'created_at': '1952-01-01',
+    });
+    await oldDb.insert('events', {
+      'id': 'story',
+      'month_key': '1952-01',
+      'data': '{"title":"Family"}',
+      'created_at': '1952-01-01',
+      'updated_at': '1952-01-01',
+    });
+    await oldDb.close();
+    final service = DatabaseService(factory: databaseFactoryFfi, path: dbPath);
+    final upgraded = await service.database;
+    expect((await upgraded.query('files')).single['file_path'], 'legacy/path');
+    expect(
+        (await upgraded.query('events')).single['data'], '{"title":"Family"}');
+    await upgraded.update('files', {
+      'bytes': Uint8List.fromList([1, 2, 3])
+    });
+    expect((await upgraded.query('files')).single['bytes'], [1, 2, 3]);
+    expect(await upgraded.getVersion(), latestDbVersion);
+    await upgraded.close();
   });
 
   test('a fresh install ends up on the latest schema version', () async {

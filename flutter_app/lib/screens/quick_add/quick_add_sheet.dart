@@ -10,6 +10,8 @@ import '../../services/app_settings_service.dart';
 import '../../services/audio_capture.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
+import '../../services/story_photo_service.dart';
+import '../../widgets/story_photo.dart';
 import '../../services/record_package_audio_capture.dart';
 import '../../services/recorder_controller.dart';
 import '../../services/recording_file_store.dart';
@@ -139,6 +141,9 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   AttachedFile? _pendingRecording;
   String _liveTextAlreadyShown = '';
   bool _isSaving = false;
+  bool _isPickingPhotos = false;
+  final _draftEvent = Event(title: '', dateTime: DateTime.now());
+  final List<AttachedFile> _photos = [];
   bool _isTranscribingNow = false;
   bool _loadedLookups = false;
 
@@ -396,6 +401,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   bool get _hasUnsavedContent =>
       _textController.text.trim().isNotEmpty ||
       _pendingRecording != null ||
+      _photos.isNotEmpty ||
       _recorder.state == RecorderState.recording ||
       _selectedPersons.isNotEmpty ||
       _placeNameController.text.trim().isNotEmpty ||
@@ -452,15 +458,34 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     return l10n.quickAddDefaultTitle(DateFormat.yMMMd(l10n.localeName).format(_date));
   }
 
+  Future<void> _pickPhotos() async {
+    setState(() => _isPickingPhotos = true);
+    try {
+      final photos = await StoryPhotoService(context.read<DatabaseService>())
+          .pickPhotos(_draftEvent.id);
+      if (mounted) setState(() => _photos.addAll(photos));
+    } catch (_) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content:
+                  Text(AppLocalizations.of(context).storyPhotoImportFailed)),
+        );
+    } finally {
+      if (mounted) setState(() => _isPickingPhotos = false);
+    }
+  }
+
   bool get _canSave =>
       !_isSaving &&
+      !_isPickingPhotos &&
       (_recorder.state == RecorderState.idle || _recorder.state == RecorderState.failed);
 
   Future<void> _save() async {
     if (!_canSave) return;
     final l10n = AppLocalizations.of(context);
     final text = _textController.text.trim();
-    if (text.isEmpty && _pendingRecording == null) {
+    if (text.isEmpty && _pendingRecording == null && _photos.isEmpty) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(l10n.quickAddNeedsTextOrRecording)));
       return;
@@ -492,8 +517,9 @@ class QuickAddSheetState extends State<QuickAddSheet> {
       }
     }
 
-    final files = <AttachedFile>[if (_pendingRecording != null) _pendingRecording!];
+    final files = <AttachedFile>[if (_pendingRecording != null) _pendingRecording!, ..._photos];
     final event = Event(
+      id: _draftEvent.id,
       title: _deriveTitle(l10n, text, place.name),
       description: text.isEmpty ? null : text,
       dateTime: _date,
@@ -565,6 +591,18 @@ class QuickAddSheetState extends State<QuickAddSheet> {
                 _buildRecordButton(l10n),
                 const SizedBox(height: 12),
                 _buildTextField(l10n),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _isPickingPhotos || _isSaving ? null : _pickPhotos,
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  label: Text(l10n.storyAddPhotos),
+                ),
+                Text(l10n.storyPhotosLocal,
+                    style: Theme.of(context).textTheme.bodySmall),
+                if (_photos.isNotEmpty)
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    for (final file in _photos) StoryPhoto(file: file),
+                  ]),
                 const SizedBox(height: 20),
                 Text(l10n.quickAddPersonsLabel, style: Theme.of(context).textTheme.labelLarge),
                 const SizedBox(height: 8),

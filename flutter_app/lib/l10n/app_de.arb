@@ -181,7 +181,7 @@
   "quickAddDiscardBodyWithRecording": "Die Aufnahme bleibt auf diesem Gerät gespeichert (Sie können sie später einer Geschichte zuordnen); alles andere geht verloren.",
   "quickAddKeepEditing": "Weiter bearbeiten",
   "quickAddDiscard": "Verwerfen",
-  "quickAddNeedsTextOrRecording": "Bitte zuerst etwas Text eingeben oder etwas aufnehmen.",
+  "quickAddNeedsTextOrRecording": "Fügen Sie vor dem Speichern Text, eine Aufnahme oder ein Foto hinzu.",
   "quickAddUsingNearbyPlace": "„{name}“ verwenden (in der Nähe)",
   "quickAddUseDifferentPlace": "Anderen Ort verwenden",
   "quickAddDefaultTitle": "Geschichte vom {date}",
@@ -497,5 +497,9 @@
   "eventsNextYear": "Nächstes Jahr",
   "eventsYearStories": "{count, plural, =1{1 Geschichte} other{{count} Geschichten}}",
   "eventsPreviousMonth": "Vorheriger Monat",
-  "eventsNextMonth": "Nächster Monat"
+  "eventsNextMonth": "Nächster Monat",
+  "storyAddPhotos": "Fotos hinzufügen",
+  "storyPhotosLocal": "Fotos werden auf diesem Gerät gespeichert und in Sicherungen aufgenommen.",
+  "storyPhotoImportFailed": "Das Foto konnte nicht hinzugefügt werden. Wählen Sie ein PNG- oder JPEG-Bild und versuchen Sie es erneut. Prüfen Sie den freien Speicherplatz auf diesem Gerät.",
+  "storyPhotoUnavailable": "Dieses Foto ist auf diesem Gerät nicht verfügbar. Stellen Sie eine Sicherung mit dem Foto wieder her oder fügen Sie es beim Bearbeiten der Geschichte erneut hinzu."
 }

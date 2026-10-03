@@ -23,6 +23,7 @@ const List<String> backupEntityTables = [
   'places',
   'events',
   'objects',
+  'files',
 ];
 
 /// Fixed names of the entries every backup archive contains. Restoring code

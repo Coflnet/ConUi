@@ -127,7 +127,7 @@ void main() {
       await _pressAsync(tester, find.widgetWithText(FilledButton, 'Save story'));
       await tester.pump();
 
-      expect(find.text('Add some text or record something first.'), findsOneWidget);
+      expect(find.text('Add text, a recording, or a photo before saving.'), findsOneWidget);
       late List<Event> events;
       await tester.runAsync(() async => events = await db.getEvents());
       expect(events, isEmpty);

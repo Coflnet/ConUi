@@ -22,6 +22,7 @@ class Migration {
 final List<Migration> dbMigrations = [
   const Migration(version: 1, up: _migration1CreateBaseSchema),
   const Migration(version: 2, up: _migration2CreateLocalRecordingsTable),
+  const Migration(version: 3, up: _migration3AddLocalFileBytes),
 ];
 
 /// The schema version the app currently ships. Equal to the highest
@@ -176,4 +177,9 @@ Future<void> _migration2CreateLocalRecordingsTable(
   ''');
   await db.execute(
       'CREATE INDEX idx_local_recordings_event ON local_recordings(event_id)');
+}
+
+Future<void> _migration3AddLocalFileBytes(
+    sqflite_common.DatabaseExecutor db) async {
+  await db.execute('ALTER TABLE files ADD COLUMN bytes BLOB');
 }

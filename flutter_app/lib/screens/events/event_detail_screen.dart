@@ -13,6 +13,7 @@ import '../places/place_sheet.dart';
 import '../persons/person_detail_screen.dart';
 import '../persons/add_connection_dialog.dart';
 import 'add_event_screen.dart';
+import '../../widgets/story_photo.dart';
 import 'events_screen.dart' show eventTypeLabel;
 
 class EventDetailScreen extends StatefulWidget {
@@ -323,9 +324,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           const SizedBox(height: 8),
           ...otherFiles.map((file) => Card(
                 child: ListTile(
-                  leading: Icon(file.isImage
-                      ? Icons.image
-                      : (file.isAudio ? Icons.audiotrack : Icons.attach_file)),
+                  leading: file.isImage
+                      ? StoryPhoto(file: file, size: 48)
+                      : Icon(
+                          file.isAudio ? Icons.audiotrack : Icons.attach_file),
                   title: Text(file.fileName),
                   subtitle: Text(
                       l10n.eventDetailFileSizeKb((file.size / 1024).toStringAsFixed(1))),

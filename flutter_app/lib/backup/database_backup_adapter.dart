@@ -41,6 +41,24 @@ class DatabaseBackupAdapter implements BackupDataSource, BackupDataSink {
   @override
   Stream<BackupEntityRecord> readTable(String table) async* {
     final db = await databaseService.database;
+    if (table == 'files') {
+      for (final row in await db.query('files', where: 'bytes IS NOT NULL')) {
+        final createdAt = DateTime.parse(row['created_at'] as String);
+        yield BackupEntityRecord(
+          table: table,
+          id: row['id'] as String,
+          data: {
+            ...row,
+            'bytes': base64Encode(row['bytes'] as Uint8List),
+            'sha256': sha256.convert(row['bytes'] as Uint8List).toString()
+          },
+          createdAt: createdAt,
+          updatedAt: createdAt,
+          isDeleted: false,
+        );
+      }
+      return;
+    }
     final rows =
         await db.query(table, columns: ['id', 'data', 'created_at', 'updated_at', 'is_deleted']);
     for (final row in rows) {
@@ -67,10 +85,11 @@ class DatabaseBackupAdapter implements BackupDataSource, BackupDataSink {
   @override
   Future<DateTime?> existingUpdatedAt(String table, String id) async {
     final db = await databaseService.database;
-    final rows =
-        await db.query(table, columns: ['updated_at'], where: 'id = ?', whereArgs: [id]);
+    final column = table == 'files' ? 'created_at' : 'updated_at';
+    final rows = await db.query(table,
+        columns: [column], where: 'id = ?', whereArgs: [id]);
     if (rows.isEmpty) return null;
-    return DateTime.parse(rows.first['updated_at'] as String);
+    return DateTime.parse(rows.first[column] as String);
   }
 
   @override
@@ -140,15 +159,18 @@ class DatabaseBackupAdapter implements BackupDataSource, BackupDataSink {
 
         await txn.insert(record.table, _rowFor(record), conflictAlgorithm: ConflictAlgorithm.replace);
 
-        await txn.insert('pending_changes', {
-          'id': '${record.table}_${record.id}_${DateTime.now().millisecondsSinceEpoch}',
-          'entity_type': _singularEntityType(record.table),
-          'entity_id': record.id,
-          'operation': exists ? 'update' : 'create',
-          'data': jsonEncode(record.data),
-          'created_at': DateTime.now().toIso8601String(),
-          'synced': 0,
-        });
+        if (record.table != 'files') {
+          await txn.insert('pending_changes', {
+            'id':
+                '${record.table}_${record.id}_${DateTime.now().millisecondsSinceEpoch}',
+            'entity_type': _singularEntityType(record.table),
+            'entity_id': record.id,
+            'operation': exists ? 'update' : 'create',
+            'data': jsonEncode(record.data),
+            'created_at': DateTime.now().toIso8601String(),
+            'synced': 0,
+          });
+        }
 
         if (record.table == 'events') {
           for (final recordingId in _recordingIdsIn(record)) {
@@ -167,6 +189,25 @@ class DatabaseBackupAdapter implements BackupDataSource, BackupDataSink {
   }
 
   Map<String, Object?> _rowFor(BackupEntityRecord record) {
+    if (record.table == 'files') {
+      final data = record.data;
+      final bytes = base64Decode(data['bytes'] as String);
+      if (bytes.length != data['size'] ||
+          sha256.convert(bytes).toString() != data['sha256']) {
+        throw const FormatException('Photo integrity mismatch');
+      }
+      return {
+        'id': record.id,
+        'entity_type': data['entity_type'],
+        'entity_id': data['entity_id'],
+        'file_name': data['file_name'],
+        'file_path': 'local-photo:${record.id}',
+        'mime_type': data['mime_type'],
+        'size': bytes.length,
+        'created_at': record.createdAt.toIso8601String(),
+        'bytes': bytes,
+      };
+    }
     final base = <String, Object?>{
       'id': record.id,
       'data': jsonEncode(record.data),
