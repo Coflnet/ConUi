@@ -614,5 +614,12 @@
   "eventDetailChooseRelationshipPerson": "Whose relationship would you like to add?",
   "loginAccountButton": "Sign in with your account",
   "loginAccountUnavailable": "Account sign-in is currently unavailable. You can keep using this device locally.",
-  "loginAccountFailed": "Sign-in could not be completed. Please try again or continue without an account."
+  "loginAccountFailed": "Sign-in could not be completed. Please try again or continue without an account.",
+  "eventsYearOverview": "Years",
+  "eventsPreviousYear": "Previous year",
+  "eventsNextYear": "Next year",
+  "eventsYearStories": "{count, plural, =1{1 story} other{{count} stories}}",
+  "eventsPreviousMonth": "Previous month",
+  "eventsNextMonth": "Next month",
+  "@eventsYearStories": {"placeholders": {"count": {"type": "int"}}}
 }

@@ -42,61 +42,91 @@ class EventsScreen extends StatefulWidget {
 
 class _EventsScreenState extends State<EventsScreen> {
   DateTime _selectedMonth = DateTime.now();
+  bool _showYears = false;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final monthKey =
-        '${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}';
-
     return Consumer<DatabaseService>(
       builder: (context, db, _) {
         return Scaffold(
-          body: Column(
-            children: [
-              _buildMonthSelector(),
-              Expanded(
-                child: FutureBuilder<List<Event>>(
-                  future: db.getEvents(monthKey: monthKey),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-
-                    final events = snapshot.data ?? [];
-                    events.sort((a, b) => b.dateTime.compareTo(a.dateTime));
-
-                    if (events.isEmpty) {
-                      return _buildEmptyState(l10n);
-                    }
-
-                    return ListView.builder(
-                      itemCount:
-                          events.length + 1, // +1 for the Add button at the end
-                      padding: const EdgeInsets.only(bottom: 80),
-                      itemBuilder: (context, index) {
-                        if (index == events.length) {
-                          // Add Event button at the end of the list
-                          return Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: OutlinedButton.icon(
-                              onPressed: _addEvent,
-                              icon: const Icon(Icons.add),
-                              label: Text(l10n.eventsAddAnother),
-                            ),
-                          );
-                        }
-                        final event = events[index];
-                        return _EventListTile(
-                          event: event,
-                          onTap: () => _openEventDetail(event),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
+          body: FutureBuilder<List<Event>>(
+            future: db.getEvents(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final allEvents = snapshot.data ?? [];
+              allEvents.sort((a, b) => b.dateTime.compareTo(a.dateTime));
+              final yearCounts = <int, int>{_selectedMonth.year: 0};
+              for (final event in allEvents) {
+                yearCounts.update(event.dateTime.year, (count) => count + 1,
+                    ifAbsent: () => 1);
+              }
+              final years = yearCounts.keys.toList()
+                ..sort((a, b) => b.compareTo(a));
+              final events = allEvents
+                  .where((event) =>
+                      event.dateTime.year == _selectedMonth.year &&
+                      event.dateTime.month == _selectedMonth.month)
+                  .toList();
+              return Column(
+                children: [
+                  _buildYearSelector(l10n, yearCounts[_selectedMonth.year]!),
+                  if (!_showYears) _buildMonthSelector(),
+                  Expanded(
+                    child: _showYears
+                        ? ListView.builder(
+                            padding: const EdgeInsets.only(bottom: 80),
+                            itemCount: years.length,
+                            itemBuilder: (context, index) {
+                              final year = years[index];
+                              return ListTile(
+                                title: Text('$year'),
+                                subtitle: Text(
+                                    l10n.eventsYearStories(yearCounts[year]!)),
+                                trailing: const Icon(Icons.chevron_right),
+                                selected: year == _selectedMonth.year,
+                                onTap: () => setState(() {
+                                  final yearEvents = allEvents.where(
+                                      (event) => event.dateTime.year == year);
+                                  _selectedMonth = DateTime(
+                                      year,
+                                      yearEvents.isEmpty
+                                          ? _selectedMonth.month
+                                          : yearEvents.first.dateTime.month);
+                                  _showYears = false;
+                                }),
+                              );
+                            },
+                          )
+                        : events.isEmpty
+                            ? _buildEmptyState(l10n)
+                            : ListView.builder(
+                                itemCount: events.length + 1,
+                                padding: const EdgeInsets.only(bottom: 80),
+                                itemBuilder: (context, index) {
+                                  if (index == events.length) {
+                                    return Padding(
+                                      padding: const EdgeInsets.all(16.0),
+                                      child: OutlinedButton.icon(
+                                        onPressed: _addEvent,
+                                        icon: const Icon(Icons.add),
+                                        label: Text(l10n.eventsAddAnother),
+                                      ),
+                                    );
+                                  }
+                                  final event = events[index];
+                                  return _EventListTile(
+                                    event: event,
+                                    onTap: () => _openEventDetail(event),
+                                  );
+                                },
+                              ),
+                  ),
+                ],
+              );
+            },
           ),
           floatingActionButton: FloatingActionButton.extended(
             onPressed: _addEvent,
@@ -108,6 +138,43 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
+  Widget _buildYearSelector(AppLocalizations l10n, int count) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: l10n.eventsPreviousYear,
+            icon: const Icon(Icons.keyboard_double_arrow_left),
+            onPressed: () => setState(() {
+              _selectedMonth =
+                  DateTime(_selectedMonth.year - 1, _selectedMonth.month);
+            }),
+          ),
+          Expanded(
+            child: TextButton(
+              onPressed: () => setState(() => _showYears = !_showYears),
+              child: Column(
+                children: [
+                  Text('${_selectedMonth.year} · ${l10n.eventsYearOverview}'),
+                  Text(l10n.eventsYearStories(count)),
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: l10n.eventsNextYear,
+            icon: const Icon(Icons.keyboard_double_arrow_right),
+            onPressed: () => setState(() {
+              _selectedMonth =
+                  DateTime(_selectedMonth.year + 1, _selectedMonth.month);
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMonthSelector() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -115,6 +182,7 @@ class _EventsScreenState extends State<EventsScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           IconButton(
+            tooltip: AppLocalizations.of(context).eventsPreviousMonth,
             icon: const Icon(Icons.chevron_left),
             onPressed: () {
               setState(() {
@@ -126,12 +194,14 @@ class _EventsScreenState extends State<EventsScreen> {
             },
           ),
           Text(
-            DateFormat.yMMMM(Localizations.localeOf(context).toString()).format(_selectedMonth),
+            DateFormat.yMMMM(Localizations.localeOf(context).toString())
+                .format(_selectedMonth),
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
           ),
           IconButton(
+            tooltip: AppLocalizations.of(context).eventsNextMonth,
             icon: const Icon(Icons.chevron_right),
             onPressed: () {
               setState(() {

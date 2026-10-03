@@ -491,5 +491,11 @@
   "eventDetailChooseRelationshipPerson": "Für wen möchten Sie eine Beziehung festhalten?",
   "loginAccountButton": "Mit Ihrem Konto anmelden",
   "loginAccountUnavailable": "Die Anmeldung ist derzeit nicht verfügbar. Sie können Ihre Geschichten weiter lokal nutzen.",
-  "loginAccountFailed": "Die Anmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut oder fahren Sie ohne Konto fort."
+  "loginAccountFailed": "Die Anmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut oder fahren Sie ohne Konto fort.",
+  "eventsYearOverview": "Jahre",
+  "eventsPreviousYear": "Vorheriges Jahr",
+  "eventsNextYear": "Nächstes Jahr",
+  "eventsYearStories": "{count, plural, =1{1 Geschichte} other{{count} Geschichten}}",
+  "eventsPreviousMonth": "Vorheriger Monat",
+  "eventsNextMonth": "Nächster Monat"
 }
