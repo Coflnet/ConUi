@@ -647,5 +647,19 @@
   "storyPeopleAmbiguous": "Several people match “{name}”. Choose the person you mean:",
   "storyPeopleLoadFailed": "Could not load saved people. Saving retries the lookup. If it fails, your draft stays open so you can try again.",
   "storySaveFailed": "Could not save the story. Your draft is still open. Try again; if names are ambiguous, choose the right person from the people list.",
-  "@storyPeopleAmbiguous": {"placeholders": {"name": {"type": "String"}}}
+  "@storyPeopleAmbiguous": {"placeholders": {"name": {"type": "String"}}},
+  "storyInformationDetectedHeading": "Connections and details",
+  "storyInformationDetectedHelp": "Detected from the text. Remove anything that is wrong. Details are linked to this story; existing person information stays intact.",
+  "storyInformationRemove": "Remove suggestion",
+  "personRecordInformation": "Record information",
+  "personRecordInformationTitle": "Information about {name}",
+  "personStoryFactsHeading": "Information from stories",
+  "personStoryFactsSourceUnavailable": "The source story is unavailable. Restore its backup to open it.",
+  "@personRecordInformationTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }

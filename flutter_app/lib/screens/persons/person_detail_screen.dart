@@ -6,6 +6,7 @@ import '../../relationships/family_graph.dart';
 import '../../relationships/relationship_text.dart';
 import '../../services/database_service.dart';
 import '../events/event_detail_screen.dart';
+import '../events/add_event_screen.dart';
 import 'add_connection_dialog.dart';
 import 'add_person_screen.dart';
 import 'edit_connection_dialog.dart';
@@ -78,6 +79,17 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildHeader(context, person),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.mic),
+                      label: Text(l10n.personRecordInformation),
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => AddEventScreen(
+                          initialTitle: l10n.personRecordInformationTitle(person.name),
+                          initialParticipantIds: [person.id],
+                        ),
+                      )),
+                    ),
                     const SizedBox(height: 24),
                     if (person.aliases.isNotEmpty) ...[
                       _buildSection(l10n.personDetailAliasesHeading, person.aliases.join(', ')),
@@ -104,6 +116,22 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                     if (person.notes != null) ...[
                       const SizedBox(height: 24),
                       _buildSection(l10n.personDetailNotesHeading, person.notes!),
+                    ],
+                    if (person.storyFacts.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      Text(l10n.personStoryFactsHeading, style: Theme.of(context).textTheme.titleMedium),
+                      for (final fact in person.storyFacts.entries)
+                        FutureBuilder<Event?>(
+                          future: db.getEvent(fact.key),
+                          builder: (context, source) => ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(fact.value),
+                            subtitle: Text(source.data?.title ?? l10n.personStoryFactsSourceUnavailable),
+                            trailing: const Icon(Icons.open_in_new),
+                            onTap: source.data == null || source.data!.isDeleted ? null :
+                              () => Navigator.push(context, MaterialPageRoute(builder: (_) => EventDetailScreen(eventId: fact.key))),
+                          ),
+                        ),
                     ],
                     if (person.customAttributes.isNotEmpty) ...[
                       const SizedBox(height: 24),
@@ -156,7 +184,7 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                 Text(
                   [person.jobTitle, person.company]
                       .where((e) => e != null)
-                      .join(' at '),
+                      .join(' · '),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Colors.grey,
                       ),

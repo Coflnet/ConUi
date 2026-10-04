@@ -2,8 +2,26 @@ import 'package:flutter/material.dart';
 
 import '../l10n/gen/app_localizations.dart';
 import '../models/person.dart';
+import '../models/event.dart';
+import '../relationships/relationship_text.dart';
+import '../relationships/relationship_type.dart';
 import '../services/database_service.dart';
 import '../services/person_mentions.dart';
+import '../services/transcript_connections.dart';
+import '../services/transcript_connection_store.dart';
+
+typedef DetectedConnection = ({
+  Person person1,
+  Person person2,
+  RelationshipType type,
+  String sourceText
+});
+typedef DetectedPersonFact = ({
+  Person person,
+  String value,
+  String sourceText,
+  bool isCompany
+});
 
 /// Recognition stays on this device. Draft people are persisted only on Save.
 class TranscriptPeopleController extends ChangeNotifier {
@@ -15,10 +33,17 @@ class TranscriptPeopleController extends ChangeNotifier {
   final _choices = <String, String>{};
   final _dismissed = <String>{};
   final _dismissedIds = <String>{};
+  TranscriptConnections _information =
+      const TranscriptConnections(connections: [], facts: []);
+  final _dismissedConnections = <String>{};
+  final _dismissedFacts = <String>{};
+  Set<String> _preferredIds;
   bool _disposed = false;
   bool _loadFailed = false;
 
-  TranscriptPeopleController(this.text, this.database) {
+  TranscriptPeopleController(this.text, this.database,
+      {Set<String> preferredIds = const {}})
+      : _preferredIds = preferredIds {
     text.addListener(_recognize);
     _reload();
   }
@@ -38,7 +63,28 @@ class TranscriptPeopleController extends ChangeNotifier {
 
   void _recognize() {
     if (_disposed) return;
-    _mentions = extractPersonMentions(text.text, _people);
+    _information = extractTranscriptConnections(text.text, _people);
+    final names = {
+      for (final connection in _information.connections) ...[
+        connection.person1Name,
+        connection.person2Name
+      ],
+      for (final fact in _information.facts) fact.personName,
+    };
+    final candidates = <Person>[];
+    for (final name in names) {
+      final key = normalizedPersonName(name);
+      if (_people.any((p) => [p.name, ...p.aliases, p.name.split(' ').first]
+          .any((n) => normalizedPersonName(n) == key))) {
+        continue;
+      }
+      final fuller = names
+          .where((n) => normalizedPersonName(n).startsWith('$key '))
+          .toSet();
+      if (fuller.length == 1) continue;
+      candidates.add(_drafts.putIfAbsent(key, () => Person(name: name)));
+    }
+    _mentions = extractPersonMentions(text.text, [..._people, ...candidates]);
     notifyListeners();
   }
 
@@ -57,7 +103,11 @@ class TranscriptPeopleController extends ChangeNotifier {
     } else if (mention.matches.length == 1) {
       person = mention.matches.single;
     } else {
-      person = mention.matches.where((p) => p.id == _choices[key]).firstOrNull;
+      final preferred =
+          mention.matches.where((p) => _preferredIds.contains(p.id)).toList();
+      person =
+          mention.matches.where((p) => p.id == _choices[key]).firstOrNull ??
+              (preferred.length == 1 ? preferred.single : null);
     }
     return person != null && !_dismissedIds.contains(person.id) ? person : null;
   }
@@ -69,6 +119,105 @@ class TranscriptPeopleController extends ChangeNotifier {
       if (person != null) selected[person.id] = person;
     }
     return selected.values.toList();
+  }
+
+  void preferPersonIds(Set<String> ids) {
+    _preferredIds = ids;
+    _dismissedIds.removeAll(ids);
+    notifyListeners();
+  }
+
+  Person? _resolveName(String name) {
+    final key = normalizedPersonName(name);
+    final mention =
+        _mentions.where((m) => normalizedPersonName(m.name) == key).firstOrNull;
+    if (mention != null) return _person(mention);
+    final matches = selectedPeople
+        .where((p) => [p.name, ...p.aliases, p.name.split(' ').first]
+            .any((n) => normalizedPersonName(n) == key))
+        .toList();
+    return matches.length == 1 ? matches.single : null;
+  }
+
+  String _connectionKey(DetectedConnection c) =>
+      c.person1.id.compareTo(c.person2.id) <= 0
+          ? '${c.person1.id}:${c.type.name}:${c.person2.id}'
+          : '${c.person2.id}:${inverseOf(c.type).name}:${c.person1.id}';
+
+  String _factKey(DetectedPersonFact f) =>
+      '${f.person.id}:${f.isCompany}:${normalizedPersonName(f.value).replaceAll(RegExp(r"[.!?]+$"), "")}';
+
+  List<DetectedConnection> get connections {
+    final result = <DetectedConnection>[];
+    for (final c in _information.connections) {
+      final first = _resolveName(c.person1Name);
+      final second = _resolveName(c.person2Name);
+      if (first == null || second == null || first.id == second.id) continue;
+      final resolved = (
+        person1: first,
+        person2: second,
+        type: c.type,
+        sourceText: c.sourceText
+      );
+      if (!_dismissedConnections.contains(_connectionKey(resolved))) {
+        result.add(resolved);
+      }
+    }
+    return result;
+  }
+
+  List<DetectedPersonFact> get facts {
+    final result = <DetectedPersonFact>[];
+    for (final f in _information.facts) {
+      final person = _resolveName(f.personName);
+      if (person == null) continue;
+      final resolved = (
+        person: person,
+        value: f.value,
+        sourceText: f.sourceText,
+        isCompany: f.isCompany
+      );
+      if (!_dismissedFacts.contains(_factKey(resolved))) result.add(resolved);
+    }
+    return result;
+  }
+
+  void dismissConnection(DetectedConnection connection) {
+    _dismissedConnections.add(_connectionKey(connection));
+    notifyListeners();
+  }
+
+  void dismissFact(DetectedPersonFact fact) {
+    _dismissedFacts.add(_factKey(fact));
+    notifyListeners();
+  }
+
+  Future<void> saveInformation(Event event) async {
+    final people = await database.getPersons();
+    Person saved(Person person) {
+      final byId = people.where((p) => p.id == person.id).firstOrNull;
+      if (byId != null) return byId;
+      return people.singleWhere((p) => [p.name, ...p.aliases].any(
+          (n) => normalizedPersonName(n) == normalizedPersonName(person.name)));
+    }
+
+    await saveTranscriptInformation(database, event, [
+      for (final c in connections)
+        (
+          person1: saved(c.person1),
+          person2: saved(c.person2),
+          type: c.type,
+          sourceText: c.sourceText
+        )
+    ], [
+      for (final f in facts)
+        (
+          person: saved(f.person),
+          value: f.value,
+          sourceText: f.sourceText,
+          isCompany: f.isCompany
+        )
+    ]);
   }
 
   /// Re-read names before save, including the last transcript tail or user edit.
@@ -130,7 +279,12 @@ class TranscriptPeoplePicker extends StatelessWidget {
               !controller._isDismissed(m.name) &&
               controller._person(m) == null);
           if (controller._loadFailed) return Text(l10n.storyPeopleLoadFailed);
-          if (selected.isEmpty && ambiguous.isEmpty) {
+          final connections = controller.connections;
+          final facts = controller.facts;
+          if (selected.isEmpty &&
+              ambiguous.isEmpty &&
+              connections.isEmpty &&
+              facts.isEmpty) {
             return const SizedBox.shrink();
           }
           return Column(
@@ -162,6 +316,36 @@ class TranscriptPeoplePicker extends StatelessWidget {
                           ].join(' · ')),
                           onPressed: () => controller.choose(mention, person)),
                   ]),
+                ],
+                if (connections.isNotEmpty || facts.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(l10n.storyInformationDetectedHeading,
+                      style: Theme.of(context).textTheme.titleSmall),
+                  Text(l10n.storyInformationDetectedHelp,
+                      style: Theme.of(context).textTheme.bodySmall),
+                  for (final connection in connections)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.link),
+                      title: Text(
+                          '${connection.person1.name} · ${RelationshipText.roleOfLabel(l10n, connection.type, connection.person2.name)}'),
+                      trailing: IconButton(
+                          icon: const Icon(Icons.close),
+                          tooltip: l10n.storyInformationRemove,
+                          onPressed: () =>
+                              controller.dismissConnection(connection)),
+                    ),
+                  for (final fact in facts)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading:
+                          Icon(fact.isCompany ? Icons.business : Icons.notes),
+                      title: Text('${fact.person.name}: ${fact.sourceText}'),
+                      trailing: IconButton(
+                          icon: const Icon(Icons.close),
+                          tooltip: l10n.storyInformationRemove,
+                          onPressed: () => controller.dismissFact(fact)),
+                    ),
                 ],
                 const SizedBox(height: 8),
               ]);

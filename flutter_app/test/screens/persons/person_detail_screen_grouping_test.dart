@@ -107,6 +107,22 @@ void main() {
     expect(find.text('Bert'), findsNothing);
   });
 
+  testWidgets('person information links back to its source story', (tester) async {
+    final event = Event(id: 'source', title: 'New car', description: 'Anna bought a new car.', dateTime: DateTime(2026), participantIds: [anna.id]);
+    db.events[event.id] = event;
+    db.persons[anna.id] = anna.copyWith(storyFacts: {event.id: 'Anna bought a new car.'});
+    await _pumpPersonDetail(tester, db, anna.id);
+    expect(find.text('Record information'), findsOneWidget);
+    expect(find.text('Information from stories'), findsOneWidget);
+    final fact = find.widgetWithText(ListTile, 'Anna bought a new car.');
+    expect(fact, findsOneWidget);
+    await tester.ensureVisible(fact);
+    await tester.tap(fact);
+    await tester.pumpAndSettle();
+    expect(find.text('New car'), findsOneWidget);
+    expect(find.text('Description'), findsOneWidget);
+  });
+
   testWidgets('shows no Connections section when there are none', (tester) async {
     await _pumpPersonDetail(tester, db, anna.id);
     expect(find.text('Connections'), findsNothing);

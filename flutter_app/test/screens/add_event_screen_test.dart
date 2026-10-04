@@ -300,4 +300,107 @@ void main() {
     });
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets('person information recording saves chained relationships and facts without a place',
+      (tester) async {
+    final db = createTestDatabaseService();
+    final knownAlex = Person(id: 'known-alex', name: 'Alex');
+    await tester.runAsync(() async {
+      await db.initialize();
+      await db.savePerson(knownAlex);
+    });
+    addTearDown(() => tester.runAsync(() async {
+      await (await db.database).close();
+      db.dispose();
+    }));
+    const transcript = 'Alex got a new car. Alex is the brother of Ben, '
+        'who works at Zeta and is a colleague of Dana.';
+    var transcriptionRequests = 0;
+    final capture = FakeAudioCapture();
+    final store = NativeRecordingFileStore(baseDirectory: tempDir);
+    final recorder = RecorderController(
+      audioCapture: capture, fileStore: store, database: db,
+      transcriptionClient: TranscriptionClient(
+        baseUrl: 'https://api.example.com', getToken: () => 'tok',
+        httpClient: MockClient((request) async {
+          if (request.method == 'GET') {
+            return http.Response(jsonEncode({'available': true}), 200);
+          }
+          transcriptionRequests++;
+          return http.Response(jsonEncode({'text': transcript}), 200);
+        }),
+      ),
+      segmentDuration: const Duration(seconds: 30),
+      backoff: (_) => Duration.zero,
+    );
+    addTearDown(recorder.dispose);
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('en'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: ChangeNotifierProvider<DatabaseService>.value(
+        value: db,
+        child: AddEventScreen(
+          initialTitle: 'Information about Alex',
+          initialParticipantIds: [knownAlex.id],
+          recorderController: recorder,
+        ),
+      ),
+    ));
+    await tester.enterText(find.byType(TextFormField).at(1), 'Typed notes.');
+    await _pressAsync(tester, find.widgetWithIcon(IconButton, Icons.mic));
+    await tester.pump();
+    await tester.runAsync(() async {
+      capture.emitChunk(Uint8List(1600));
+      await Future<void>.delayed(Duration.zero);
+    });
+    expect(transcriptionRequests, 0);
+    expect(recorder.liveTranscript, isEmpty);
+    await _pressAsync(tester, find.widgetWithIcon(IconButton, Icons.stop_circle));
+    await tester.pump();
+    expect(transcriptionRequests, 1);
+    expect(find.byWidgetPredicate((widget) => widget is TextFormField &&
+        widget.controller?.text == 'Typed notes. $transcript'), findsOneWidget);
+    final recordingFile = recorder.lastStopResult!.attachedFile;
+    await tester.runAsync(() async {
+      expect((await db.getPersons()).single.id, knownAlex.id);
+      expect(await db.getEvents(), isEmpty);
+      expect(await db.getConnections(), isEmpty);
+    });
+    await _pressAsync(tester, find.byType(TextButton));
+    await tester.pump();
+    await tester.runAsync(() async {
+      final saved = (await db.getEvents()).single;
+      final people = await db.getPersons();
+      final alex = people.singleWhere((person) => person.name == 'Alex');
+      final ben = people.singleWhere((person) => person.name == 'Ben');
+      final dana = people.singleWhere((person) => person.name == 'Dana');
+      expect(people, hasLength(3));
+      expect(alex.id, knownAlex.id);
+      expect(saved.title, 'Information about Alex');
+      expect(saved.description, 'Typed notes. $transcript');
+      expect(saved.placeId, isNull);
+      expect(saved.participantIds, unorderedEquals([alex.id, ben.id, dana.id]));
+      expect(ben.company, 'Zeta');
+      expect(alex.storyFacts[saved.id], contains('Alex got a new car'));
+      expect(ben.storyFacts[saved.id], contains('works at Zeta'));
+      expect(dana.storyFacts, isEmpty);
+      final connections = await db.getConnectionsForEvent(saved.id);
+      expect(connections, hasLength(2));
+      final siblings = connections.singleWhere((edge) => edge.relationshipType == 'sibling');
+      expect({siblings.person1Id, siblings.person2Id}, {alex.id, ben.id});
+      final colleagues = connections.singleWhere((edge) => edge.relationshipType == 'colleague');
+      expect({colleagues.person1Id, colleagues.person2Id}, {ben.id, dana.id});
+      for (final edge in connections) {
+        expect(edge.isInferred, isTrue);
+        expect(edge.sourceEventIds, [saved.id]);
+      }
+      expect(saved.files.single.id, recordingFile.id);
+      expect(saved.files.single.kind, AttachedFile.kindRecording);
+      expect(await store.exists(recordingFile.id), isTrue);
+      expect((await db.getLocalRecording(recordingFile.id))!.eventId, saved.id);
+    });
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
 }

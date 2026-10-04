@@ -228,6 +228,7 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
       person2Id: widget.connection.person2Id,
       relationshipType: storageType,
       originEventId: widget.connection.originEventId,
+      sourceEventIds: widget.connection.sourceEventIds,
       description:
           _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
       startDate: _startDate,

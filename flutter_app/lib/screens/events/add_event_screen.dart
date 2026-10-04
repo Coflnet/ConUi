@@ -26,8 +26,11 @@ class AddEventScreen extends StatefulWidget {
   /// microphone or backend. Production code leaves this null and gets a
   /// real RecorderController built from the app's services.
   final RecorderController? recorderController;
+  final String? initialTitle;
+  final List<String> initialParticipantIds;
 
-  const AddEventScreen({super.key, this.existingEvent, this.recorderController});
+  const AddEventScreen({super.key, this.existingEvent, this.recorderController,
+    this.initialTitle, this.initialParticipantIds = const []});
 
   @override
   State<AddEventScreen> createState() => _AddEventScreenState();
@@ -68,6 +71,11 @@ class _AddEventScreenState extends State<AddEventScreen> {
       _placeId = e.placeId;
     }
 
+    if (widget.existingEvent == null) {
+      _titleController.text = widget.initialTitle ?? '';
+      _participantIds = List.of(widget.initialParticipantIds);
+    }
+
     if (widget.recorderController != null) {
       _recorder = widget.recorderController!;
     } else {
@@ -75,7 +83,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
       _ownsRecorder = true;
     }
     _recorder.addListener(_onRecorderChanged);
-    _peoplePicker = TranscriptPeopleController(_descriptionController, context.read<DatabaseService>());
+    _peoplePicker = TranscriptPeopleController(_descriptionController, context.read<DatabaseService>(), preferredIds: _participantIds.toSet());
     _peoplePicker.addListener(_onPeopleChanged);
   }
 
@@ -246,6 +254,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
             );
 
       await db.saveEvent(event);
+      await _peoplePicker.saveInformation(event);
 
       final pending = _pendingRecording;
       if (pending != null) {
@@ -416,6 +425,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
                     isRecording ? Icons.stop_circle : Icons.mic,
                     color: isRecording ? Colors.red : null,
                   ),
+                  tooltip: isRecording ? l10n.quickAddStopRecording : l10n.quickAddStartRecording,
                   iconSize: 36,
                   onPressed: isBusy ? null : _toggleRecording,
                 ),
@@ -533,6 +543,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
                             _peoplePicker.dismiss(p.name);
                           }
                         });
+                        _peoplePicker.preferPersonIds(_participantIds.toSet());
                         Navigator.pop(context);
                       },
                     ))

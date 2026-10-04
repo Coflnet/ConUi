@@ -516,5 +516,12 @@
   "storyPeopleDetectedHelp": "Im Text erkannte Personen werden automatisch hinzugefügt. Entfernen Sie unpassende Personen. Neue Personen werden beim Speichern angelegt.",
   "storyPeopleAmbiguous": "Mehrere Personen passen zu „{name}“. Wählen Sie die passende Person:",
   "storyPeopleLoadFailed": "Gespeicherte Personen konnten nicht geladen werden. Beim Speichern wird es erneut versucht. Schlägt das fehl, bleibt Ihr Entwurf für einen weiteren Versuch geöffnet.",
-  "storySaveFailed": "Die Geschichte konnte nicht gespeichert werden. Ihr Entwurf bleibt geöffnet. Versuchen Sie es erneut; wählen Sie bei gleichen Namen die passende Person aus der Personenliste."
+  "storySaveFailed": "Die Geschichte konnte nicht gespeichert werden. Ihr Entwurf bleibt geöffnet. Versuchen Sie es erneut; wählen Sie bei gleichen Namen die passende Person aus der Personenliste.",
+  "storyInformationDetectedHeading": "Verbindungen und Informationen",
+  "storyInformationDetectedHelp": "Aus dem Text erkannt. Entfernen Sie unpassende Angaben. Die Informationen werden mit dieser Geschichte verknüpft; vorhandene Personendaten bleiben erhalten.",
+  "storyInformationRemove": "Vorschlag entfernen",
+  "personRecordInformation": "Informationen aufnehmen",
+  "personRecordInformationTitle": "Informationen über {name}",
+  "personStoryFactsHeading": "Informationen aus Geschichten",
+  "personStoryFactsSourceUnavailable": "Die ursprüngliche Geschichte fehlt. Stellen Sie ihre Sicherung wieder her, um sie zu öffnen."
 }

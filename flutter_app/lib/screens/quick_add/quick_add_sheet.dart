@@ -312,6 +312,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
       if (!_selectedPersons.any((pick) => pick.existing?.id == person.id)) {
         _selectedPersons.add(PersonPick.existing(person));
       }
+      _peoplePicker.preferPersonIds(_selectedPersons.where((p) => p.existing != null).map((p) => p.existing!.id).toSet());
       _personSearchController.clear();
     });
   }
@@ -329,7 +330,10 @@ class QuickAddSheetState extends State<QuickAddSheet> {
 
   void _removePerson(PersonPick pick) {
     _peoplePicker.dismiss(pick.displayName);
-    setState(() => _selectedPersons.remove(pick));
+    setState(() {
+      _selectedPersons.remove(pick);
+      _peoplePicker.preferPersonIds(_selectedPersons.where((p) => p.existing != null).map((p) => p.existing!.id).toSet());
+    });
   }
 
   void _useNearbyPlace() {
@@ -581,6 +585,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
         files: files,
       );
       await db.saveEvent(event);
+      await _peoplePicker.saveInformation(event);
 
       final pendingId = _pendingRecording?.id;
       if (pendingId != null) {
