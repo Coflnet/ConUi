@@ -33,6 +33,7 @@ public class TestWebApplicationFactory : IAsyncDisposable
 {
     public InMemoryUserStore UserStore { get; } = new();
     public InMemorySyncStore SyncStore { get; } = new();
+    public InMemoryTrainingSampleStore TrainingSampleStore { get; set; } = new();
     public FakeCassandraConnection CassandraConnection { get; } = new();
     public FakeFirebaseTokenVerifier FirebaseVerifier { get; } = new();
     public FakeTranscriptionService TranscriptionService { get; } = new();
@@ -74,6 +75,7 @@ public class TestWebApplicationFactory : IAsyncDisposable
             // so registering the fakes here first (before the real ones are added) makes them win.
             builder.Services.AddSingleton<IUserStore>(UserStore);
             builder.Services.AddSingleton<ISyncStore>(SyncStore);
+            builder.Services.AddSingleton<ITrainingSampleStore>(TrainingSampleStore);
             builder.Services.AddSingleton<ICassandraConnection>(CassandraConnection);
             builder.Services.AddSingleton<IFirebaseTokenVerifier>(FirebaseVerifier);
             builder.Services.AddSingleton<ITranscriptionService>(TranscriptionService);

@@ -116,6 +116,7 @@ public static class RelationshipManagerApp
         builder.Services.TryAddSingleton<ICassandraConnection, CassandraConnection>();
         builder.Services.TryAddSingleton<IUserStore, CassandraUserStore>();
         builder.Services.TryAddSingleton<ISyncStore, CassandraSyncStore>();
+        builder.Services.TryAddSingleton<ITrainingSampleStore, CassandraTrainingSampleStore>();
 
         // S3 Service - lazy, optional. See Services/S3Service.cs.
         builder.Services.TryAddSingleton<IS3Service, S3Service>();
@@ -127,6 +128,7 @@ public static class RelationshipManagerApp
         builder.Services.TryAddSingleton<IAnonymousQuotaStore, CassandraAnonymousQuotaStore>();
         builder.Services.TryAddSingleton(TimeProvider.System);
         builder.Services.TryAddSingleton<AnonymousRecordingQuota>();
+        builder.Services.TryAddSingleton<TrainingSampleQuota>();
 
         // Firebase: only initialize when a service account is actually configured, so
         // /api/auth/firebase can answer 503 instead of trusting an unverified token when it's
