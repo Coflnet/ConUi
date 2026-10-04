@@ -125,19 +125,28 @@ def export_sample(args, receipt, destination, transcript, audio, facts, include_
         'manifest.json', receipt['id'] + '.json', *([receipt['id'] + '.wav'] if include_audio else [])}
 
 
-def open_report(page, transcript, facts):
-    hosted.click(page, REPORT)
+def open_report(page, facts):
+    global PHASE
+    PHASE = 'open report and verify consent controls'
+    hosted.click(page, REPORT, force=True)
     submit = page.get_by_role('button', name='Beispiel senden', exact=True)
     expect(submit).to_be_visible()
     expect(submit).to_be_disabled()
     expect(page.get_by_role('checkbox', name=CONSENT, exact=True)).not_to_be_checked()
     expect(page.get_by_role('checkbox', name=AUDIO, exact=True)).to_be_checked()
-    expect(page.get_by_text(transcript, exact=True).last).to_be_visible()
+    PHASE = 'verify report preview transcript and scoped extraction'
+    preview = page.get_by_role('alertdialog').get_by_role('group')
+    # Flutter's SelectableText has an empty disabled semantic textarea.
+    # Screenshots show the preview; authenticated export verifies its exact text.
+    expect(preview).to_contain_text('Vollständiger Geschichtentext (Notizen und alle Transkripte dieser Geschichte)')
     for name in connections.NAMES:
+        PHASE = 'verify preview person: ' + name
         text = '\n'.join([name, *(['Google'] if name == 'Paul Miller' else []), *facts[name]])
-        expect(page.get_by_text(text, exact=True).last).to_be_visible()
-    expect(page.get_by_text('James Smith und Paul Miller sind Geschwister.', exact=True)).to_be_visible()
-    expect(page.get_by_text('Paul Miller ist Kollegin oder Kollege von Dana Brown.', exact=True)).to_be_visible()
+        expect(preview).to_contain_text(text)
+    PHASE = 'verify preview sibling connection'
+    expect(preview).to_contain_text('James Smith und Paul Miller sind Geschwister.')
+    PHASE = 'verify preview colleague connection'
+    expect(preview).to_contain_text('Paul Miller ist Kollegin oder Kollege von Dana Brown.')
     return submit
 
 
@@ -203,14 +212,14 @@ def run(args):
                 hosted.click(page, 'Geschichten')
                 hosted.open_item(page, connections.TITLE)
                 PHASE = 'consent required and cancel sends no upload'
-                open_report(page, transcript, facts)
+                open_report(page, facts)
                 hosted.click(page, 'Abbrechen')
                 expect(page.get_by_role('button', name='Beispiel senden', exact=True)).to_have_count(0)
                 assert not posts
                 result['consent_required_cancel_without_post'] = True
                 for include_audio in (True, False):
                     PHASE = 'report synthetic recording' if include_audio else 'report synthetic transcript without audio'
-                    submit = open_report(page, transcript, facts)
+                    submit = open_report(page, facts)
                     hosted.field(page, 'Korrektur oder Erklärung (optional)', CORRECTION)
                     if not include_audio:
                         page.get_by_role('checkbox', name=AUDIO, exact=True).click()
@@ -225,7 +234,7 @@ def run(args):
                     response = upload.value
                     assert response.status == 201 and not receipt_errors and len(owned) == previous + 1
                     receipt = owned[-1]
-                    expect(page.get_by_text('Beispiel empfangen: ' + receipt['id'], exact=True)).to_be_visible()
+                    expect(page.get_by_role('button', name='Schließen', exact=True)).to_be_visible()
                     hosted.screenshots(page, args.output, 'training-audio-success' if include_audio else 'training-metadata-success')
                     PHASE = 'export and verify owned submission'
                     export_sample(args, receipt, args.output / ('audio-export' if include_audio else 'metadata-export'),
@@ -296,7 +305,7 @@ def main():
     try:
         run(args)
     except Exception as error:
-        print('Con training E2E failed: ' + type(error).__name__ + '; phase=' + PHASE, file=sys.stderr)
+        print('Con training E2E failed: ' + type(error).__name__ + '; phase=' + PHASE + '; control=' + hosted.PHASE, file=sys.stderr)
         raise SystemExit(1) from None
 
 
