@@ -42,9 +42,9 @@
     "ciWebhookSecretConfigured": true,
     "publicConIssuerVerified": true,
     "namespaceCreated": true,
-    "sourcePublishedCommit": "8d6d5a57517e2c08cc52390be7ef2a2858f8dbf0",
-    "githubRun": 37161509940,
-    "argoWorkflow": "promote-l9f44",
+    "sourcePublishedCommit": "1657ac0d2c0705b996b014e243a7d23627ad9865",
+    "githubRun": 37164295077,
+    "argoWorkflow": "promote-rgqf8",
     "imageScanPassed": true,
     "workload": "con/con-con-chart",
     "workloadReady": true,
@@ -55,8 +55,8 @@
     "openbaoProxyAccessApproved": true,
     "openbaoInitTokenRevoked": true,
     "deployedE2ePassed": true,
-    "fleetImagePromotionCommit": "1bca2084c516ea836048d8d1036a1db5271efa35",
-    "imageDigest": "sha256:c61845d7dfe5d8d9ca1dd370eb3aff6accf95442d0646357b83320027b60f083"
+    "fleetImagePromotionCommit": "e7d6260a300db7bf40513b228b879079fac34cd8",
+    "imageDigest": "sha256:14c6ea616cbef8a8bd47aace9202adc243ab4cbe363f7c17d1de016551616b8c"
   },
   "e2e": {
     "completed": true,
@@ -132,6 +132,31 @@
       "fresh_restore_preserved_exact_ids": true,
       "recording_playback_reload_restore": false,
       "uncaught_errors": 0
+    },
+    "automaticTranscriptConnections": {
+      "completed": true,
+      "recorded": true,
+      "origin": "https://con.coflnet.com",
+      "transcription_http_statuses": [
+        200,
+        200,
+        200
+      ],
+      "exact_subjects_facts_connections_sources": true,
+      "reload_preserved_exact_data": true,
+      "fresh_restore_preserved_exact_data": true,
+      "recording_playback_reload_restore": true,
+      "uncaught_errors": 0
+    },
+    "localTranscriptConnections": {
+      "completed": true,
+      "recorded": false,
+      "origin": "http://127.0.0.1:18085",
+      "exact_subjects_facts_connections_sources": true,
+      "reload_preserved_exact_data": true,
+      "fresh_restore_preserved_exact_data": true,
+      "recording_playback_reload_restore": false,
+      "uncaught_errors": 0
     }
   },
   "checks": {
@@ -149,7 +174,7 @@
     "baselineAnalyzeIssues": 9,
     "webReleaseBuilt": true,
     "debugApkBuilt": true,
-    "flutterLatestGatePassed": 506,
+    "flutterLatestGatePassed": 542,
     "fleetOfflineChartPassed": 7,
     "protectedPeopleSuffixIdentical": true
   },
@@ -185,7 +210,26 @@
     "draftPeopleCreatedOnlyOnStorySave": true,
     "finalTranscriptTailVerified": true,
     "unintroducedNamesAndPronounsSupported": false,
-    "automaticRelationshipsImplemented": false
+    "automaticRelationshipsImplemented": true
   },
-  "personRecognitionEvidenceDirectory": "/run/media/ekwav/Data/dev/Con/ConUi-work/review-person-recognition-2026-10-04"
+  "personRecognitionEvidenceDirectory": "/run/media/ekwav/Data/dev/Con/ConUi-work/review-person-recognition-2026-10-04",
+  "transcriptConnections": {
+    "implemented": true,
+    "localOnly": true,
+    "personRecordingWithoutPlace": true,
+    "explicitGermanEnglishTemplates": true,
+    "relativeClauseSubjectRegression": true,
+    "suggestionsRemovable": true,
+    "globallyDeduplicated": true,
+    "allSourceStoriesRetained": true,
+    "personFacts": [
+      "employer",
+      "newCar"
+    ],
+    "manualNotesAndEmployersPreserved": true,
+    "sourceStoryLinks": true,
+    "jsonAdditiveBackupCompatible": true,
+    "arbitraryFactsAndGeneralPronounsSupported": false
+  },
+  "transcriptConnectionsEvidenceDirectory": "/run/media/ekwav/Data/dev/Con/ConUi-work/review-transcript-connections-2026-10-04"
 }

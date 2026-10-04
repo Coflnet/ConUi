@@ -4,6 +4,49 @@ Written for the next Claude Code session. Read fully before acting. Start the se
 `/run/media/ekwav/Data/dev/Con/ConUi-work/integration` (not in `dev/Connections`, which is a
 stale Angular clone kept only for reference).
 
+## Transcript connections and person information — 2026-10-04
+
+This section supersedes the runtime source/image below. Source `1657ac0d2c0705b996b014e243a7d23627ad9865` is live
+at https://con.coflnet.com. GitHub `37164295077`, Argo `promote-rgqf8`, and Fleet
+`e7d6260a300db7bf40513b228b879079fac34cd8` passed. Exact image digest `sha256:14c6ea616cbef8a8bd47aace9202adc243ab4cbe363f7c17d1de016551616b8c` is verified with every desired
+replica ready, updated and available; generation equals observed generation.
+
+- Person detail offers “Informationen aufnehmen” / “Record information”, presets
+  the person and title, and saves without requiring or inventing a location.
+- Both story forms derive removable people, connections and person details from
+  typed text and recording transcripts, including final tails. Explicit German
+  and English sibling, parent/child, colleague, friend, partner and spouse
+  templates support simple relative/coordination chains with or without commas.
+  Direct “brother of Ben, who…” and possessive “Ben’s brother, who…” resolve their
+  different subjects correctly; paired German/English regressions cover this.
+- Employer and new-car clauses are indexed on the relevant person with links to
+  original stories/recordings. Existing notes and employers are preserved. Repeated
+  evidence reuses global edges and adds source story IDs. Removing inferred
+  evidence preserves shared sources and manually confirmed connections.
+- Extraction is local and conservative. No additional transcript API/model call;
+  general pronouns, arbitrary facts, complicated nested discourse and historical
+  relationship onset remain outside this first pass. New JSON fields are additive
+  and preserve old backups; no SQL migration is required.
+- Hosted `deployment/e2e/connections.py` passed real fictional speech on this exact
+  deployed image. Public PKCE, microphone capture and real ASR HTTP200 responses
+  produced James–Paul siblings, Paul–Dana colleagues, Paul’s employer Google and
+  James’s new-car fact. Exactly three people and two edges, both source story IDs,
+  no invented place, source navigation, full serialized equality on reload/fresh
+  restore, WAV integrity, advancing playback clocks and zero browser errors passed.
+  German phone390 and desktop1440 screenshots were reviewed. Independent local
+  production-web typed run passed the same data and restoration checks.
+- Both disposable Con identities were removed with GET404 proof and their fixture
+  removed. Creation and cleanup used narrow, nonrenewable, short-lived Bao children;
+  each was immediately revoked, invalid HTTP403 proven, artifacts removed. The
+  owned Keycloak tunnel was stopped only after recorded PID/command verification.
+
+Final checks: 542 Flutter gate tests and 117 backend tests pass; analyzer retains
+nine baseline issues; release web and debug APK build successfully. The protected
+people-screen build/search suffix remains byte-identical to `69a5c97`. Source
+commits `b02ae7e`, `3d9667b`, `b7dcded`, `1657ac0`; harness and receipts use
+`[skip ci]` and do not alter the deployed runtime. Safe durable evidence:
+`/run/media/ekwav/Data/dev/Con/ConUi-work/review-transcript-connections-2026-10-04`. Existing S3/cloud sharing limitations below remain unchanged.
+
 ## Automatic transcript people — 2026-10-04
 
 This section supersedes the runtime source/image below. Runtime source
