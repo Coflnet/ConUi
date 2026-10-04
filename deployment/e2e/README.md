@@ -175,10 +175,10 @@ phase/control names; credentials and token values are never printed.
 `connections.py` seeds known James Smith through typed quick add, then uses
 **Informationen aufnehmen** in his person detail. The exact fictional narrative
 is: “James Smith got a new car. James Smith is the brother of Paul Miller, who
-works at Zeta and is a colleague of Dana Brown.” No people or connections are
+works at Google and is a colleague of Dana Brown.” No people or connections are
 entered manually. A repeated typed story verifies global relationship deduplication
 and both source story IDs. ZIP checks require exactly James, Paul and Dana,
-James–Paul siblings, Paul–Dana colleagues, Paul's company Zeta, James's car fact,
+James–Paul siblings, Paul–Dana colleagues, Paul's company Google, James's car fact,
 correct source IDs and no invented place on either information story. Person
 facts and their source story link, 390px/1440px screenshots, reload, fresh-context
 restore, exact serialized object IDs and zero uncaught browser errors are required.
@@ -203,7 +203,7 @@ Generate only fictional speech; for example, in an ephemeral gTTS environment:
 mkdir -p /tmp/con-connections-e2e
 uv run --with gtts python - <<'PY'
 from gtts import gTTS
-gTTS('James Smith got a new car. James Smith is the brother of Paul Miller, who works at Zeta and is a colleague of Dana Brown.', lang='en').save('/tmp/con-connections-e2e/connections-speech.mp3')
+gTTS('James Smith got a new car. James Smith is the brother of Paul Miller, who works at Google and is a colleague of Dana Brown.', lang='en').save('/tmp/con-connections-e2e/connections-speech.mp3')
 PY
 ffmpeg -hide_banner -loglevel error -y \
   -i /tmp/con-connections-e2e/connections-speech.mp3 -af atempo=0.75 \
@@ -223,3 +223,7 @@ Optional browser routing uses the same owned TLS tunnel argument as `people.py`.
 Require exit zero and `result.json` with `completed: true`, `uncaught_errors: 0`
 and the intended `recorded` mode; partial/local results do not establish deployed
 completion. Identity/token cleanup remains the protected operator's responsibility.
+
+Failure diagnostics include semantic-role geometry and, only when the information
+form has one of the two fixed synthetic titles, its title and fictional transcript.
+No login field values, callback URLs or tokens are collected.

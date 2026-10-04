@@ -17,7 +17,7 @@ from playwright.sync_api import sync_playwright, expect
 PHASE = 'startup'
 SEED = 'My brother James Smith came.'
 TEXT = ('James Smith got a new car. James Smith is the brother of Paul Miller, '
-        'who works at Zeta and is a colleague of Dana Brown.')
+        'who works at Google and is a colleague of Dana Brown.')
 SEED_TITLE = 'E2E Known James'
 TITLE = 'Informationen über James Smith'
 REPEAT_TITLE = 'E2E Repeated connections'
@@ -72,9 +72,9 @@ def archive_data(archive, recorded):
                 assert all(re.search(r'got a new car', value, re.I) for value in facts.values())
                 assert person_row.get('company') is None
             elif name == 'Paul Miller':
-                assert person_row['company'] == 'Zeta'
+                assert person_row['company'] == 'Google'
                 assert set(facts) == {info['id'], repeated['id']}
-                assert all(re.search(r'works at Zeta', value, re.I) for value in facts.values())
+                assert all(re.search(r'works at Google', value, re.I) for value in facts.values())
             else:
                 assert not facts and person_row.get('company') is None
         connections = [row['data'] for row in data['connections']]
@@ -168,11 +168,17 @@ def run(args):
                         statuses.append(response.status)
                 page.on('response', capture)
                 hosted.click(page, 'Aufnahme starten')
-                expect(page.get_by_role('button', name='Aufnahme beenden', exact=True)).to_be_visible()
+                # Flutter's hovered tooltip can alter the computed accessible name.
+                stop = page.locator('[role=button]').filter(has_text=re.compile(r'^Aufnahme beenden$'))
+                expect(stop).to_have_count(1)
+                expect(stop).to_be_enabled()
+                PHASE = 'record synthetic information'
                 with wave.open(str(args.audio_fixture)) as audio:
                     duration = audio.getnframes() / audio.getframerate()
                 page.wait_for_timeout(int((duration + 1) * 1000))
-                hosted.click(page, 'Aufnahme beenden')
+                PHASE = 'finalize synthetic information recording'
+                hosted.PHASE = 'UI control: Aufnahme beenden'
+                stop.click(force=True)
                 expect(page.get_by_role('button', name='Speichern', exact=True)).to_be_enabled(timeout=90000)
                 transcript = page.get_by_role('textbox', name='Beschreibung', exact=True)
                 transcript.click()
@@ -246,8 +252,12 @@ def run(args):
             for index, failed in enumerate(pages):
                 if failed.url.startswith(args.origin):
                     failed.screenshot(path=str(output / f'failure-{index}.png'))
-                    summary = failed.locator('[role]').evaluate_all("nodes => nodes.map(e => ({role:e.getAttribute('role'),label:e.getAttribute('aria-label'),text:(e.innerText||'').slice(0,200)}))")
+                    summary = failed.locator('[role]').evaluate_all("nodes => nodes.map(e => { const r=e.getBoundingClientRect(); return {role:e.getAttribute('role'),label:e.getAttribute('aria-label'),labelledBy:(e.getAttribute('aria-labelledby')||'').split(/\\s+/).map(id=>document.getElementById(id)?.textContent||'').join(' '),text:(e.innerText||'').slice(0,200),box:{x:r.x,y:r.y,width:r.width,height:r.height},display:getComputedStyle(e).display,visibility:getComputedStyle(e).visibility}; })")
                     (output / f'failure-ui-{index}.json').write_text(json.dumps(summary, ensure_ascii=False))
+                    title_field = failed.get_by_role('textbox', name=re.compile(r'Titel \*'))
+                    description = failed.get_by_role('textbox', name='Beschreibung', exact=True)
+                    if title_field.count() == 1 and description.count() == 1 and title_field.input_value() in (TITLE, REPEAT_TITLE):
+                        (output / f'failure-synthetic-form-{index}.json').write_text(json.dumps({'title': title_field.input_value(), 'description': description.input_value()}, ensure_ascii=False))
             raise
         finally:
             result['uncaught_errors'] = len(errors)
