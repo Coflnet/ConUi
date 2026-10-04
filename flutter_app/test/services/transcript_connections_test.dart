@@ -63,6 +63,40 @@ void main() {
     }
   });
 
+  test('possessive relative head is the role holder, direct head is the owner',
+      () {
+    for (final (text, head) in [
+      (
+        'Alex is Ben’s brother, who works at Zeta and is a colleague of Dana.',
+        'Alex'
+      ),
+      (
+        'Alex is the brother of Ben, who works at Zeta and is a colleague of Dana.',
+        'Ben'
+      ),
+      (
+        'Alex ist Bens Bruder, der bei Zeta arbeitet und ein Kollege von Dana ist.',
+        'Alex'
+      ),
+      (
+        'Alex ist der Bruder von Ben, der bei Zeta arbeitet und ein Kollege von Dana ist.',
+        'Ben'
+      ),
+    ]) {
+      final result = extractTranscriptConnections(text, []);
+      expect(
+          triples(result),
+          [
+            ('Alex', RelationshipType.sibling, 'Ben'),
+            (head, RelationshipType.colleague, 'Dana'),
+          ],
+          reason: text);
+      expect(result.facts.single.personName, head, reason: text);
+      expect(result.facts.single.value, 'Zeta');
+      expect(result.facts.single.isCompany, isTrue);
+    }
+  });
+
   test('parent and child direction and symmetric inverse deduplication', () {
     final result = extractTranscriptConnections(
         'Alex is the father of Ben. Ben is the son of Alex. '

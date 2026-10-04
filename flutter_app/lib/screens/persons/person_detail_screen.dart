@@ -126,7 +126,8 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                           builder: (context, source) => ListTile(
                             contentPadding: EdgeInsets.zero,
                             title: Text(fact.value),
-                            subtitle: Text(source.data?.title ?? l10n.personStoryFactsSourceUnavailable),
+                            subtitle: source.connectionState == ConnectionState.waiting ? null :
+                              Text(source.data == null || source.data!.isDeleted ? l10n.personStoryFactsSourceUnavailable : source.data!.title),
                             trailing: const Icon(Icons.open_in_new),
                             onTap: source.data == null || source.data!.isDeleted ? null :
                               () => Navigator.push(context, MaterialPageRoute(builder: (_) => EventDetailScreen(eventId: fact.key))),

@@ -67,8 +67,9 @@ const _relationshipWords = {
 RegExp _pattern(String pattern) =>
     RegExp(pattern, caseSensitive: false, unicode: true);
 
-/// Extracts only explicit, affirmative clauses. Relative clauses use the last
-/// named person; coordinated predicates keep their clause's subject. General
+/// Extracts only explicit, affirmative clauses. Relative clauses use the named
+/// clause head (the owner in "brother of Ben", the subject in "Ben’s brother");
+/// coordinated predicates keep their clause's subject. General
 /// pronouns and uncertain sentences deliberately carry no inferred facts.
 TranscriptConnections extractTranscriptConnections(
     String text, List<Person> people) {
@@ -173,7 +174,8 @@ TranscriptConnections extractTranscriptConnections(
         subject = null;
         antecedent = null;
       }
-      var match = direct.firstMatch(clause);
+      final directMatch = direct.firstMatch(clause);
+      var match = directMatch;
       String? first;
       String? second;
       String? word;
@@ -191,7 +193,7 @@ TranscriptConnections extractTranscriptConnections(
       }
       if (first != null && second != null && word != null) {
         subject = first;
-        antecedent = second;
+        antecedent = directMatch == null ? first : second;
         final type = _relationshipWords[word.toLowerCase()]!;
         final a = identity(first);
         final b = identity(second);
