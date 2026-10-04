@@ -42,9 +42,9 @@
     "ciWebhookSecretConfigured": true,
     "publicConIssuerVerified": true,
     "namespaceCreated": true,
-    "sourcePublishedCommit": "1657ac0d2c0705b996b014e243a7d23627ad9865",
-    "githubRun": 37164295077,
-    "argoWorkflow": "promote-rgqf8",
+    "sourcePublishedCommit": "7d3fbd81df2abdc4f41a9eb175d3a3680dd12a92",
+    "githubRun": 37192100893,
+    "argoWorkflow": "promote-9s8rs",
     "imageScanPassed": true,
     "workload": "con/con-con-chart",
     "workloadReady": true,
@@ -55,8 +55,8 @@
     "openbaoProxyAccessApproved": true,
     "openbaoInitTokenRevoked": true,
     "deployedE2ePassed": true,
-    "fleetImagePromotionCommit": "e7d6260a300db7bf40513b228b879079fac34cd8",
-    "imageDigest": "sha256:14c6ea616cbef8a8bd47aace9202adc243ab4cbe363f7c17d1de016551616b8c"
+    "fleetImagePromotionCommit": "afb66d31c067763f90f0da876e2ee6a4db5cff41",
+    "imageDigest": "sha256:f6208753ebe90ff036020e2219a87f0f0eb9741bc22f2b4c956063a93fa52101"
   },
   "e2e": {
     "completed": true,
@@ -157,6 +157,36 @@
       "fresh_restore_preserved_exact_data": true,
       "recording_playback_reload_restore": false,
       "uncaught_errors": 0
+    },
+    "trainingSamples": {
+      "completed": true,
+      "uncaught_errors": 0,
+      "cleanup_verified": true,
+      "upload_http_statuses": [
+        201,
+        201
+      ],
+      "unauthorized_http_statuses": [
+        401,
+        401,
+        401,
+        401,
+        401,
+        401
+      ],
+      "delete_http_statuses": [
+        204,
+        204
+      ],
+      "deleted_audio_http_statuses": [
+        404,
+        404
+      ],
+      "consent_required_cancel_without_post": true,
+      "original_wav_exactly_preserved": true,
+      "metadata_only_without_wav": true,
+      "exact_transcript_correction_scoped_people_connections": true,
+      "guest_reviewer_access_denied": true
     }
   },
   "checks": {
@@ -168,15 +198,17 @@
       453
     ],
     "diagnosticMemorySkipped": 2,
-    "backendPassed": 117,
+    "backendPassed": 130,
     "keycloakPassed": 16,
     "storageHelperPassed": 3,
     "baselineAnalyzeIssues": 9,
     "webReleaseBuilt": true,
     "debugApkBuilt": true,
-    "flutterLatestGatePassed": 542,
+    "flutterLatestGatePassed": 566,
     "fleetOfflineChartPassed": 7,
-    "protectedPeopleSuffixIdentical": true
+    "protectedPeopleSuffixIdentical": true,
+    "trainingExportPassed": 13,
+    "trainingProvisionHelperPassed": 3
   },
   "transcription": {
     "configured": true,
@@ -231,5 +263,32 @@
     "jsonAdditiveBackupCompatible": true,
     "arbitraryFactsAndGeneralPronounsSupported": false
   },
-  "transcriptConnectionsEvidenceDirectory": "/run/media/ekwav/Data/dev/Con/ConUi-work/review-transcript-connections-2026-10-04"
+  "transcriptConnectionsEvidenceDirectory": "/run/media/ekwav/Data/dev/Con/ConUi-work/review-transcript-connections-2026-10-04",
+  "trainingSamples": {
+    "implemented": true,
+    "explicitConsentVersion": "1",
+    "selectedAudioOptional": true,
+    "fullStoryTextPreviewed": true,
+    "scopedPeopleConnectionsFacts": true,
+    "audioOnlyReports": true,
+    "metadataOnlyReports": true,
+    "guestIpDailyLimit": 10,
+    "quotaBoundary": "UTC",
+    "reviewerSeparateCredential": true,
+    "serverStoresCredentialHashOnly": true,
+    "reviewerCredentialInClient": false,
+    "storage": "Con Scylla metadata and 256-KiB WAV chunks",
+    "s3Required": false,
+    "ordinaryTranscriptionAutomaticallyRetained": false,
+    "captureLanguageUnknown": true,
+    "maxAudioBytes": 10485760,
+    "maxAudioSeconds": 600,
+    "maxMetadataBytes": 65536,
+    "maxTranscriptCharacters": 32000,
+    "maxCorrectionCharacters": 4000,
+    "privateAuthenticatedExportScript": "deployment/training/export.py",
+    "ownedSyntheticSamplesDeletedVerified": true,
+    "infrastructureHelperCommit": "8732e13"
+  },
+  "trainingSamplesEvidenceDirectory": "/run/media/ekwav/Data/dev/Con/ConUi-work/review-training-samples-2026-10-04"
 }

@@ -4,6 +4,67 @@ Written for the next Claude Code session. Read fully before acting. Start the se
 `/run/media/ekwav/Data/dev/Con/ConUi-work/integration` (not in `dev/Connections`, which is a
 stale Angular clone kept only for reference).
 
+## Consented training sample reports — 2026-10-04
+
+This section supersedes the runtime source/image below. Source `7d3fbd81df2abdc4f41a9eb175d3a3680dd12a92` is live
+at https://con.coflnet.com. GitHub `37192100893`, Argo `promote-9s8rs` and Fleet
+`afb66d31c067763f90f0da876e2ee6a4db5cff41` passed. Exact digest `sha256:f6208753ebe90ff036020e2219a87f0f0eb9741bc22f2b4c956063a93fa52101` is verified on every desired replica,
+with ready/updated/available counts and observed generation matching the desired
+workload. Public readiness HTTP200; Cassandra/transcription true, S3 false.
+
+- Each saved recording offers “Trainingsbeispiel melden” / “Report training sample”.
+  The dialog identifies the selected recording and previews full story text (notes and all its
+  transcripts), source-scoped people/facts/connections and an optional correction.
+  Audio is optional; explicit unchecked consent is required. Opening/cancelling
+  sends nothing. Original local data is preserved and retry errors retain the
+  correction. Audio-only reports cover failed/empty transcripts. Reports omit
+  captured language because it was not stored; current settings are not evidence.
+- Reports persist in Con Scylla tables `training_samples` and
+  `training_sample_audio`; WAV chunks are at most 256 KiB. Metadata is published
+  with LWT only after complete audio. Strong reads protect uncertain publication;
+  reviewer removal uses a logged batch. This feature needs no S3 credentials and
+  ordinary ASR does not automatically retain recordings/transcripts for training.
+- Limits: 10 reports per effective IP per UTC day, including signed-in submissions,
+  persisted using CAS. Same-ID/content retries are idempotent; changed content
+  conflicts with retry guidance. Audio 10 MiB/10 minutes; metadata 64 KiB; story text
+  32,000 characters; correction 4,000. New combinations and duplicate names are
+  legitimate training cases. Unknown JSON/contact fields are rejected.
+- Reviewer list/audio/delete require `X-Training-Token`. Ordinary account JWTs
+  do not grant review access. Con config stores only the SHA256 reviewer hash;
+  the raw 64-character credential stays in the owner's protected mode 0600 file
+  `dev/ansible/out/con-training/reviewer-token`, never in app/client/logs/URLs.
+  `deployment/training/export.py` retrieves a UTC day or one sample to private
+  JSON/WAV files, verifies size/SHA256/PCM and marks completion atomically.
+- Infrastructure helper commit `8732e13` installs only the required hash via
+  read-first CAS of `kv/con/con-backend`, preserving unrelated fields and refusing
+  implicit rotation. The protected predecessor flow minted a narrow 300-second,
+  nonrenewable child; it was immediately revoked, invalid HTTP403 proven and token
+  artifacts removed. Existing infrastructure upgrade edits were preserved by using
+  an isolated `dev/ansible-work/con-training` checkout.
+- Hosted `deployment/e2e/training.py` passed on this exact deployed image using
+  only the pinned fictional prior-ASR backup. It verified unchecked consent,
+  cancellation without POST, guest audio and metadata reports HTTP201, exact transcript/correction,
+  three names/two edges/employer/car facts, byte-identical WAV authenticated export,
+  metadata-only export with no WAV, and unauthorized reviewer reads HTTP401. German
+  phone390/desktop1440 screenshots were reviewed; zero uncaught errors. A separate phone check
+  verified scrolling to and toggling consent without an upload. Both
+  captured synthetic samples were deleted HTTP204 and verified absent from pagination
+  and audio HTTP404. No new ASR quota or identities were needed; owned browser artifacts
+  were removed and the permanent private reviewer credential was retained.
+
+Final checks: 566 Flutter gate tests, 130 backend tests, 13 export-script tests,
+three infrastructure helper tests pass. Analyzer retains nine baseline issues;
+release web/debug APK builds pass. Protected people search suffix remains
+byte-identical to `69a5c97`. Source commits `0b4de00` and `7d3fbd8`; later
+harness/docs/receipts use `[skip ci]` and do not alter the verified runtime.
+Safe durable evidence: `/run/media/ekwav/Data/dev/Con/ConUi-work/review-training-samples-2026-10-04`.
+
+Residual storage limit: process death or unavailable cleanup can leave unpublished
+WAV chunks. Ambiguous publication preserves them to avoid erasing committed audio;
+there is no automatic orphan collector. This feature collects review samples and
+exports datasets; it does not automatically train/deploy a model. Existing cloud
+sync/S3/cross-user sharing limitations below remain unchanged.
+
 ## Transcript connections and person information — 2026-10-04
 
 This section supersedes the runtime source/image below. Source `1657ac0d2c0705b996b014e243a7d23627ad9865` is live
