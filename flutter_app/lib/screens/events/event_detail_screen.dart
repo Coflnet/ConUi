@@ -8,6 +8,7 @@ import '../../relationships/relationship_text.dart';
 import '../../services/database_service.dart';
 import '../../services/recording_file_store.dart';
 import '../../widgets/recording_player.dart';
+import '../../widgets/training_sample_dialog.dart';
 import '../map/map_tile_layer.dart';
 import '../places/place_sheet.dart';
 import '../persons/person_detail_screen.dart';
@@ -314,7 +315,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           const SizedBox(height: 8),
           ...recordings.map((file) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: RecordingPlayer(file: file, store: _recordingFileStore),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    RecordingPlayer(file: file, store: _recordingFileStore),
+                    TrainingSampleButton(
+                        event: event, file: file, store: _recordingFileStore),
+                  ],
+                ),
               )),
           const SizedBox(height: 8),
         ],

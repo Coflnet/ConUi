@@ -523,5 +523,19 @@
   "personRecordInformation": "Informationen aufnehmen",
   "personRecordInformationTitle": "Informationen über {name}",
   "personStoryFactsHeading": "Informationen aus Geschichten",
-  "personStoryFactsSourceUnavailable": "Die ursprüngliche Geschichte fehlt. Stellen Sie ihre Sicherung wieder her, um sie zu öffnen."
+  "personStoryFactsSourceUnavailable": "Die ursprüngliche Geschichte fehlt. Stellen Sie ihre Sicherung wieder her, um sie zu öffnen.",
+  "trainingReport": "Trainingsbeispiel melden",
+  "trainingScopeHelp": "Prüfe, was geteilt wird. Diese freiwillige Meldung wird für das Training und autorisierte Prüfer auf den Server hochgeladen. Gäste können bis zu 10 Meldungen pro Tag senden. Deine ursprüngliche Geschichte und Aufnahme bleiben auf diesem Gerät.",
+  "trainingRecording": "Ausgewählte Aufnahme: {name}",
+  "trainingSharedText": "Vollständiger Geschichtentext (Notizen und alle Transkripte dieser Geschichte)",
+  "trainingSnapshot": "Personen, Informationen aus dieser Geschichte und Beziehungen zum Teilen",
+  "trainingCorrection": "Korrektur oder Erklärung (optional)",
+  "trainingAudio": "Ausgewählte Original-WAV einschließen (höchstens 10 MiB)",
+  "trainingConsent": "Ich stimme zu, dass das ausgewählte Audio (falls eingeschlossen), der Geschichtentext, Namen, Beziehungen und die Korrektur für das Training auf den Server hochgeladen und autorisierten Prüfern zugänglich gemacht werden.",
+  "trainingSubmit": "Beispiel senden",
+  "trainingReceipt": "Beispiel empfangen: {id}",
+  "trainingError": "{kind, select, network{Der Server ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut. Dein Entwurf bleibt erhalten.} tooLarge{Diese Meldung ist zu groß. Deaktiviere Audio, wenn es 10 MiB überschreitet. Der Geschichtentext ist auf 32.000 Zeichen, die Korrektur auf 4.000, Personen auf 50, Beziehungen auf 100 und Metadaten auf 64 KiB begrenzt. Kürze bei Bedarf die Geschichte und öffne die Meldung erneut.} unsupported{Der Server konnte diese WAV nicht lesen. Stelle die Originalaufnahme aus einem Backup wieder her oder sende ohne Audio.} rateLimited{Zu viele gleichzeitige Meldungen oder das Tageslimit ist erreicht. Warte einen Moment und versuche es erneut. Ist dein Tageslimit erreicht, versuche es morgen; Gäste können 10 Meldungen pro Tag senden.} unauthorized{Deine Anmeldung ist abgelaufen. Kopiere deine Korrektur, melde dich in den Einstellungen erneut an und öffne diese Meldung wieder. Dein Entwurf bleibt bis zum Schließen erhalten.} unavailable{Meldungen sind derzeit nicht verfügbar. Versuche es später erneut; dein Entwurf bleibt erhalten.} conflict{Diese Beispiel-ID gehört bereits zu einer anderen Meldung. Kopiere deine Korrektur, schließe den Dialog und beginne eine neue Meldung.} missingAudio{Die Originalaufnahme fehlt oder ist unvollständig. Stelle sie aus einem Backup wieder her oder deaktiviere Audio, um den Geschichtentext zu senden.} invalid{Diese Meldung benötigt Audio oder Geschichtentext. Schließe die Originalaufnahme ein oder ergänze Notizen/transkribiere die Geschichte und öffne die Meldung erneut. Falls der Server sie weiter ablehnt, prüfe Text und Audio.} other{Die Meldung konnte nicht gesendet werden. Dein Entwurf bleibt erhalten. Versuche es später erneut.}}",
+  "@trainingRecording": {"placeholders": {"name": {"type": "String"}}},
+  "@trainingReceipt": {"placeholders": {"id": {"type": "String"}}},
+  "@trainingError": {"placeholders": {"kind": {"type": "String"}}}
 }

@@ -661,5 +661,19 @@
         "type": "String"
       }
     }
-  }
+  },
+  "trainingReport": "Report training sample",
+  "trainingScopeHelp": "Review what will be shared. This voluntary report uploads to the server for training and authorized reviewers. Guests can submit up to 10 reports per day. Your original story and recording stay on this device.",
+  "trainingRecording": "Selected recording: {name}",
+  "trainingSharedText": "Full story text (typed notes and all transcripts in this story)",
+  "trainingSnapshot": "People, story facts and relationships to share",
+  "trainingCorrection": "Correction or explanation (optional)",
+  "trainingAudio": "Include selected original WAV (maximum 10 MiB)",
+  "trainingConsent": "I consent to upload the selected audio (if included), story text, names, relationships and correction to the server for training and access by authorized reviewers.",
+  "trainingSubmit": "Send sample",
+  "trainingReceipt": "Sample received: {id}",
+  "trainingError": "{kind, select, network{Could not reach the server. Check your connection and try again. Your draft is still here.} tooLarge{This report is too large. Turn off audio if it exceeds 10 MiB. Story text is limited to 32,000 characters, corrections to 4,000, people to 50, relationships to 100 and metadata to 64 KiB. Shorten the story if needed, then reopen this report.} unsupported{The server could not read this WAV. Restore the original recording from a backup or send without audio.} rateLimited{Too many reports at once, or the daily limit was reached. Wait a moment and retry. If your daily limit is reached, try tomorrow; guests can submit 10 reports per day.} unauthorized{Your sign-in has expired. Copy your correction, sign in again in Settings, then reopen this report. Your draft stays here until you close it.} unavailable{Reporting is currently unavailable. Try again later; your draft is still here.} conflict{This sample ID already belongs to a different report. Copy your correction, close this dialog and start a new report.} missingAudio{The original recording is missing or incomplete. Restore it from a backup or turn off audio to send the story text.} invalid{This report needs audio or story text. Include the original recording or add notes/transcribe the story, then reopen the report. If the server still rejects it, check the text and selected audio.} other{Could not send this report. Your draft is still here. Try again later.}}",
+  "@trainingRecording": {"placeholders": {"name": {"type": "String"}}},
+  "@trainingReceipt": {"placeholders": {"id": {"type": "String"}}},
+  "@trainingError": {"placeholders": {"kind": {"type": "String"}}}
 }
