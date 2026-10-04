@@ -10,6 +10,8 @@ This system is divided into two main components:
 
 Story descriptions and recording transcripts automatically suggest people in both story forms. Existing names, aliases and unique first names reuse local records; unfamiliar names are recognized conservatively after German/English human cues such as “meine Schwester Anna” or “my uncle Paul”. Suggestions can be removed, ambiguous names require a choice, and new people are created only when the story is saved. Recognition runs on the device and does not upload transcript text to an additional service. Unintroduced names and pronoun resolution remain outside this first pass.
 
+Record information from a person’s page to capture connections without choosing a location or re-entering that person’s name. Explicit German/English relationship statements also suggest removable connections, including simple relative chains such as “Alex is the brother of Ben, who works at Zeta and is a colleague of Dana”. Repeated recordings reuse the relationship and retain all source stories. Employer and new-car statements are indexed on the relevant person and link back to the original story/recording. Existing employers and notes are preserved. This local first pass supports explicit sentence templates, not general pronoun resolution or arbitrary fact extraction.
+
 ### Tech Stack
 * **Client:** Flutter / Dart (Local DB: sqflite)
 * **API:** C# / .NET 8 / ASP.NET Core

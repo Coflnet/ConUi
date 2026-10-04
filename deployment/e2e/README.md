@@ -169,3 +169,57 @@ before/after reload and fresh restore. It injects no transcription responses.
 Require exit zero and `result.json` with `completed: true`, `uncaught_errors: 0`,
 and the expected `recorded` mode. Failures print only exception type and static
 phase/control names; credentials and token values are never printed.
+
+## Transcript relationships and person facts
+
+`connections.py` seeds known James Smith through typed quick add, then uses
+**Informationen aufnehmen** in his person detail. The exact fictional narrative
+is: “James Smith got a new car. James Smith is the brother of Paul Miller, who
+works at Zeta and is a colleague of Dana Brown.” No people or connections are
+entered manually. A repeated typed story verifies global relationship deduplication
+and both source story IDs. ZIP checks require exactly James, Paul and Dana,
+James–Paul siblings, Paul–Dana colleagues, Paul's company Zeta, James's car fact,
+correct source IDs and no invented place on either information story. Person
+facts and their source story link, 390px/1440px screenshots, reload, fresh-context
+restore, exact serialized object IDs and zero uncaught browser errors are required.
+
+Run only after the operator has completed the current release build:
+
+```sh
+/home/ekwav/.cache/uv/archive-v0/eq7TXxf37ojESxDq/bin/python deployment/e2e/connections.py \
+  --serve-directory flutter_app/build/web --output /tmp/con-connections-local-e2e
+```
+
+Local mode uses the exact typed narrative and no identity/audio fixture. It uses
+`people.py`'s owned localhost 18085 server lifecycle and `hosted.py`'s isolated
+Chromium, redacted error handling, accessibility controls and playback checks.
+It establishes extraction and persistence, without claiming ASR verification.
+
+For deployed verification, the primary operator provisions and cleans up the
+protected disposable identity through the OpenBao child-session flow above.
+Generate only fictional speech; for example, in an ephemeral gTTS environment:
+
+```sh
+mkdir -p /tmp/con-connections-e2e
+uv run --with gtts python - <<'PY'
+from gtts import gTTS
+gTTS('James Smith got a new car. James Smith is the brother of Paul Miller, who works at Zeta and is a colleague of Dana Brown.', lang='en').save('/tmp/con-connections-e2e/connections-speech.mp3')
+PY
+ffmpeg -hide_banner -loglevel error -y \
+  -i /tmp/con-connections-e2e/connections-speech.mp3 -af atempo=0.75 \
+  -ar 16000 -ac 1 -c:a pcm_s16le /tmp/con-connections-e2e/connections-speech.wav
+/home/ekwav/.cache/uv/archive-v0/eq7TXxf37ojESxDq/bin/python deployment/e2e/connections.py \
+  --origin https://con.coflnet.com --fixture /tmp/con-e2e-users.json \
+  --audio-fixture /tmp/con-connections-e2e/connections-speech.wav \
+  --output /tmp/con-connections-hosted-e2e
+```
+
+The harness requires an 11–20 second, 16-kHz mono PCM fictional WAV and sets the
+actual recording language to English. Public PKCE sign-in, microphone capture,
+real deployed ASR HTTP 200 responses, transcript-derived participants/facts,
+recording ZIP integrity and media-clock playback before/after reload and restore
+are mandatory. It injects no transcription responses and creates no identities.
+Optional browser routing uses the same owned TLS tunnel argument as `people.py`.
+Require exit zero and `result.json` with `completed: true`, `uncaught_errors: 0`
+and the intended `recorded` mode; partial/local results do not establish deployed
+completion. Identity/token cleanup remains the protected operator's responsibility.
