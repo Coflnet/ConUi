@@ -227,3 +227,57 @@ completion. Identity/token cleanup remains the protected operator's responsibili
 Failure diagnostics include semantic-role geometry and, only when the information
 form has one of the two fixed synthetic titles, its title and fictional transcript.
 No login field values, callback URLs or tokens are collected.
+
+## Consented training reports
+
+`training.py` restores the prior synthetic real-ASR connections backup into a
+fresh German guest browser, opens `Informationen über James Smith`, and verifies
+that sending stays disabled until explicit consent and cancelling sends no POST.
+It sends two real reports: the original selected WAV plus a correction, then the
+same transcript and extraction with audio disabled. Both count against the real
+10-reports-per-effective-IP UTC-day allowance. It creates no identity, starts no
+recording and consumes no transcription allowance.
+
+Use the existing Playwright environment, a protected reviewer token file, and a
+new result directory whose parent exists:
+
+```sh
+/home/ekwav/.cache/uv/archive-v0/eq7TXxf37ojESxDq/bin/python deployment/e2e/training.py \
+  --backup /run/media/ekwav/Data/dev/Con/ConUi-work/review-transcript-connections-2026-10-04/hosted-e2e/connections-backup.zip \
+  --token-file /run/media/ekwav/Data/dev/ansible/out/con-training/reviewer-token \
+  --output /tmp/con-training-hosted-e2e
+```
+
+The backup is SHA-256-pinned to the already verified fictional speech archive;
+other backups are refused before any upload. The default origin is
+`https://con.coflnet.com`, with HTTPS verification enabled. Loopback HTTP origins
+are accepted for disposable future checks. Optional `--browser-arg` values go to
+the existing Chromium helper, which verifies its owned PID/profile before stopping
+it and removes the profile/PID artifact. Reviewer API requests and the exporter
+use direct connections, refuse redirects, and identify themselves as
+`ConTrainingExport/1.0`. An ingress tunnel passed only to Chromium does not also
+route those Python requests; the reviewer origin must be reachable directly.
+
+The harness invokes `deployment/training/export.py --sample-id` for each observed
+HTTP-201 receipt, so only its own sample metadata and WAV reach disk. It checks
+the exact prior transcript, correction, three names, two relationships, Google
+attributed to Paul, and only facts scoped to that story. Retrieved audio must
+match the original ZIP bytes, size and SHA-256; the metadata-only report must
+have no WAV. Both reports must retain `language: null`: restored legacy recordings
+do not store their captured language, and the current recording setting cannot
+provide that ground truth. Guest reads and an invalid ordinary bearer token must return HTTP
+401. Valid ordinary account JWTs still do not grant reviewer access; backend
+controller authorization tests cover that distinction without creating another
+hosted identity. German form and durable receipt screenshots cover 390px and
+1440px viewports. No token, response body or full Playwright error is printed.
+
+On success or failure, it deletes only its captured sample IDs with the reviewer
+credential, verifies HTTP-404 audio and their absence from the paginated day
+list, and preserves the real quota reservations. `owned-samples.json` is a private
+receipt artifact for recovery if cleanup fails; it contains only synthetic UUIDs
+and UTC dates. Never use it to delete another run's or an owner's samples. Result
+and export artifacts use private permissions. Require exit zero, `result.json`
+with `completed: true`, `cleanup_verified: true`, zero uncaught errors, and no
+remaining Chromium PID file. Partial runs keep `completed: false`; inspect the
+sanitized phase/status and use the reviewer DELETE endpoint for unresolved
+owned IDs before another run.
