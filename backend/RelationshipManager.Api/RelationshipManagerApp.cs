@@ -68,7 +68,7 @@ public static class RelationshipManagerApp
 
         var oidcSettings = new OidcSettings(builder.Configuration, builder.Environment);
         builder.Services.AddSingleton(oidcSettings);
-        builder.Services.AddHttpClient("oidc", client => client.Timeout = TimeSpan.FromSeconds(15));
+        builder.Services.AddHttpClient("oidc", client => client.Timeout = TimeSpan.FromSeconds(8));
         builder.Services.AddSingleton<OidcTokenVerifier>();
 
         // Add services to the container. AddApplicationPart is explicit (rather than relying on

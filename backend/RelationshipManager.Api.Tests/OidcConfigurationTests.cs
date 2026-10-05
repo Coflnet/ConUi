@@ -116,4 +116,17 @@ public class OidcConfigurationTests
         }
         finally { File.Delete(path); }
     }
+    [TestCase("https://identity.example.test/realms/con", "2026-10-05T00:00:00Z", "300")]
+    [TestCase(OidcSettings.NewIssuer, "2026-10-05T00:00:00", "300")]
+    [TestCase(OidcSettings.NewIssuer, "2026-10-05T00:00:00+01:00", "300")]
+    [TestCase(OidcSettings.NewIssuer, "2026-10-05T00:00:00Z", "0")]
+    [TestCase(OidcSettings.NewIssuer, "2026-10-05T00:00:00Z", "")]
+    public void IssuerMigration_RejectsUnboundedOrUntrustedConfiguration(string issuer,string started,string lifetime)
+    {
+        var config=Settings(issuer);
+        config["Oidc:IssuerMigrationStartedAt"]=started;
+        config["Oidc:MaxAccessTokenLifetimeSeconds"]=lifetime;
+        Assert.Throws<InvalidOperationException>(()=>RelationshipManagerApp.Build([],builder=>builder.Configuration.AddInMemoryCollection(config),environmentName:"Production"));
+    }
+
 }

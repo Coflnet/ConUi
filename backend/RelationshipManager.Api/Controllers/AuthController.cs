@@ -68,6 +68,13 @@ public class AuthController : ControllerBase
                 new ApiError("sign_in_unavailable", "Sign-in is temporarily unavailable."));
         }
         var user = await _authService.GetUser(identity.ProviderId);
+        if (identity.AlternateProviderId != null)
+        {
+            var alternate = await _authService.GetUser(identity.AlternateProviderId);
+            if (user != null && alternate != null && user.Id != alternate.Id)
+                return Conflict(new ApiError("account_binding_conflict", "Account binding conflict; no user data was changed."));
+            user ??= alternate;
+        }
         Guid userId;
         if (user == null)
             userId = await _authService.CreateUser(identity.ProviderId, identity.Name, identity.Email);

@@ -613,7 +613,7 @@
   "eventDetailRelationshipsEmpty": "Save relationships separately so you can find them again under each person.",
   "eventDetailChooseRelationshipPerson": "Whose relationship would you like to add?",
   "loginAccountButton": "Sign in with your account",
-  "loginAccountUnavailable": "Account sign-in is currently unavailable. Check your internet connection and try again later. You can keep using this device locally.",
+  "loginAccountUnavailable": "Account sign-in is temporarily unavailable. Please try again in 2 minutes. You can keep using this device locally.",
   "loginAccountFailed": "Sign-in could not be completed. Please try again or continue without an account.",
   "eventsYearOverview": "Years",
   "eventsPreviousYear": "Previous year",

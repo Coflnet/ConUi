@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:async';
+import 'oidc/auth_transport.dart';
 import 'oidc/oidc_flow.dart';
 import 'oidc/oidc_platform.dart' as oidc;
 import 'package:flutter/foundation.dart';
@@ -84,10 +86,15 @@ class AuthService extends ChangeNotifier {
     _continuedWithoutAccount =
         prefs.getBool(_continuedWithoutAccountKey) ?? false;
     try {
-      final accessToken = await _finishSignIn(_http);
-      if (accessToken != null) await _acceptOidcToken(accessToken);
-    } catch (_) {
-      signInFailed = true;
+      await authCompletion(() async {
+        final accessToken = await _finishSignIn(_http);
+        if (accessToken != null) await _acceptOidcToken(accessToken);
+      });
+    } catch (error) {
+      signInUnavailable = error is OidcUnavailable ||
+          error is TimeoutException ||
+          error is http.ClientException;
+      signInFailed = !signInUnavailable;
     }
     _initialized = true;
     notifyListeners();
@@ -98,9 +105,8 @@ class AuthService extends ChangeNotifier {
     signInUnavailable = false;
     OidcConfig config;
     try {
-      final response = await _http
-          .get(Uri.parse('$baseUrl/api/auth/config'))
-          .timeout(const Duration(seconds: 10));
+      final response = await authRequest(Uri.parse('$baseUrl/api/auth/config'),
+          client: _http);
       if (response.statusCode != 200) {
         throw const FormatException('Unavailable');
       }
@@ -112,31 +118,34 @@ class AuthService extends ChangeNotifier {
       return false;
     }
     try {
-      final accessToken = await _beginSignIn(config, locale, _http);
-      if (accessToken == null) return false; // Browser is redirecting.
-      await _acceptOidcToken(accessToken);
-      return true;
-    } catch (_) {
-      signInFailed = true;
+      return await authCompletion(() async {
+        final accessToken = await _beginSignIn(config, locale, _http);
+        if (accessToken == null) return false; // Browser is redirecting.
+        await _acceptOidcToken(accessToken);
+        return true;
+      });
+    } catch (error) {
+      signInUnavailable = error is OidcUnavailable ||
+          error is TimeoutException ||
+          error is http.ClientException;
+      signInFailed = !signInUnavailable;
       notifyListeners();
       return false;
     }
   }
 
   Future<void> _acceptOidcToken(String accessToken) async {
-    final response = await _http
-        .post(Uri.parse('$baseUrl/api/auth/oidc'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'accessToken': accessToken}))
-        .timeout(const Duration(seconds: 15));
+    final response = await authRequest(Uri.parse('$baseUrl/api/auth/oidc'),
+        client: _http,
+        headers: {'Content-Type': 'application/json'},
+        encodedBody: jsonEncode({'accessToken': accessToken}));
     if (response.statusCode != 200) {
       throw const FormatException('Sign-in rejected');
     }
     final token = (jsonDecode(response.body)
         as Map<String, dynamic>)['authToken'] as String;
-    final me = await _http.get(Uri.parse('$baseUrl/api/auth/me'), headers: {
-      'Authorization': 'Bearer $token'
-    }).timeout(const Duration(seconds: 15));
+    final me = await authRequest(Uri.parse('$baseUrl/api/auth/me'),
+        client: _http, headers: {'Authorization': 'Bearer $token'});
     if (me.statusCode != 200) {
       throw const FormatException('Account verification failed');
     }
@@ -148,6 +157,7 @@ class AuthService extends ChangeNotifier {
     if (id.isEmpty || salt.isEmpty || payload['sub'] != id) {
       throw const FormatException('Account mismatch');
     }
+    authRemaining(); // Never adopt a late completion after the shared deadline.
     await _saveToken(token, encryptionSalt: salt);
   }
 

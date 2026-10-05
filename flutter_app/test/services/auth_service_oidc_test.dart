@@ -73,6 +73,10 @@ void main() {
   test(
       'failed account verification does not adopt token or replace previous identity salt',
       () async {
+    final db = createTestDatabaseService();
+    await db.initialize();
+    final draft = Event(title: 'Unsent local draft', dateTime: DateTime(2020));
+    await db.saveEvent(draft);
     SharedPreferences.setMockInitialValues({
       'auth_token': _token('old'),
       'user_id': 'old',
@@ -83,10 +87,13 @@ void main() {
         beginSignIn: (_, __, ___) async => 'access');
     await auth.initialize();
     expect(await auth.signIn(), isFalse);
-    expect(auth.signInFailed, isTrue);
+    expect(auth.signInUnavailable, isTrue);
+    expect(auth.signInFailed, isFalse);
     expect(auth.userId, 'old');
     expect(auth.encryptionSalt, 'old-salt');
     expect(auth.token, _token('old'));
+    expect((await db.getEvent(draft.id))!.title, 'Unsent local draft');
+    expect(await db.getPendingChanges(), hasLength(1));
   });
   for (final body in [
     '{}',

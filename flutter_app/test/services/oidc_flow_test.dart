@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:relationship_manager/services/oidc/oidc_flow.dart';
+import 'package:relationship_manager/services/oidc/auth_transport.dart';
 
 void main() {
   const issuer = 'https://app.rfind.de/auth/realms/con';
@@ -90,9 +91,17 @@ void main() {
     url = await callback();
     await expectLater(
         flow.finish(MockClient((_) async => http.Response('{}', 503))),
-        throwsFormatException);
+        throwsA(isA<OidcUnavailable>()));
     expect(stored, isNull);
     expect(url, 'https://con.coflnet.com/');
+  });
+  test('valid temporary-unavailable callback clears state without exchanging',
+      () async {
+    url = (await callback())
+        .replaceFirst('code=one-use', 'error=temporarily_unavailable');
+    await expectLater(flow.finish(client), throwsA(isA<OidcUnavailable>()));
+    expect(stored, isNull);
+    expect(requests, 0);
   });
   test('no callback leaves local startup and pending state untouched',
       () async {

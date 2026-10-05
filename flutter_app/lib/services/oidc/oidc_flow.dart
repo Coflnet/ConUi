@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'auth_transport.dart';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
@@ -107,12 +108,19 @@ class OidcWebFlow {
         '${callback.origin}${callback.path}' != session['redirect'] ||
         (callback.queryParameters['iss'] != null &&
             callback.queryParameters['iss'] != session['issuer']) ||
-        callback.queryParameters.containsKey('error') ||
-        (callback.queryParameters['code'] ?? '').isEmpty) {
+        (!callback.queryParameters.containsKey('error') &&
+            (callback.queryParameters['code'] ?? '').isEmpty)) {
       throw const FormatException('Sign-in verification failed');
     }
+    if (['temporarily_unavailable', 'server_error']
+        .contains(callback.queryParameters['error'])) {
+      throw OidcUnavailable();
+    }
+    if (callback.queryParameters.containsKey('error')) {
+      throw const FormatException('Sign-in denied');
+    }
     final config = OidcConfig.fromJson({...session, 'enabled': true});
-    final response = await client.post(
+    final response = await authRequest(
         Uri.parse('${config.issuer}/protocol/openid-connect/token'),
         body: {
           'client_id': config.clientId,
@@ -120,7 +128,8 @@ class OidcWebFlow {
           'grant_type': 'authorization_code',
           'code': callback.queryParameters['code']!,
           'code_verifier': session['verifier'],
-        }).timeout(const Duration(seconds: 15));
+        },
+        client: client);
     if (response.statusCode != 200) {
       throw const FormatException('Sign-in exchange failed');
     }

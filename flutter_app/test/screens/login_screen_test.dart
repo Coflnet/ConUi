@@ -71,7 +71,7 @@ void main() {
       await tester.pump();
     }
     expect(authService.signInUnavailable, isTrue);
-    expect(find.textContaining('Account sign-in is currently unavailable'),
+    expect(find.textContaining('Account sign-in is temporarily unavailable'),
         findsOneWidget);
 
     final continueButton = find.text('Continue without account');
@@ -115,7 +115,8 @@ void main() {
 
     expect(find.text('Ohne Konto fortfahren'), findsOneWidget);
     expect(find.text('Entwicklungs-Anmeldung'), findsOneWidget);
-    expect(find.textContaining('Die Anmeldung ist fehlgeschlagen'), findsOneWidget);
+    expect(find.textContaining('Die Anmeldung ist fehlgeschlagen'),
+        findsOneWidget);
     // Nothing from the English strings must leak through.
     expect(find.text('Continue without account'), findsNothing);
     expect(find.text('Development Login'), findsNothing);

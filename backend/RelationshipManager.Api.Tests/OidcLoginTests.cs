@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.IdentityModel.Tokens;
 using RelationshipManager.Api.Models;
+using RelationshipManager.Api.Auth;
 
 namespace RelationshipManager.Api.Tests;
 
@@ -20,13 +21,15 @@ public class OidcLoginTests
     private sealed class DiscoveryHandler : HttpMessageHandler
     {
         private readonly object _publicKey;
+        private readonly string _issuer;
         public int DiscoveryRequests { get; private set; }
         public int KeyRequests { get; private set; }
         public bool Unavailable { get; set; }
-        public string DiscoveryIssuer { get; set; } = Issuer;
+        public string DiscoveryIssuer { get; set; }
 
-        public DiscoveryHandler(RSA rsa)
+        public DiscoveryHandler(RSA rsa, string issuer = Issuer)
         {
+            _issuer = DiscoveryIssuer = issuer;
             var key = rsa.ExportParameters(false);
             _publicKey = new { kty = "RSA", kid = "test-key", use = "sig", alg = "RS256",
                 n = Base64UrlEncoder.Encode(key.Modulus!), e = Base64UrlEncoder.Encode(key.Exponent!) };
@@ -36,12 +39,12 @@ public class OidcLoginTests
         {
             if (Unavailable) return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
             object document;
-            if (request.RequestUri!.AbsoluteUri == Issuer + "/.well-known/openid-configuration")
+            if (request.RequestUri!.AbsoluteUri == _issuer + "/.well-known/openid-configuration")
             {
                 DiscoveryRequests++;
-                document = new { issuer = DiscoveryIssuer, jwks_uri = Issuer + "/protocol/openid-connect/certs" };
+                document = new { issuer = DiscoveryIssuer, jwks_uri = _issuer + "/protocol/openid-connect/certs" };
             }
-            else if (request.RequestUri.AbsoluteUri == Issuer + "/protocol/openid-connect/certs")
+            else if (request.RequestUri.AbsoluteUri == _issuer + "/protocol/openid-connect/certs")
             {
                 KeyRequests++;
                 document = new { keys = new[] { _publicKey } };
@@ -54,16 +57,21 @@ public class OidcLoginTests
         }
     }
 
-    private static TestWebApplicationFactory CreateFactory(DiscoveryHandler handler)
+    private static TestWebApplicationFactory CreateFactory(DiscoveryHandler handler, string issuer = Issuer, string? migration = null)
     {
         var factory = new TestWebApplicationFactory { OidcHttpHandler = handler, Environment = "Production" };
-        factory.ConfigOverrides["Oidc:Issuer"] = Issuer;
+        factory.ConfigOverrides["Oidc:Issuer"] = issuer;
+        if (migration != null)
+        {
+            factory.ConfigOverrides["Oidc:IssuerMigrationStartedAt"] = migration;
+            factory.ConfigOverrides["Oidc:MaxAccessTokenLifetimeSeconds"] = "300";
+        }
         factory.ConfigOverrides["Oidc:ClientId"] = ClientId;
         factory.ConfigOverrides["Oidc:Audience"] = Audience;
         return factory;
     }
 
-    private static string MintToken(RSA rsa, string invalid = "", string subject = "provider-user")
+    private static string MintToken(RSA rsa, string invalid = "", string subject = "provider-user", string? issuer = null)
     {
         SecurityKey key = invalid == "symmetric"
             ? new SymmetricSecurityKey(Encoding.UTF8.GetBytes("test-only-wrong-symmetric-signing-key-123456"))
@@ -80,7 +88,7 @@ public class OidcLoginTests
         if (invalid != "subject") claims.Add(new Claim("sub", subject));
         if (invalid == "missing_azp") claims.RemoveAll(c => c.Type == "azp");
         var jwt = new JwtSecurityToken(
-            issuer: invalid == "issuer" ? "https://wrong.example.test/realms/con" : Issuer,
+            issuer: invalid == "issuer" ? "https://wrong.example.test/realms/con" : issuer ?? Issuer,
             audience: invalid == "audience" ? ClientId : invalid == "audience_slash" ? Audience + "/" : Audience,
             claims: claims, notBefore: DateTime.UtcNow.AddMinutes(-10),
             expires: invalid == "expired" ? DateTime.UtcNow.AddMinutes(-1) : DateTime.UtcNow.AddMinutes(5),
@@ -179,4 +187,56 @@ public class OidcLoginTests
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable));
         Assert.That(await response.Content.ReadAsStringAsync(), Does.Contain("sign_in_unavailable"));
     }
+    private static string Provider(string issuer, string subject = "provider-user") =>
+        "oidc:" + JsonSerializer.Serialize(new[] { issuer, subject });
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task IssuerMigration_PreservesExistingIdSaltAndCanonicalNamespace(bool expiredWindow)
+    {
+        using var rsa = RSA.Create(2048);
+        var started = DateTimeOffset.UtcNow.AddSeconds(expiredWindow ? -901 : -10).ToString("O");
+        await using var factory = CreateFactory(new DiscoveryHandler(rsa, OidcSettings.NewIssuer), OidcSettings.NewIssuer, started);
+        var original = new User { Id = Guid.NewGuid(), AuthProviderId = Provider(OidcSettings.OldIssuer),
+            EncryptionKeySalt = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)), Name = "Original" };
+        await factory.UserStore.UpsertAsync(original);
+        using var client = await factory.StartAsync();
+        var old = await client.PostAsJsonAsync("/api/auth/oidc",new { accessToken = MintToken(rsa,issuer:OidcSettings.OldIssuer) });
+        Assert.That(old.StatusCode,Is.EqualTo(expiredWindow ? HttpStatusCode.Unauthorized : HttpStatusCode.OK));
+        var fresh = await client.PostAsJsonAsync("/api/auth/oidc",new { accessToken = MintToken(rsa,issuer:OidcSettings.NewIssuer) });
+        Assert.That(fresh.StatusCode,Is.EqualTo(HttpStatusCode.OK));
+        var token = (await fresh.Content.ReadFromJsonAsync<TokenContainer>())!;
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer",token.AuthToken);
+        var user = (await client.GetFromJsonAsync<User>("/api/auth/me"))!;
+        Assert.That(user.Id,Is.EqualTo(original.Id));
+        Assert.That(user.EncryptionKeySalt,Is.EqualTo(original.EncryptionKeySalt));
+        Assert.That(await factory.UserStore.GetByAuthProviderIdAsync(Provider(OidcSettings.NewIssuer)),Is.Null);
+        // Same email does not merge a separately verified subject.
+        var different = await client.PostAsJsonAsync("/api/auth/oidc",new { accessToken = MintToken(rsa,subject:"different-subject",issuer:OidcSettings.NewIssuer) });
+        Assert.That(different.StatusCode,Is.EqualTo(HttpStatusCode.OK));
+        var other = await factory.UserStore.GetByAuthProviderIdAsync(Provider(OidcSettings.OldIssuer,"different-subject"));
+        Assert.That(other!.Id,Is.Not.EqualTo(original.Id));
+    }
+
+    [Test]
+    public async Task IssuerMigration_OwnershipCollisionFailsWithoutUpdatingEitherUser()
+    {
+        using var rsa = RSA.Create(2048);
+        await using var factory = CreateFactory(new DiscoveryHandler(rsa,OidcSettings.NewIssuer),OidcSettings.NewIssuer,DateTimeOffset.UtcNow.AddSeconds(-10).ToString("O"));
+        var old = new User { Id=Guid.NewGuid(), AuthProviderId=Provider(OidcSettings.OldIssuer), EncryptionKeySalt="old-salt" };
+        var fresh = new User { Id=Guid.NewGuid(), AuthProviderId=Provider(OidcSettings.NewIssuer), EncryptionKeySalt="new-salt" };
+        await factory.UserStore.UpsertAsync(old); await factory.UserStore.UpsertAsync(fresh);
+        using var client = await factory.StartAsync();
+        foreach (var issuer in new[] { OidcSettings.OldIssuer, OidcSettings.NewIssuer })
+        {
+            var response = await client.PostAsJsonAsync("/api/auth/oidc",new { accessToken=MintToken(rsa,issuer:issuer) });
+            Assert.That(response.StatusCode,Is.EqualTo(HttpStatusCode.Conflict));
+            Assert.That(await response.Content.ReadAsStringAsync(),Does.Contain("account_binding_conflict"));
+        }
+        Assert.That(old.EncryptionKeySalt,Is.EqualTo("old-salt"));
+        Assert.That(fresh.EncryptionKeySalt,Is.EqualTo("new-salt"));
+        Assert.That(old.LastSeenAt,Is.EqualTo(default(DateTime)));
+        Assert.That(fresh.LastSeenAt,Is.EqualTo(default(DateTime)));
+    }
+
 }

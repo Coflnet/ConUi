@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace RelationshipManager.Api.Auth;
 
-public sealed record OidcIdentity(string ProviderId, string? Name, string? Email);
+public sealed record OidcIdentity(string ProviderId, string? Name, string? Email, string? AlternateProviderId = null);
 
 public sealed class OidcTokenVerifier
 {
@@ -29,7 +29,8 @@ public sealed class OidcTokenVerifier
     public async Task<OidcIdentity> VerifyAsync(string accessToken, CancellationToken cancellationToken)
     {
         if (_configuration == null) throw new InvalidOperationException("OIDC is not configured.");
-        var configuration = await _configuration.GetConfigurationAsync(cancellationToken);
+        var configuration = await _configuration.GetConfigurationAsync(cancellationToken)
+            .WaitAsync(TimeSpan.FromSeconds(8), cancellationToken);
         if (configuration.Issuer != _settings.Issuer)
             throw new InvalidOperationException("OIDC discovery issuer does not match server configuration.");
         var result = await _handler.ValidateTokenAsync(accessToken, new TokenValidationParameters
@@ -41,6 +42,8 @@ public sealed class OidcTokenVerifier
             ValidAlgorithms = new[] { SecurityAlgorithms.RsaSha256 },
             ValidateIssuer = true,
             ValidIssuer = _settings.Issuer,
+            IssuerValidator = (issuer, _, _) => _settings.AcceptsIssuer(issuer) ? issuer
+                : throw new SecurityTokenInvalidIssuerException("Untrusted or expired issuer transition."),
             ValidateAudience = true,
             ValidAudience = _settings.Audience,
             IgnoreTrailingSlashWhenValidatingAudience = false,
@@ -61,8 +64,10 @@ public sealed class OidcTokenVerifier
             throw new SecurityTokenException("OIDC subject or authorized party is invalid.");
 
         // Namespace by both issuer and subject. Never link identities by email.
-        var providerId = "oidc:" + JsonSerializer.Serialize(new[] { _settings.Issuer, subjects[0].Value });
+        var providerId = "oidc:" + JsonSerializer.Serialize(new[] { _settings.AccountNamespaceIssuer, subjects[0].Value });
         var email = claims.FindFirst("email_verified")?.Value == "true" ? claims.FindFirst("email")?.Value : null;
-        return new OidcIdentity(providerId, claims.FindFirst("name")?.Value, email);
+        var alternate = _settings.AccountNamespaceIssuer != _settings.Issuer
+            ? "oidc:" + JsonSerializer.Serialize(new[] { _settings.Issuer, subjects[0].Value }) : null;
+        return new OidcIdentity(providerId, claims.FindFirst("name")?.Value, email, alternate);
     }
 }

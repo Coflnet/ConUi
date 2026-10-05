@@ -203,3 +203,48 @@ Error responses (all `{ "slug": "...", "message": "..." }`): `503 transcription_
   * `lib/screens/` - UI feature views.
   * `lib/services/` - Sub-services managing DB, Sync, Encryption, and HTTP routing.
 * `docker-compose.yml` - Defines the orchestration of ScyllaDB, MinIO, and the API.
+
+### Explicit shared-issuer cutover
+
+The existing authority remains configured until reviewed activation. Changing
+`Oidc:Issuer` to `https://auth.coflnet.com/auth/realms/con` requires the recorded
+UTC `Oidc:IssuerMigrationStartedAt` and verified
+`Oidc:MaxAccessTokenLifetimeSeconds`. Only the exact old issuer is additionally
+accepted during `start <= now < start + lifetime + 600 seconds`; signature,
+audience, expiry, authorized party and verified subject remain mandatory.
+Discovery itself must report the exact active issuer. Old tokens must verify
+against retained keys from that trusted active discovery endpoint.
+
+Keep these recorded migration settings after old-token acceptance expires. The
+old issuer remains the permanent Cassandra account namespace, retaining user IDs
+and encryption salts. Equal email addresses never join accounts. A different
+existing old/new account for the same verified subject returns 409 without
+updating either account. New logins still resolve the canonical account after
+the compatibility deadline.
+
+Con bounds machine completion (token exchange, API acceptance and account
+verification) with one eight-second deadline, abortable web requests and no HTTP
+redirect/code/refresh replay. Native AppAuth separates the human authorization
+wait from token completion and passes the SDK nonce and PKCE verifier to its
+one-use exchange. The plugin does not expose a native socket-abort API: a timed
+out SDK request may finish internally, but its late result is never adopted or
+replayed. Origin outage responses are separately bounded by the shared auth edge.
+No physical Android/iOS interruption is claimed by the offline SDK tests.
+
+Transient sign-in failure offers a manual retry in two minutes in DE/EN and
+keeps local stories, pending changes, previous identity and encryption salt.
+Logout clears local app credentials without waiting for an unreachable identity
+provider. Tests cover real signed JWT migration/collision/expiry, stored-profile
+and queue preservation, native nonce/verifier handoff and eight-second abort.
+The real shared-Keycloak and rolling-node browser rehearsals remain deployment
+gates rather than mocked-test deployment claims.
+
+Repeat the local browser matrix after serving the built app on loopback:
+
+```sh
+PLAYWRIGHT_MODULE=/path/to/playwright/module node flutter_app/test/browser/auth_outage.cjs
+```
+
+`AUTH_TEST_BASE` selects the loopback build; `AUTH_TEST_OUTPUT` selects the
+report directory. DE/EN desktop/mobile at 200% zoom use mocked auth responses;
+requests outside the local build are blocked.
