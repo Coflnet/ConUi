@@ -30,6 +30,26 @@ class AuthService extends ChangeNotifier {
 
   bool signInFailed = false;
   bool signInUnavailable = false;
+  int _signInRetrySeconds = 0;
+  Timer? _signInRetryTimer;
+  int get signInRetrySeconds => _signInRetrySeconds;
+
+  void _startSignInCooldown() {
+    if (!signInUnavailable) return;
+    _signInRetryTimer?.cancel();
+    _signInRetrySeconds = 120;
+    _signInRetryTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _signInRetrySeconds = (120 - timer.tick).clamp(0, 120);
+      if (_signInRetrySeconds == 0) timer.cancel();
+      notifyListeners();
+    });
+  }
+
+  @override
+  void dispose() {
+    _signInRetryTimer?.cancel();
+    super.dispose();
+  }
 
   String? _token;
   String? _userId;
@@ -95,12 +115,14 @@ class AuthService extends ChangeNotifier {
           error is TimeoutException ||
           error is http.ClientException;
       signInFailed = !signInUnavailable;
+      _startSignInCooldown();
     }
     _initialized = true;
     notifyListeners();
   }
 
   Future<bool> signIn({String locale = 'de'}) async {
+    if (_signInRetrySeconds > 0) return false;
     signInFailed = false;
     signInUnavailable = false;
     OidcConfig config;
@@ -114,6 +136,7 @@ class AuthService extends ChangeNotifier {
           jsonDecode(response.body) as Map<String, dynamic>);
     } catch (_) {
       signInUnavailable = true;
+      _startSignInCooldown();
       notifyListeners();
       return false;
     }
@@ -129,6 +152,7 @@ class AuthService extends ChangeNotifier {
           error is TimeoutException ||
           error is http.ClientException;
       signInFailed = !signInUnavailable;
+      _startSignInCooldown();
       notifyListeners();
       return false;
     }

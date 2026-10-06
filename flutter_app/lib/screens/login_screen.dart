@@ -149,11 +149,16 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                   FilledButton.icon(
                     key: const Key('account-sign-in'),
-                    onPressed: _isLoading ? null : _signIn,
+                    onPressed: _isLoading || auth.signInRetrySeconds > 0
+                        ? null
+                        : _signIn,
                     icon: const Icon(Icons.login),
                     label: Text(_isLoading
                         ? l10n.loginButtonBusy
-                        : l10n.loginAccountButton),
+                        : auth.signInRetrySeconds > 0
+                            ? l10n.loginAccountRetryCountdown(
+                                auth.signInRetrySeconds)
+                            : l10n.loginAccountButton),
                   ),
                   const SizedBox(height: 12),
                   // Development credentials only reach the debug endpoint.

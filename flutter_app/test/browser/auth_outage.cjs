@@ -28,7 +28,7 @@ let activeBrowser;
   await page.locator('flt-semantics-placeholder').waitFor({timeout:15000});
   await page.locator('flt-semantics-placeholder').evaluate(el=>el.click());
   // Flutter canvas reflow: half CSS viewport + DPR2 models 200% browser zoom.
-  const notice=page.getByText(locale.startsWith('de')?'2 Minuten':'2 minutes',{exact:false});
+  const notice=page.getByText(locale.startsWith('de')?'Anmeldung vorübergehend nicht verfügbar':'Account sign-in is temporarily unavailable',{exact:false});
   await notice.waitFor({timeout:12000});
   if(!start||Date.now()-start>10000)throw Error('Con outage exceeded UI budget');
   if(posts!==1)throw Error('Con token/API request replay detected');
