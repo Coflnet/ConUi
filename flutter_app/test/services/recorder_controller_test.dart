@@ -12,6 +12,7 @@ import 'package:http/testing.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/services/audio_capture.dart';
 import 'package:relationship_manager/services/recorder_controller.dart';
+import 'package:relationship_manager/services/sentence_segmenter.dart';
 import 'package:relationship_manager/services/recording_file_store_native.dart';
 import 'package:relationship_manager/services/transcription_client.dart';
 import 'package:relationship_manager/services/wav.dart';
@@ -34,6 +35,19 @@ Uint8List _pcmChunk(int amplitude, int byteLength) {
     bytes.setInt16(i, amplitude, Endian.little);
   }
   return bytes.buffer.asUint8List();
+}
+
+class _PcmSpeechDetector extends EndingDetector {
+  bool _detected = false;
+  @override
+  bool get hasSpeech => _detected;
+  @override
+  Future<bool> speechEnded(Uint8List frame) async {
+    _detected |= frame.any((byte) => byte != 0);
+    return false;
+  }
+  @override
+  void reset({bool continuing = false}) => _detected = false;
 }
 
 void main() {
@@ -61,10 +75,11 @@ void main() {
     Duration segmentDuration = _segmentDuration,
     Duration maxDuration = const Duration(hours: 2),
     int maxSegmentRetries = 2,
+    Future<SpeechDetector?> Function()? createSpeechDetector,
   }) {
     return RecorderController(
       audioCapture: capture,
-      createSpeechDetector: () async => null,
+      createSpeechDetector: createSpeechDetector ?? () async => EndingDetector(frames: 1000, minSpeechFrames: 1),
       fileStore: store,
       database: db,
       transcriptionClient: client,
@@ -86,6 +101,110 @@ void main() {
               '{"text": "seg-${request.bodyBytes.length}"}', 200)),
     );
   }
+
+  test('silence and its final tail never upload, including after restart', () async {
+    var requests = 0;
+    final client = echoClient(handler: (_) async {
+      requests++;
+      return http.Response('{"text":"hallucination"}', 200);
+    });
+    final controller = buildController(client: client,
+        segmentDuration: const Duration(seconds: 6),
+        createSpeechDetector: () async => EndingDetector(detectsSpeech: false));
+    final pcm = Uint8List(13 * 32000 + 718);
+    await controller.start();
+    capture.emitChunk(pcm);
+    await Future<void>.delayed(Duration.zero);
+    final result = await controller.stop();
+    expect(requests, 0);
+    expect(result.transcript, isEmpty);
+    expect(result.failedSegments, isEmpty);
+    expect((await store.readBytes(result.attachedFile.id)).sublist(wavHeaderLength), pcm);
+    final boundaries = await db.getRecordingSegments(result.attachedFile.id);
+    expect(boundaries, isNotEmpty);
+    expect(boundaries.every((boundary) => boundary.hasSpeech == false), isTrue);
+    expect(boundaries.fold<int>(0, (sum, boundary) => sum + boundary.length), pcm.length);
+    final restarted = buildController(client: client, createSpeechDetector: () async => null);
+    final retry = await restarted.transcribeStoredRecording(result.attachedFile.id);
+    expect(retry.transcript, isEmpty);
+    expect(retry.failedSegments, isEmpty);
+    expect(requests, 0);
+  });
+
+  test('skipped silence preserves speech bytes and sequence on retry', () async {
+    final uploads = <({String sequence, Uint8List bytes})>[];
+    final client = echoClient(handler: (request) async {
+      uploads.add((sequence: request.url.queryParameters['segment']!, bytes: request.bodyBytes));
+      return http.Response('{"text":"spoken words"}', 200);
+    });
+    final controller = buildController(client: client,
+        segmentDuration: const Duration(seconds: 6),
+        createSpeechDetector: () async => _PcmSpeechDetector());
+    final pcm = Uint8List.fromList([
+      ...Uint8List(6 * 32000), ..._pcmChunk(1000, 3 * 32000), ...Uint8List(8 * 32000),
+    ]);
+    await controller.start();
+    capture.emitChunk(pcm);
+    await Future<void>.delayed(Duration.zero);
+    final result = await controller.stop();
+    expect(uploads, hasLength(1));
+    expect(uploads.single.sequence, '1');
+    expect(result.transcript, 'spoken words');
+    expect((await store.readBytes(result.attachedFile.id)).sublist(wavHeaderLength), pcm);
+    final original = uploads.single;
+    final restarted = buildController(client: client, createSpeechDetector: () async => null);
+    await restarted.transcribeStoredRecording(result.attachedFile.id);
+    expect(uploads, hasLength(2));
+    expect(uploads.last.sequence, original.sequence);
+    expect(uploads.last.bytes, original.bytes);
+  });
+
+  test('unavailable VAD keeps audio retryable without sending unclassified bytes', () async {
+    final uploads = <Uint8List>[];
+    final client = echoClient(handler: (request) async {
+      uploads.add(request.bodyBytes);
+      return http.Response('{"text":"recovered speech"}', 200);
+    });
+    final controller = buildController(client: client,
+        segmentDuration: const Duration(seconds: 6), createSpeechDetector: () async => null);
+    final pcm = _pcmChunk(1000, 3 * 32000);
+    await controller.start();
+    capture.emitChunk(pcm);
+    await Future<void>.delayed(Duration.zero);
+    final result = await controller.stop();
+    expect(uploads, isEmpty);
+    expect(result.failedSegments, hasLength(1));
+    expect(controller.liveTranscriptionReason, LiveTranscriptionReason.failing);
+    expect((await db.getRecordingSegments(result.attachedFile.id)).single.hasSpeech, isNull);
+    expect((await store.readBytes(result.attachedFile.id)).sublist(wavHeaderLength), pcm);
+    final restarted = buildController(client: client,
+        createSpeechDetector: () async => EndingDetector());
+    final retry = await restarted.transcribeStoredRecording(result.attachedFile.id);
+    expect(retry.transcript, 'recovered speech');
+    expect(retry.failedSegments, isEmpty);
+    expect(uploads, hasLength(1));
+    expect(uploads.single.sublist(wavHeaderLength), pcm);
+    expect((await db.getRecordingSegments(result.attachedFile.id)).single.hasSpeech, isTrue);
+  });
+
+  test('legacy silence is classified locally before any upload', () async {
+    await store.beginRecording('legacy-silence', format: WavFormat.standard);
+    await store.appendChunk('legacy-silence', Uint8List(7 * 32000));
+    await store.finalizeRecording('legacy-silence', format: WavFormat.standard);
+    var requests = 0;
+    final controller = buildController(
+        client: echoClient(handler: (_) async {
+          requests++;
+          return http.Response('{"text":"hallucination"}', 200);
+        }),
+        segmentDuration: const Duration(seconds: 6),
+        createSpeechDetector: () async => EndingDetector(detectsSpeech: false));
+    final result = await controller.transcribeStoredRecording('legacy-silence');
+    expect(requests, 0);
+    expect(result.transcript, isEmpty);
+    expect(result.failedSegments, isEmpty);
+    expect((await db.getRecordingSegments('legacy-silence')).every((b) => b.hasSpeech == false), isTrue);
+  });
 
   test('start() then stop() with no audio produces an empty-but-valid recording',
       () async {
@@ -113,11 +232,11 @@ void main() {
     expect(controller.failure?.reason, AudioCaptureFailureReason.permissionDenied);
   });
 
-  test('default fallback starts transcription after six seconds without VAD', () async {
+  test('continuous speech starts transcription after six seconds', () async {
     final requested = Completer<void>();
     final controller = RecorderController(
       audioCapture: capture,
-      createSpeechDetector: () async => null,
+      createSpeechDetector: () async => EndingDetector(frames: 1000, minSpeechFrames: 1),
       fileStore: store,
       database: db,
       transcriptionClient: echoClient(handler: (request) async {
@@ -152,7 +271,7 @@ void main() {
       database: db,
       createSpeechDetector: () async => EndingDetector(),
       transcriptionClient: echoClient(handler: (request) async {
-        final lengths = await db.getRecordingSegmentLengths(request.url.queryParameters['recordingId']!);
+        final lengths = await db.getRecordingSegments(request.url.queryParameters['recordingId']!);
         expect(lengths, isNotEmpty, reason: 'boundary must precede HTTP submission');
         liveBodies.add(request.bodyBytes);
         if (!requested.isCompleted) requested.complete();
@@ -166,14 +285,14 @@ void main() {
     expect(liveBodies.first.length, wavHeaderLength + 48 * 1024);
     final result = await controller.stop();
     await db.clearAllData(); // Retained audio keeps its original boundaries.
-    final restarted = buildController(client: echoClient(handler: (request) async {
+    final restarted = buildController(createSpeechDetector: () async => null, client: echoClient(handler: (request) async {
       retryBodies.add(request.bodyBytes);
       return http.Response('{"text":"retried"}', 200);
     })); // VAD unavailable and a different configured fallback after restart.
     await restarted.transcribeStoredRecording(result.attachedFile.id);
     expect(retryBodies, liveBodies);
     await db.deleteRecordingPermanently(result.attachedFile.id, store);
-    expect(await db.getRecordingSegmentLengths(result.attachedFile.id), isEmpty);
+    expect(await db.getRecordingSegments(result.attachedFile.id), isEmpty);
   });
 
   test('processing stays visible for queued requests and final partial audio', () async {
@@ -220,7 +339,7 @@ void main() {
     late RecorderController controller;
     controller = RecorderController(
       audioCapture: capture,
-      createSpeechDetector: () async => null,
+      createSpeechDetector: () async => EndingDetector(frames: 1000, minSpeechFrames: 1),
       fileStore: store,
       database: db,
       transcriptionClient: echoClient(handler: (request) async {
@@ -430,7 +549,7 @@ void main() {
     final requestedSegments = <int>[];
     final controller = RecorderController(
       audioCapture: capture,
-      createSpeechDetector: () async => null,
+      createSpeechDetector: () async => EndingDetector(frames: 1000, minSpeechFrames: 1),
       fileStore: store,
       database: db,
       transcriptionClient: TranscriptionClient(
@@ -537,14 +656,14 @@ void main() {
   test('at most 2 transcription requests are in flight at once', () async {
     var active = 0;
     var maxActive = 0;
-    final release = <Completer<void>>[];
+    final release = Completer<void>();
+    final saturated = Completer<void>();
     final controller = buildController(
       client: echoClient(handler: (request) async {
         active++;
         maxActive = active > maxActive ? active : maxActive;
-        final gate = Completer<void>();
-        release.add(gate);
-        await gate.future;
+        if (active == 2 && !saturated.isCompleted) saturated.complete();
+        await release.future;
         active--;
         return http.Response('{"text": "ok"}', 200);
       }),
@@ -555,24 +674,17 @@ void main() {
     for (var i = 0; i < 4; i++) {
       capture.emitChunk(_pcmChunk(10 + i, _bytesPerSegment));
     }
-    // Give the append chain a moment to process all four chunks and cut
-    // all four segments, without releasing any HTTP responses yet.
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await saturated.future.timeout(const Duration(seconds: 5));
 
     expect(maxActive, lessThanOrEqualTo(2));
     expect(active, 2); // exactly the concurrency limit should be in flight
 
     // Release them all so stop() can finish.
-    for (final gate in release) {
-      if (!gate.isCompleted) gate.complete();
-    }
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-    for (final gate in release) {
-      if (!gate.isCompleted) gate.complete();
-    }
+    release.complete();
 
     final result = await controller.stop();
     expect(result.failedSegments, isEmpty);
+    expect(maxActive, 2);
   });
 
   test('stops automatically when maxDuration is reached', () async {
@@ -662,7 +774,7 @@ void main() {
       var unsubscribeCalled = false;
       final controller = RecorderController(
         audioCapture: capture,
-      createSpeechDetector: () async => null,
+      createSpeechDetector: () async => EndingDetector(frames: 1000, minSpeechFrames: 1),
         fileStore: store,
         database: db,
         transcriptionClient: echoClient(),
@@ -710,7 +822,7 @@ void main() {
       void Function()? capturedHook;
       final controller = RecorderController(
         audioCapture: capture,
-      createSpeechDetector: () async => null,
+      createSpeechDetector: () async => EndingDetector(frames: 1000, minSpeechFrames: 1),
         fileStore: store,
         database: db,
         transcriptionClient: echoClient(),

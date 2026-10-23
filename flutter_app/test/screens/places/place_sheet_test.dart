@@ -1,7 +1,14 @@
 // Widget tests for PlaceSheet: name (editable), stories at that place in
 // date order with their persons, and "Add story here".
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -43,6 +50,89 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 void main() {
+  for (final original in [
+    'Unnamed place (50.000, 10.000)',
+    'Unbenannter Ort (50.000, 10.000)',
+    'My own name',
+  ]) {
+    testWidgets('opening $original enriches only generated names', (tester) async {
+      await http.runWithClient(() async {
+        late DatabaseService db;
+        late Place place;
+        await tester.runAsync(() async {
+          db = createTestDatabaseService();
+          await db.initialize();
+          place = Place(name: original, latitude: 50, longitude: 10);
+          await db.savePlace(place);
+        });
+        await tester.pumpWidget(_wrap(db, PlaceSheet(placeId: place.id)));
+        await _settle(tester);
+        await _settle(tester);
+        await tester.pump();
+        await _settle(tester);
+        final expected = original == 'My own name' ? original : 'Mapped Street 12';
+        expect(find.widgetWithText(TextField, expected), findsOneWidget);
+        await tester.runAsync(() async {
+          expect((await db.getPlace(place.id))!.name, expected);
+        });
+        await tester.pumpWidget(const SizedBox.shrink());
+      }, () => MockClient((request) async => http.Response(jsonEncode({
+        'features': [{
+          'geometry': {'coordinates': [10, 50]},
+          'properties': {'street': 'Mapped Street', 'housenumber': '12'},
+        }],
+      }), 200)));
+    });
+  }
+
+  for (final beforePicker in [false, true]) {
+    testWidgets('typing a name beforePicker=$beforePicker preserves it when moving',
+        (tester) async {
+      final response = Completer<http.Response>();
+      await http.runWithClient(() async {
+        late DatabaseService db;
+        late Place place;
+        await tester.runAsync(() async {
+          db = createTestDatabaseService();
+          await db.initialize();
+          place = Place(name: 'Unnamed place (50.000, 10.000)', latitude: 50, longitude: 10);
+          await db.savePlace(place);
+        });
+        await tester.pumpWidget(_wrap(db, PlaceSheet(placeId: place.id)));
+        await _settle(tester);
+        if (beforePicker) {
+          await tester.enterText(find.byType(TextField).first, 'My chosen name');
+        }
+        await tester.tap(find.byType(FlutterMap));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        final pickerMap = tester.widget<FlutterMap>(find.byType(FlutterMap));
+        pickerMap.mapController!.move(const LatLng(50.0001, 10), 15);
+        await tester.pump();
+        await tester.tap(find.byType(FloatingActionButton));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        if (!beforePicker) {
+          await tester.enterText(find.byType(TextField).first, 'My chosen name');
+        }
+        response.complete(http.Response(jsonEncode({'features': [{
+          'geometry': {'coordinates': [10, 50.0001]},
+          'properties': {'street': 'Mapped Street', 'housenumber': '12'},
+        }]}), 200));
+        await _settle(tester);
+        expect(find.widgetWithText(TextField, 'My chosen name'), findsOneWidget);
+        await tester.runAsync(() async {
+          final updated = (await db.getPlace(place.id))!;
+          expect(updated.latitude, closeTo(50.0001, 0.00001));
+          expect(updated.name, place.name); // Unsaved typing is left for explicit confirmation.
+        });
+        await tester.pumpWidget(const SizedBox.shrink());
+      }, () => MockClient((request) => request.url.host == 'photon.komoot.io'
+          ? response.future : Future.value(http.Response('', 400))));
+    });
+
+  }
+
   testWidgets('shows the place name, and its stories in date order with their persons',
       (tester) async {
     late DatabaseService db;

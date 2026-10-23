@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../l10n/gen/app_localizations.dart';
+import '../../services/address_service.dart';
 import 'map_tile_layer.dart';
 
 /// One reusable full-screen map for picking (or adjusting) a single
@@ -33,6 +34,17 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   late final MapController _mapController = MapController();
   late LatLng _position = widget.initialPosition;
 
+  late Future<String?> _address = nearestStreetAddress(widget.initialPosition);
+  late LatLng _addressPosition = widget.initialPosition;
+
+  void _lookupAddress() {
+    if (_addressPosition == _position) return;
+    setState(() {
+      _addressPosition = _position;
+      _address = nearestStreetAddress(_position);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -53,6 +65,17 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             child: Text(l10n.locationPickerInstructions, textAlign: TextAlign.center),
           ),
+          FutureBuilder<String?>(
+            future: _address,
+            builder: (context, snapshot) =>
+                snapshot.connectionState == ConnectionState.done &&
+                        snapshot.hasData &&
+                        _addressPosition == _position
+                    ? Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Text(snapshot.data!))
+                    : const SizedBox.shrink(),
+          ),
           Expanded(
             child: Stack(
               alignment: Alignment.center,
@@ -62,6 +85,13 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                   options: MapOptions(
                     initialCenter: widget.initialPosition,
                     initialZoom: widget.initialZoom,
+                    onMapEvent: (event) {
+                      if (event is MapEventMoveEnd ||
+                          event is MapEventFlingAnimationEnd ||
+                          event is MapEventDoubleTapZoomEnd) {
+                        _lookupAddress();
+                      }
+                    },
                     onPositionChanged: (position, hasGesture) {
                       setState(() => _position = position.center ?? _position);
                     },

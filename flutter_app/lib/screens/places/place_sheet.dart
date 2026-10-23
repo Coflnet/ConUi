@@ -7,11 +7,13 @@ import 'package:provider/provider.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../services/database_service.dart';
+import '../../services/address_service.dart';
 import '../../services/recording_file_store.dart';
 import '../../widgets/recording_player.dart';
 import '../events/event_detail_screen.dart';
 import '../map/location_picker_screen.dart';
 import '../map/map_tile_layer.dart';
+import '../map/nearby_place.dart';
 import '../persons/person_detail_screen.dart';
 import '../quick_add/quick_add_sheet.dart';
 
@@ -60,9 +62,39 @@ class PlaceSheetState extends State<PlaceSheet> {
             LocationPickerScreen(initialPosition: LatLng(place.latitude, place.longitude)),
       ),
     );
-    if (newPosition == null) return;
-    await db.savePlace(
-        place.copyWith(latitude: newPosition.latitude, longitude: newPosition.longitude));
+    if (newPosition == null || !mounted) return;
+    final originalName = place.name;
+    final suggestedName = hasDefaultPlaceName(place)
+        ? await resolveDefaultPlaceName(newPosition, AppLocalizations.of(context))
+        : null;
+    final current = await db.getPlace(place.id) ?? place;
+    if (!mounted) return;
+    final unchanged = _nameController.text == originalName;
+    final name = suggestedName != null && hasDefaultPlaceName(current) && unchanged
+        ? suggestedName : current.name;
+    await db.savePlace(current.copyWith(name: name,
+        latitude: newPosition.latitude, longitude: newPosition.longitude));
+    if (!mounted) return;
+    if (_nameController.text == originalName) _nameController.text = name;
+    _refresh();
+  }
+
+  Future<void> _enrichDefaultName(DatabaseService db, Place place) async {
+    if (!hasDefaultPlaceName(place)) return;
+    final name =
+        await nearestStreetAddress(LatLng(place.latitude, place.longitude));
+    if (!mounted || name == null || _nameController.text != place.name) return;
+    final current = await db.getPlace(place.id);
+    if (!mounted ||
+        current?.name != place.name ||
+        current?.latitude != place.latitude ||
+        current?.longitude != place.longitude ||
+        _nameController.text != place.name) {
+      return;
+    }
+    await db.savePlace(current!.copyWith(name: name));
+    if (!mounted) return;
+    if (_nameController.text == place.name) _nameController.text = name;
     _refresh();
   }
 
@@ -106,6 +138,9 @@ class PlaceSheetState extends State<PlaceSheet> {
             if (_nameEditedFor != place.id) {
               _nameController.text = place.name;
               _nameEditedFor = place.id;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _enrichDefaultName(db, place);
+              });
             }
 
             return DraggableScrollableSheet(
@@ -140,7 +175,7 @@ class PlaceSheetState extends State<PlaceSheet> {
                             height: 140,
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(12),
-                              child: FlutterMap(
+                              child: AbsorbPointer(child: FlutterMap(
                                 options: MapOptions(
                                   initialCenter: LatLng(place.latitude, place.longitude),
                                   initialZoom: 15,
@@ -160,7 +195,7 @@ class PlaceSheetState extends State<PlaceSheet> {
                                     ),
                                   ]),
                                 ],
-                              ),
+                              )),
                             ),
                           ),
                           Positioned(

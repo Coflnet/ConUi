@@ -35,6 +35,7 @@ public class TranscriptionServiceTests
         Assert.That(uri.Query, Does.Contain("task=transcribe"));
         Assert.That(uri.Query, Does.Contain("output=json"));
         Assert.That(uri.Query, Does.Contain("encode=true"));
+        Assert.That(uri.Query, Does.Contain("vad_filter=true"));
         Assert.That(uri.Query, Does.Contain("language=de"));
         Assert.That(handler.LastMultipartFieldNames, Does.Contain("audio_file"));
     }

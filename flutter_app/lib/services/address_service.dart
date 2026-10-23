@@ -10,42 +10,45 @@ Future<String?> nearestStreetAddress(LatLng point,
     {http.Client? httpClient}) async {
   final client = httpClient ?? http.Client();
   try {
-    final response = await client.post(
-      Uri.parse('https://overpass-api.de/api/interpreter'),
-      body: {
-        'data': '[out:json][timeout:3];'
-            'nwr(around:50,${point.latitude},${point.longitude})'
-            '["addr:street"]["addr:housenumber"];out center;',
-      },
-    ).timeout(const Duration(seconds: 4));
+    final response = await client.get(Uri.https('photon.komoot.io', '/reverse', {
+      'lat': '${point.latitude}',
+      'lon': '${point.longitude}',
+      'radius': '0.05', // Photon measures the search radius in kilometres.
+      'limit': '10',
+    })).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) return null;
-    final elements = jsonDecode(response.body)['elements'] as List;
+    final features = jsonDecode(response.body)['features'] as List;
     const distance = Distance();
     var nearestMeters = 50.0;
+    var streetMeters = 50.0;
     String? nearest;
-    for (final element in elements) {
-      final coordinates = element['center'] ?? element;
-      final lat = coordinates['lat'];
-      final lon = coordinates['lon'];
-      final tags = element['tags'];
-      final street = tags?['addr:street'];
-      final number = tags?['addr:housenumber'];
-      if (lat is! num ||
-          lon is! num ||
+    String? nearestStreet;
+    for (final feature in features) {
+      final coordinates = feature['geometry']?['coordinates'];
+      final properties = feature['properties'];
+      final street = properties?['street'] ??
+          (properties?['type'] == 'street' ? properties['name'] : null);
+      final number = properties?['housenumber'];
+      if (coordinates is! List ||
+          coordinates.length < 2 ||
+          coordinates[0] is! num ||
+          coordinates[1] is! num ||
           street is! String ||
-          street.trim().isEmpty ||
-          number is! String ||
-          number.trim().isEmpty) {
+          street.trim().isEmpty) {
         continue;
       }
-      final meters =
-          distance.distance(point, LatLng(lat.toDouble(), lon.toDouble()));
-      if (meters <= nearestMeters) {
+      final meters = distance.distance(point,
+          LatLng(coordinates[1].toDouble(), coordinates[0].toDouble()));
+      if (meters <= streetMeters) {
+        streetMeters = meters;
+        nearestStreet = street.trim();
+      }
+      if (number is String && number.trim().isNotEmpty && meters <= nearestMeters) {
         nearestMeters = meters;
         nearest = '${street.trim()} ${number.trim()}';
       }
     }
-    return nearest;
+    return nearest ?? nearestStreet;
   } catch (_) {
     return null;
   } finally {

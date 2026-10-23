@@ -187,6 +187,33 @@ void main() {
     await upgraded.close();
   });
 
+  test('version 4 boundaries survive upgrade and speech decisions resolve once', () async {
+    final oldDb = await databaseFactoryFfi.openDatabase(dbPath,
+        options: OpenDatabaseOptions(version: 4, onCreate: (db, _) async {
+          for (final migration in dbMigrations.where((m) => m.version <= 4)) {
+            await migration.up(db);
+          }
+        }));
+    await oldDb.insert('recording_segments', {
+      'recording_id': 'saved', 'sequence': 0, 'byte_length': 192000,
+    });
+    await oldDb.close();
+
+    final service = DatabaseService(factory: databaseFactoryFfi, path: dbPath);
+    expect(await service.getRecordingSegments('saved'),
+        [(length: 192000, hasSpeech: null)]);
+    // A changed boundary must not overwrite the recorded identity or classify it.
+    await service.saveRecordingSegment('saved', 0, 96000, hasSpeech: true);
+    expect((await service.getRecordingSegments('saved')).single.hasSpeech, isNull);
+    await service.saveRecordingSegment('saved', 0, 192000, hasSpeech: false);
+    await service.saveRecordingSegment('saved', 0, 192000, hasSpeech: true);
+    await service.saveRecordingSegment('saved', 1, 32000, hasSpeech: true);
+    expect(await service.getRecordingSegments('saved'), [
+      (length: 192000, hasSpeech: false), (length: 32000, hasSpeech: true),
+    ]);
+    await (await service.database).close();
+  });
+
   test('a fresh install ends up on the latest schema version', () async {
     final dbService =
         DatabaseService(factory: databaseFactoryFfi, path: dbPath);

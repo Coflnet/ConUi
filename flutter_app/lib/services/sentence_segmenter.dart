@@ -16,18 +16,29 @@ import 'wav.dart';
 /// its padded/trimmed speech audio is deliberately not used for storage.
 abstract class SpeechDetector {
   Future<bool> speechEnded(Uint8List frame);
-  void reset();
+  bool get hasSpeech;
+  void reset({bool continuing = false});
   Future<void> dispose();
 }
 
 class DiaSpeechDetector implements SpeechDetector {
   final VadIterator _iterator;
   bool _ended = false;
+  bool _hasSpeech = false;
+  bool _continuingSpeech = false;
 
   DiaSpeechDetector._(this._iterator) {
     _iterator.setVadEventCallback((event) {
       if (event.type == VadEventType.start) _ended = false;
       if (event.type == VadEventType.end) _ended = true;
+      if (event.type == VadEventType.realStart) _hasSpeech = true;
+      // A duration cut must not require another three positive frames for
+      // a short continuation. It still needs speech in this segment itself.
+      if (event.type == VadEventType.frameProcessed &&
+          _continuingSpeech &&
+          (event.probabilities?.isSpeech ?? 0) >= 0.3) {
+        _hasSpeech = true;
+      }
       if (event.type == VadEventType.error) {
         throw StateError('Voice activity inference failed');
       }
@@ -59,7 +70,12 @@ class DiaSpeechDetector implements SpeechDetector {
   }
 
   @override
-  void reset() {
+  bool get hasSpeech => _hasSpeech;
+
+  @override
+  void reset({bool continuing = false}) {
+    _continuingSpeech = continuing && _hasSpeech && !_ended;
+    _hasSpeech = false;
     _ended = false;
     _iterator.reset();
   }
@@ -68,16 +84,18 @@ class DiaSpeechDetector implements SpeechDetector {
   Future<void> dispose() => _iterator.release();
 }
 
-/// Frame-aligned speech-end detection independent of microphone chunk sizes.
-/// Every original PCM byte is emitted exactly once.
+/// Emits every original PCM byte with true for qualified speech, false for
+/// fully analyzed nonspeech, or null when model coverage is unavailable.
 class SentenceSegmenter {
+  static const _frameBytes = 512 * 2;
   final WavFormat format;
   final Duration maxDuration;
-  final void Function(Uint8List) onSegment;
+  final void Function(Uint8List, bool?) onSegment;
   SpeechDetector? _detector;
   bool _disposed = false;
   final BytesBuilder _buffer = BytesBuilder();
   int _processed = 0;
+  int? _speechOffset;
 
   SentenceSegmenter({
     required this.format,
@@ -88,12 +106,61 @@ class SentenceSegmenter {
   Future<void> attachDetector(SpeechDetector? detector) async {
     if (_disposed) {
       await detector?.dispose();
-    } else {
+    } else if (format.sampleRate == 16000 &&
+        format.numChannels == 1 &&
+        format.bitsPerSample == 16) {
       _detector = detector;
+    } else {
+      await detector?.dispose();
     }
   }
 
-  Future<void> add(Uint8List chunk) async {
+  Future<bool> _analyzeFrame(Uint8List bytes, int end) async {
+    final detector = _detector;
+    if (detector == null) return false;
+    final frame = Uint8List(_frameBytes)
+      ..setRange(0, end - _processed, bytes, _processed);
+    try {
+      final ended = await detector.speechEnded(frame);
+      _processed = end;
+      if (detector.hasSpeech) _speechOffset ??= end;
+      return ended;
+    } catch (_) {
+      await _disableDetector();
+      return false;
+    }
+  }
+
+  Future<void> _emit(Uint8List bytes, int cut) async {
+    // Finish the boundary's coverage, padding only the inference frame.
+    // Quiet cuts can precede analyzed lookahead, so speech after the cut
+    // must not qualify the silence before it.
+    while (_detector != null && _processed < cut) {
+      await _analyzeFrame(bytes, (_processed + _frameBytes).clamp(0, cut));
+    }
+    final hasSpeech = _speechOffset != null && _speechOffset! <= cut
+        ? true
+        : _processed >= cut
+            ? false
+            : null;
+    onSegment(Uint8List.sublistView(bytes, 0, cut), hasSpeech);
+    await resetSpeechContext(continuing: true);
+  }
+
+  /// Clear classification across skipped audio without reloading the model.
+  Future<void> resetSpeechContext({bool continuing = false}) async {
+    _processed = 0;
+    _speechOffset = null;
+    try {
+      _detector?.reset(continuing: continuing);
+    } catch (_) {
+      await _disableDetector();
+    }
+  }
+
+  /// Disable cuts when replaying an authoritative saved slice; flush then
+  /// classifies exactly that slice without changing its bytes or identity.
+  Future<void> add(Uint8List chunk, {bool allowCuts = true}) async {
     _buffer.add(chunk);
     var bytes = _buffer.takeBytes();
     final target =
@@ -101,29 +168,16 @@ class SentenceSegmenter {
             format.bytesPerSample;
     final minimum =
         format.bytesPerSecond; // <=61 guest segments including tail.
-    const frameBytes = 512 * 2;
     while (true) {
       int? cut;
       if (_detector != null &&
-          format.sampleRate == 16000 &&
-          format.numChannels == 1 &&
-          format.bitsPerSample == 16 &&
-          _processed + frameBytes <= bytes.length &&
-          _processed + frameBytes <= target) {
-        try {
-          final ended = await _detector!.speechEnded(Uint8List.sublistView(
-              bytes, _processed, _processed + frameBytes));
-          _processed += frameBytes;
-          if (ended && _processed >= minimum) cut = _processed;
-        } catch (_) {
-          try {
-            await _detector!.dispose();
-          } catch (_) {}
-          _detector = null; // Inference failure must never interrupt recording.
-        }
+          _processed + _frameBytes <= bytes.length &&
+          (!allowCuts || _processed + _frameBytes <= target)) {
+        final ended = await _analyzeFrame(bytes, _processed + _frameBytes);
+        if (allowCuts && ended && _processed >= minimum) cut = _processed;
         if (cut == null && _detector != null) continue;
       }
-      if (cut == null && bytes.length >= target) {
+      if (cut == null && allowCuts && bytes.length >= target) {
         final scaled = maxDuration ~/ 6;
         cut = findQuietestCutPoint(Uint8List.sublistView(bytes, 0, target),
             format: format,
@@ -133,25 +187,27 @@ class SentenceSegmenter {
         if (cut <= 0) cut = target;
       }
       if (cut == null) break;
-      onSegment(Uint8List.sublistView(bytes, 0, cut));
+      await _emit(bytes, cut);
       bytes = Uint8List.sublistView(bytes, cut);
-      _processed = 0;
-      _detector?.reset();
     }
     _buffer.add(bytes);
   }
 
-  void flush() {
+  Future<void> flush() async {
     final bytes = _buffer.takeBytes();
-    if (bytes.isNotEmpty) onSegment(bytes);
-    _processed = 0;
+    if (bytes.isNotEmpty) await _emit(bytes, bytes.length);
+  }
+
+  Future<void> _disableDetector() async {
+    final detector = _detector;
+    _detector = null;
+    try {
+      await detector?.dispose();
+    } catch (_) {}
   }
 
   Future<void> dispose() async {
     _disposed = true;
-    try {
-      await _detector?.dispose();
-    } catch (_) {}
-    _detector = null;
+    await _disableDetector();
   }
 }

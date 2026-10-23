@@ -24,7 +24,11 @@ final List<Migration> dbMigrations = [
   const Migration(version: 2, up: _migration2CreateLocalRecordingsTable),
   const Migration(version: 3, up: _migration3AddLocalFileBytes),
   const Migration(version: 4, up: _migration4RecordingSegments),
+  const Migration(version: 5, up: _migration5SegmentSpeech),
 ];
+
+Future<void> _migration5SegmentSpeech(sqflite_common.DatabaseExecutor db) =>
+    db.execute('ALTER TABLE recording_segments ADD COLUMN has_speech INTEGER');
 
 Future<void> _migration4RecordingSegments(sqflite_common.DatabaseExecutor db) =>
     db.execute('''

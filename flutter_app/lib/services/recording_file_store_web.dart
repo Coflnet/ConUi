@@ -68,26 +68,29 @@ class WebRecordingFileStore implements RecordingFileStore {
     return values.cast<Uint8List>();
   }
 
-  // Read each chunk in its own transaction: consumers may await network or
-  // disk work between yields, after an IndexedDB transaction has expired.
+  // Finish a bounded batch before yielding: consumers may await network work
+  // between chunks, and one IndexedDB transaction per chunk makes Stop slow.
   Stream<Uint8List> _pcmChunks(String id) async* {
     final db = await _open();
     Object? after;
     while (true) {
       final keysTxn = db.transaction(_chunksStoreName, idbModeReadOnly);
+      final completed = keysTxn.completed;
       final range = after == null ? _rangeFor(id)
           : KeyRange.bound(after, '$id$_keySeparator￿', true);
-      final keys = await keysTxn.objectStore(_chunksStoreName).getAllKeys(range, 64);
-      await keysTxn.completed;
+      final store = keysTxn.objectStore(_chunksStoreName);
+      // Issue both reads while the same transaction is active.
+      final keysFuture = store.getAllKeys(range, 64);
+      final chunksFuture = store.getAll(range, 64);
+      final keys = await keysFuture;
+      final chunks = await chunksFuture;
+      await completed;
       if (keys.isEmpty) {
         if (after == null) throw StateError('No recording found for "$id"');
         return;
       }
-      for (final key in keys) {
-        final txn = db.transaction(_chunksStoreName, idbModeReadOnly);
-        final value = await txn.objectStore(_chunksStoreName).getObject(key);
-        await txn.completed;
-        yield value as Uint8List;
+      for (final chunk in chunks) {
+        yield chunk as Uint8List;
       }
       after = keys.last;
     }

@@ -60,6 +60,8 @@ LiveTranscriptionReason _reasonFor(TranscriptionErrorKind kind) {
 class TranscriptSegment {
   final int sequence;
   final Uint8List pcmBytes;
+  /// Null when speech detection was unavailable; these bytes remain retryable.
+  final bool? hasSpeech;
 
   /// Null until a transcription attempt succeeds.
   String? text;
@@ -69,7 +71,7 @@ class TranscriptSegment {
 
   int attempts = 0;
 
-  TranscriptSegment({required this.sequence, required this.pcmBytes});
+  TranscriptSegment({required this.sequence, required this.pcmBytes, this.hasSpeech});
 }
 
 enum StopReason { user, maxDuration, anonymousLimit }
@@ -267,8 +269,8 @@ class RecorderController extends ChangeNotifier {
       onSegment: _enqueueSegment,
     );
     _segmenter = segmenter;
-    // Load the model alongside recording setup. PCM stays durable and the
-    // bounded quiet-cut fallback works even before VAD is ready or if it fails.
+    // Keep capture durable while the model loads. Unclassified segments stay
+    // saved for retry rather than being sent without a speech check.
     unawaited(_attachSpeechDetector(segmenter));
     _appendChain = Future.value();
     _recordedPcmBytes = 0;
@@ -350,12 +352,12 @@ class RecorderController extends ChangeNotifier {
     try {
       await segmenter.attachDetector(await createSpeechDetector());
     } catch (_) {
-      // Local VAD is optional; microphone capture and transcription still work.
+      // Capture stays available; unclassified audio is kept for a later retry.
     }
   }
 
-  void _enqueueSegment(Uint8List segmentBytes) {
-    final job = TranscriptSegment(sequence: _nextSequence++, pcmBytes: segmentBytes);
+  void _enqueueSegment(Uint8List segmentBytes, bool? hasSpeech) {
+    final job = TranscriptSegment(sequence: _nextSequence++, pcmBytes: segmentBytes, hasSpeech: hasSpeech);
     _segments.add(job);
     _pendingQueue.add(job);
     notifyListeners();
@@ -383,7 +385,17 @@ class RecorderController extends ChangeNotifier {
   }) async {
     while (true) {
       try {
-        await _db.saveRecordingSegmentLength(recordingId, job.sequence, job.pcmBytes.length);
+        await _db.saveRecordingSegment(recordingId, job.sequence, job.pcmBytes.length, hasSpeech: job.hasSpeech);
+        if (job.hasSpeech != true) {
+          if (job.hasSpeech == false) {
+            job.text = '';
+          } else {
+            job.failed = true;
+            _liveTranscriptionReason = LiveTranscriptionReason.failing;
+          }
+          notifyListeners();
+          return;
+        }
         final wav = WavHeader.wrap(job.pcmBytes, format: format);
         final text = await _transcriptionClient.transcribeSegment(
           wav,
@@ -452,7 +464,7 @@ class RecorderController extends ChangeNotifier {
     // Make sure every chunk already delivered has been appended before we
     // flush the trailing partial segment and finalize the file.
     await _appendChain;
-    _segmenter!.flush();
+    await _segmenter!.flush();
     await _segmenter!.dispose();
     _segmenter = null;
     await _waitForLiveQueueDrain();
@@ -541,27 +553,42 @@ class RecorderController extends ChangeNotifier {
 
   Future<List<TranscriptSegment>> _splitIntoSegments(String recordingId, Uint8List pcm) async {
     final segments = <TranscriptSegment>[];
-    var offset = 0;
-    for (final length in await _db.getRecordingSegmentLengths(recordingId)) {
-      segments.add(TranscriptSegment(
-        sequence: segments.length,
-        pcmBytes: Uint8List.sublistView(pcm, offset, offset + length),
-      ));
-      offset += length;
-    }
-    // Saved boundaries are authoritative. Legacy recordings and a recovered
-    // trailing buffer keep the prior quiet-cut fallback without a VAD prepass.
+    final boundaries = await _db.getRecordingSegments(recordingId);
+    // Keep submitted identities intact; only unknown speech decisions and an
+    // unsegmented recovery tail need local inference before upload.
     final segmenter = SentenceSegmenter(
       format: format,
       maxDuration: segmentDuration,
-      onSegment: (bytes) => segments.add(TranscriptSegment(
+      onSegment: (bytes, hasSpeech) => segments.add(TranscriptSegment(
         sequence: segments.length,
         pcmBytes: bytes,
+        hasSpeech: hasSpeech,
       )),
     );
     try {
+      if (boundaries.any((boundary) => boundary.hasSpeech == null) ||
+          boundaries.fold<int>(0, (sum, boundary) => sum + boundary.length) < pcm.length) {
+        // A timed-out initializer still attaches to this disposed segmenter
+        // when it eventually completes, which releases the late model.
+        await _attachSpeechDetector(segmenter).timeout(const Duration(seconds: 10), onTimeout: () {});
+      }
+      var offset = 0;
+      for (final boundary in boundaries) {
+        final bytes = Uint8List.sublistView(pcm, offset, offset + boundary.length);
+        if (boundary.hasSpeech == null) {
+          await segmenter.add(bytes, allowCuts: false);
+          await segmenter.flush();
+        } else {
+          // The model did not observe this slice, so it cannot carry an
+          // utterance across it into the next unclassified slice.
+          await segmenter.resetSpeechContext();
+          segments.add(TranscriptSegment(sequence: segments.length,
+              pcmBytes: bytes, hasSpeech: boundary.hasSpeech));
+        }
+        offset += boundary.length;
+      }
       await segmenter.add(Uint8List.sublistView(pcm, offset));
-      segmenter.flush();
+      await segmenter.flush();
     } finally {
       await segmenter.dispose();
     }

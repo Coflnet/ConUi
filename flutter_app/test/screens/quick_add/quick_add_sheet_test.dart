@@ -28,6 +28,7 @@ import 'package:relationship_manager/services/recording_file_store_native.dart';
 import 'package:relationship_manager/services/transcription_client.dart';
 
 import '../../support/fake_audio_capture.dart';
+import '../../support/fake_speech_detector.dart';
 import '../../support/test_database.dart';
 import '../../support/account_prompt_auth.dart';
 
@@ -67,6 +68,7 @@ RecorderController _buildRecorder({
   int remainingRecordings = 3,
 }) {
   return RecorderController(
+    createSpeechDetector: () async => EndingDetector(minSpeechFrames: 1),
     audioCapture: capture,
     fileStore: NativeRecordingFileStore(baseDirectory: tempDir),
     database: db,
@@ -122,6 +124,45 @@ void main() {
   });
 
   group('save rules', () {
+    for (final manualName in ['', 'My special place']) {
+      testWidgets('previews address and saves ${manualName.isEmpty ? 'default address' : 'manual name'}',
+          (tester) async {
+        await http.runWithClient(() async {
+          late DatabaseService db;
+          await tester.runAsync(() async {
+            db = createTestDatabaseService();
+            await db.initialize();
+          });
+          final recorder = _buildRecorder(capture: FakeAudioCapture(), db: db, tempDir: tempDir);
+          final position = ValueNotifier<LatLng>(const LatLng(50, 10));
+          await tester.pumpWidget(_wrap(db,
+              QuickAddSheet(position: position, recorderController: recorder)));
+          await _settle(tester);
+          await _settle(tester);
+          expect(find.text('Mapped Street 12'), findsOneWidget);
+          final fields = find.byType(TextField);
+          final nameField = fields.evaluate().firstWhere((element) =>
+              (element.widget as TextField).decoration?.hintText == 'Mapped Street 12');
+          if (manualName.isNotEmpty) {
+            await tester.enterText(find.byWidget(nameField.widget), manualName);
+          }
+          await tester.enterText(fields.first, 'A story at this address');
+          await _pressAsync(tester, find.widgetWithText(FilledButton, 'Save story'));
+          await tester.runAsync(() async {
+            final places = await db.getPlaces();
+            expect(places, hasLength(1));
+            expect(places.single.name, manualName.isEmpty ? 'Mapped Street 12' : manualName);
+          });
+          await tester.pumpWidget(const SizedBox.shrink());
+          recorder.dispose();
+          position.dispose();
+        }, () => MockClient((_) async => http.Response(jsonEncode({'features': [{
+          'geometry': {'coordinates': [10, 50]},
+          'properties': {'street': 'Mapped Street', 'housenumber': '12'},
+        }]}), 200)));
+      });
+    }
+
     testWidgets('blocks save with neither text nor a recording', (tester) async {
       late DatabaseService db;
       await tester.runAsync(() async {

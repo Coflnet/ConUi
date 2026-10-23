@@ -139,6 +139,8 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   Place? _nearbyPlace;
   Place? _useExistingPlace;
   Place? _savedDraftPlace;
+  String? _suggestedPlaceName;
+  LatLng? _suggestedPosition;
 
   DateTime _date = DateTime.now();
   DatePrecision _datePrecision = DatePrecision.day;
@@ -199,6 +201,14 @@ class QuickAddSheetState extends State<QuickAddSheet> {
       _allPlaces = places;
       _loadedLookups = true;
       _updateNearbyPlace(widget.position.value);
+    });
+    final point = widget.position.value;
+    final name =
+        await resolveDefaultPlaceName(point, AppLocalizations.of(context));
+    if (!mounted) return;
+    setState(() {
+      _suggestedPosition = point;
+      _suggestedPlaceName = name;
     });
   }
 
@@ -568,7 +578,9 @@ class QuickAddSheetState extends State<QuickAddSheet> {
       } else {
         final name = _placeNameController.text.trim().isNotEmpty
             ? _placeNameController.text.trim()
-            : await resolveDefaultPlaceName(position, l10n);
+            : _suggestedPosition == position && _suggestedPlaceName != null
+                ? _suggestedPlaceName!
+                : await resolveDefaultPlaceName(position, l10n);
         if (!mounted) return false;
         place = _savedDraftPlace?.copyWith(name: name,
                 latitude: position.latitude, longitude: position.longitude) ??
@@ -963,7 +975,9 @@ class QuickAddSheetState extends State<QuickAddSheet> {
           enabled: _useExistingPlace == null,
           decoration: InputDecoration(
             labelText: l10n.quickAddPlaceNameLabel,
-            hintText: l10n.quickAddPlaceNameHint,
+            hintText: _suggestedPosition == widget.position.value
+                ? _suggestedPlaceName ?? l10n.quickAddPlaceNameHint
+                : l10n.quickAddPlaceNameHint,
             suffixIcon: _useExistingPlace != null
                 ? IconButton(
                     icon: const Icon(Icons.clear),

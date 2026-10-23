@@ -30,6 +30,7 @@ import 'package:relationship_manager/services/recording_file_store_native.dart';
 import 'package:relationship_manager/services/transcription_client.dart';
 
 import '../support/fake_audio_capture.dart';
+import '../support/fake_speech_detector.dart';
 import '../support/test_database.dart';
 import '../support/account_prompt_auth.dart';
 
@@ -68,6 +69,7 @@ void main() {
     await tester.runAsync(db.initialize);
     final capture = FakeAudioCapture();
     final controller = RecorderController(
+      createSpeechDetector: () async => EndingDetector(minSpeechFrames: 1),
       audioCapture: capture,
       fileStore: NativeRecordingFileStore(baseDirectory: tempDir),
       database: db,
@@ -144,6 +146,7 @@ void main() {
           (request) async => http.Response(jsonEncode({'text': 'said hello'}), 200)),
     );
     final controller = RecorderController(
+      createSpeechDetector: () async => EndingDetector(minSpeechFrames: 1),
       audioCapture: capture,
       fileStore: store,
       database: db,
@@ -257,6 +260,7 @@ void main() {
     final capture = FakeAudioCapture();
     final store = NativeRecordingFileStore(baseDirectory: tempDir);
     final recorder = RecorderController(
+      createSpeechDetector: () async => EndingDetector(minSpeechFrames: 1),
       audioCapture: capture,
       fileStore: store,
       database: db,
@@ -343,6 +347,7 @@ void main() {
     final capture = FakeAudioCapture();
     final store = NativeRecordingFileStore(baseDirectory: tempDir);
     final recorder = RecorderController(
+      createSpeechDetector: () async => EndingDetector(minSpeechFrames: 1),
       audioCapture: capture, fileStore: store, database: db,
       transcriptionClient: TranscriptionClient(
         baseUrl: 'https://api.example.com', getToken: () => 'tok',

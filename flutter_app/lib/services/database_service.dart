@@ -514,14 +514,20 @@ class DatabaseService extends ChangeNotifier {
 
   /// Save boundaries before submitting audio, so a retry after restart uses
   /// the same recording/segment identity even if local VAD availability changes.
-  Future<void> saveRecordingSegmentLength(String id, int sequence, int length) async {
+  Future<void> saveRecordingSegment(String id, int sequence, int length, {required bool? hasSpeech}) async {
     final db = await database;
     await db.insert('recording_segments', {
       'recording_id': id, 'sequence': sequence, 'byte_length': length,
+      'has_speech': hasSpeech == null ? null : hasSpeech ? 1 : 0,
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    if (hasSpeech != null) {
+      await db.update('recording_segments', {'has_speech': hasSpeech ? 1 : 0},
+          where: 'recording_id = ? AND sequence = ? AND byte_length = ? AND has_speech IS NULL',
+          whereArgs: [id, sequence, length]);
+    }
   }
 
-  Future<List<int>> getRecordingSegmentLengths(String id) async {
+  Future<List<({int length, bool? hasSpeech})>> getRecordingSegments(String id) async {
     final db = await database;
     final rows = await db.query('recording_segments',
         where: 'recording_id = ?', whereArgs: [id], orderBy: 'sequence');
@@ -530,7 +536,10 @@ class DatabaseService extends ChangeNotifier {
         throw StateError('Recording segment boundaries are incomplete');
       }
     }
-    return rows.map((row) => row['byte_length'] as int).toList();
+    return rows.map((row) => (
+      length: row['byte_length'] as int,
+      hasSpeech: row['has_speech'] == null ? null : row['has_speech'] == 1,
+    )).toList();
   }
 
   Future<void> saveLocalRecording(LocalRecordingState recording) async {

@@ -77,7 +77,7 @@ public class TranscriptionService : ITranscriptionService
 
     private async Task<string> TranscribeAsrWebserviceAsync(HttpClient client, string baseUrl, Stream audio, string contentType, string? language, CancellationToken ct)
     {
-        var url = $"{baseUrl}/asr?task=transcribe&output=json&encode=true";
+        var url = $"{baseUrl}/asr?task=transcribe&output=json&encode=true&vad_filter=true";
         if (!string.IsNullOrEmpty(language))
         {
             url += $"&language={Uri.EscapeDataString(language)}";

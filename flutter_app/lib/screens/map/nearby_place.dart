@@ -2,6 +2,8 @@ import 'package:latlong2/latlong.dart';
 
 import '../../models/models.dart';
 import '../../l10n/gen/app_localizations.dart';
+import '../../l10n/gen/app_localizations_en.dart';
+import '../../l10n/gen/app_localizations_de.dart';
 import '../../services/address_service.dart';
 
 /// A place is proposed as a match when an existing one lies within this
@@ -36,3 +38,11 @@ String defaultPlaceName(LatLng point, AppLocalizations l10n) =>
 Future<String> resolveDefaultPlaceName(
         LatLng point, AppLocalizations l10n) async =>
     await nearestStreetAddress(point) ?? defaultPlaceName(point, l10n);
+
+/// Only generated coordinate names may be replaced automatically, including
+/// places created before the user switched language.
+bool hasDefaultPlaceName(Place place) {
+  final point = LatLng(place.latitude, place.longitude);
+  return [AppLocalizationsEn(), AppLocalizationsDe()]
+      .any((l10n) => place.name == defaultPlaceName(point, l10n));
+}
