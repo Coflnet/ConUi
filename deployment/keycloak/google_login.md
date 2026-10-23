@@ -5,6 +5,27 @@ enables the `google` provider only with `--apply` and explicit credentials for
 each selected realm. It never edits `master`, registration settings, users,
 authentication flows, other providers, or an already enabled Google provider.
 
+Create the Google client first in [Google Cloud Console](https://console.cloud.google.com/):
+
+1. Create/select an application project, starting with Con. Use separate projects
+   when the apps need different Google consent branding or privacy policies.
+2. Open **Google Auth Platform → Branding**. Set the app name, support email,
+   homepage and privacy-policy URL; add the owned `coflnet.com` domain.
+3. Under **Audience**, choose **External** for public users. Complete the
+   console's publishing and brand/domain verification steps before public use.
+4. Under **Clients → Create client**, choose **Web application**. Keycloak is
+   Google's OAuth client even when the end user uses the Flutter mobile app.
+   Add exactly `https://auth.coflnet.com/auth/realms/con/broker/google/endpoint`
+   as an authorized redirect URI. Use the corresponding realm callback below
+   for Wald or Vereiner clients. Request only `openid profile email`.
+5. Download/store the client ID and secret securely. Supply the local credential
+   file path or OpenBao location to the operator; never paste the secret into
+   chat, Git or command arguments. The operator can then configure the provider
+   through the scoped helper below, enable its reviewed egress, and test login.
+
+Google documents these steps in its [OpenID Connect setup](https://developers.google.com/identity/openid-connect/openid-connect)
+and [brand verification guide](https://developers.google.com/identity/verification/authentication-policy-compliance).
+
 No live Google configuration has been applied. The installed private
 administrator currently lacks `view-identity-providers` and
 `manage-identity-providers`; inspection can return HTTP 403 until an authorized,

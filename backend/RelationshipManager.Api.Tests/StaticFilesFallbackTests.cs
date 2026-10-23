@@ -124,6 +124,28 @@ public class StaticFilesFallbackTests
         Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo("application/wasm"));
     }
 
+    [TestCase("assets/assets/vad/silero_vad_v5.onnx", "application/octet-stream")]
+    [TestCase("vad/ort-wasm-simd-threaded.mjs", "text/javascript")]
+    public async Task WithWwwroot_VadAssets_ReturnOriginalBytesAndCorrectContentType(string path, string contentType)
+    {
+        using var www = new TempWwwroot();
+        www.WriteFile("index.html", "<html>flutter app shell</html>");
+        var bytes = path.EndsWith(".onnx") ? new byte[] { 0x08, 0x08, 0x12, 0x04, 0x56, 0x41, 0x44 }
+            : "export const runtime = 'vad';"u8.ToArray();
+        var file = Path.Combine(www.WwwrootPath, path);
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllBytes(file, bytes);
+
+        await using var factory = new TestWebApplicationFactory { ContentRootPath = www.ContentRoot };
+        using var client = await factory.StartAsync();
+        var response = await client.GetAsync("/" + path);
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo(contentType));
+        Assert.That(await response.Content.ReadAsByteArrayAsync(), Is.EqualTo(bytes));
+        Assert.That(response.Headers.CacheControl?.NoCache, Is.True);
+    }
+
     [Test]
     public async Task WithWwwroot_HashLikeFileName_DoesNotGetLongTermCaching_GetsNoCacheInstead()
     {

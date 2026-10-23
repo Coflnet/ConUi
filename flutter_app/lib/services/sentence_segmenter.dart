@@ -1,8 +1,10 @@
-// Dia exposes its PCM iterator through internal libraries; the public facade
+// Import the PCM iterator directly; the public facade
 // also imports a microphone handler tied to a different record major version.
 // ignore_for_file: implementation_imports
 
 import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:vad/src/core/vad_event.dart';
 import 'package:vad/src/core/vad_iterator.dart';
@@ -43,6 +45,9 @@ class DiaSpeechDetector implements SpeechDetector {
           preSpeechPadFrames: 1,
           minSpeechFrames: 3,
           model: 'v5',
+          baseAssetPath: kIsWeb
+              ? Uri.base.resolve('assets/assets/vad/').toString()
+              : 'assets/vad/',
           onnxWASMBasePath: Uri.base.resolve('vad/').toString(),
         ),
       );

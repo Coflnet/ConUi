@@ -281,6 +281,7 @@ public static class RelationshipManagerApp
             // with a BREACH-style compression oracle if it's ever added without checking - don't.
             var contentTypeProvider = new FileExtensionContentTypeProvider();
             contentTypeProvider.Mappings[".wasm"] = "application/wasm";
+            contentTypeProvider.Mappings[".onnx"] = "application/octet-stream";
 
             app.UseStaticFiles(new StaticFileOptions
             {

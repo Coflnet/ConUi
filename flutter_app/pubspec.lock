@@ -1150,9 +1150,9 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "23e8a555c349a2ca597ef098974f6c43da5da2f8"
-      resolved-ref: "23e8a555c349a2ca597ef098974f6c43da5da2f8"
-      url: "https://github.com/Coflnet/diaflutter.git"
+      ref: "28bb26c734e1e5ef6a1c14a07dfcdb7452dcbf93"
+      resolved-ref: "28bb26c734e1e5ef6a1c14a07dfcdb7452dcbf93"
+      url: "https://github.com/keyur2maru/vad.git"
     source: git
     version: "0.0.7"
   vector_math:
