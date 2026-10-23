@@ -1,5 +1,67 @@
 # Con sign-in on the shared Keycloak service
 
+## Email-first registration
+
+The current shared issuer is `https://auth.coflnet.com/auth/realms/con`.
+Con's `themes/con-registration` login theme keeps the standard Keycloak password form and
+validation. Email is first; profile fields sit in an editable disclosure.
+`alice12.smith34@example.com` suggests `Alice`, `Smith`, and `alice.smith`.
+Manual edits, submitted values and username-collision errors are preserved.
+First/last names are optional; email and a unique username remain required.
+Without JavaScript, the normal server-rendered fields remain usable.
+
+Run `python3 -m unittest discover -s deployment/keycloak -v` and the two
+Playwright checks (`test_registration.cjs`, `test_registration_live.cjs` with
+`KEYCLOAK_TEST_BASE` pointing to a disposable loopback instance). Browser checks
+must use synthetic accounts, never real account credentials.
+
+Package a reviewed theme with
+
+```sh
+python3 deployment/keycloak/package_theme.py /path/to/fleet-worktree \
+  --theme con-registration --theme wald --theme vereiner --theme rfind-registration
+```
+
+Fleet's identity chart mounts the shared script in Con, Wald and Vereiner,
+and an RFInD child theme inheriting its existing branding; its
+checksum triggers the normal rolling update. The script filename is hashed to
+invalidate browser caches. Keep the source and packaged script in sync.
+
+After all identity replicas have the theme, run `registration.py` inside the
+protected OpenBao session, with read access only to
+`kv/data/services/identity/bootstrap` plus the session self-management paths.
+Use the predecessor `eu-cluster` init authority only to mint that narrow,
+short-lived, nonrenewable child. The active OpenBao cluster is
+`admin@talos-secrets-hcloud`; use the existing Ansible kubeconfig/local proxy.
+The helper must revoke the child, verify HTTP 403, and remove its token artifact
+immediately after the operation. The shared identity Python package supplies
+the verified TLS transport; the existing `permanent_admin` machine client is
+consumed only in memory. Example inside that child session, after forwarding
+the identity service's 8443 to loopback 18443 and exporting its public CA:
+
+```sh
+bao kv get -mount=kv -format=json services/identity/bootstrap | \
+  PYTHONPATH=/path/to/RfindPlatform python3 deployment/keycloak/registration.py \
+    --identity-url https://auth.coflnet.com:18443/auth --ca /path/to/identity-ca.crt
+```
+
+The default is read-only inspection; append `--apply` for the reviewed change.
+Use `--realms con wald vereiner rfind` to inspect/apply all application realms.
+The script reads each selected realm, changes only the login theme, email
+ordering/requirement and optional names, and verifies readback. Keycloak's
+profile endpoint requires a full document: unrelated attributes, validation,
+permissions and groups are retained, and a concurrent change stops the write.
+Registration access, username policy and all unselected realms stay unchanged.
+RFInD currently disables self-registration; the helper preserves that setting.
+The master administration realm is never a target. This updates registration policy,
+not existing users, client credentials, passwords, sessions or signing keys.
+
+For Google sign-in, see [the scoped provider setup](google_login.md). OAuth
+credentials and identity-provider permissions are prerequisites; the helper
+never changes the master realm or automatically links accounts by email.
+
+## Original provisioning reference
+
 Con reuses the existing RFInD Keycloak server. Its separate `con` realm and
 `con-app` public client follow the existing RFInD/Wald integration pattern.
 The separate realm and client are deployed and real hosted PKCE sign-in passes.
