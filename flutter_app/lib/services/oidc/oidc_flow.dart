@@ -10,7 +10,8 @@ const allowInsecureLocalOidc =
 class OidcConfig {
   final String issuer;
   final String clientId;
-  const OidcConfig(this.issuer, this.clientId);
+  final bool createAccount;
+  const OidcConfig(this.issuer, this.clientId, {this.createAccount = false});
   bool get allowInsecureConnections =>
       allowInsecureLocalOidc &&
       Uri.parse(issuer).scheme == 'http' &&
@@ -77,6 +78,7 @@ class OidcWebFlow {
       'response_type': 'code',
       'scope': 'openid profile',
       'ui_locales': locale,
+      if (config.createAccount) 'prompt': 'create',
       'state': state,
       'code_challenge_method': 'S256',
       'code_challenge':

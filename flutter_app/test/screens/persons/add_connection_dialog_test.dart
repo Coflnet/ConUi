@@ -15,6 +15,8 @@ Future<void> _pumpDialogHost(
   Person viewedPerson,
   List<Person> allPersons, {
   List<Connection> allConnections = const [],
+  List<Event> allEvents = const [],
+  Event? initialEvent,
 }) async {
   await tester.pumpWidget(
     // The Provider must sit *above* MaterialApp's own Navigator: showDialog() pushes
@@ -36,7 +38,8 @@ Future<void> _pumpDialogHost(
                   viewedPerson: viewedPerson,
                   allPersons: allPersons,
                   allConnections: allConnections,
-                  allEvents: const [],
+                  allEvents: allEvents,
+                  initialEvent: initialEvent,
                 ),
                 child: const Text('open dialog'),
               ),
@@ -103,8 +106,10 @@ void main() {
     expect(find.text('Anna is the parent of Bert.'), findsOneWidget);
   });
 
-  testWidgets('warns (without blocking) when the fact already exists', (tester) async {
-    final existing = Connection(person1Id: 'bert', person2Id: 'anna', relationshipType: 'child');
+  testWidgets('blocks a duplicate fact without a new story link',
+      (tester) async {
+    final existing = Connection(
+        person1Id: 'bert', person2Id: 'anna', relationshipType: 'child');
     // "Bert is the child of Anna" == "Anna is the parent of Bert" (same fact, other side).
     await _pumpDialogHost(tester, db, anna, [anna, bert], allConnections: [existing]);
 
@@ -113,11 +118,72 @@ void main() {
 
     expect(find.textContaining('already seems to exist'), findsOneWidget);
 
-    final addButton = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Add'));
+    final addButton =
+        tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Save'));
     expect(addButton.onPressed, isNull);
   });
 
-  testWidgets('saves the connection with the viewed person as person1 (direction preserved)',
+  testWidgets(
+      'links another story to an inverse fact while preserving its metadata',
+      (tester) async {
+    final existing = Connection(
+        id: 'existing',
+        person1Id: 'bert',
+        person2Id: 'anna',
+        relationshipType: 'child',
+        originEventId: 'birth',
+        sourceEventIds: ['first-story'],
+        description: 'Known family',
+        startDate: DateTime(1850),
+        endDate: DateTime(1900),
+        isInferred: true);
+    db.connections[existing.id] = existing;
+    final story = Event(
+        id: 'another-story', title: 'Another memory', dateTime: DateTime(1870));
+    await _pumpDialogHost(tester, db, anna, [anna, bert],
+        allConnections: [existing], initialEvent: story);
+    await _selectOtherPerson(tester, 'Bert');
+    await _selectType(tester, RelationshipType.parent);
+    expect(
+        find.text(
+            'Link this story to the existing relationship without changing it.'),
+        findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+    expect(db.connections, hasLength(1));
+    final saved = db.connections.values.single;
+    final expected = existing.toJson()..remove('updatedAt');
+    expected['sourceEventIds'] = ['first-story', story.id];
+    expect(saved.toJson()..remove('updatedAt'), expected);
+    expect(await db.getConnectionsForEvent(story.id), [saved]);
+  });
+
+  testWidgets('blocks linking a story already attached as origin or source',
+      (tester) async {
+    final story =
+        Event(id: 'story', title: 'Known story', dateTime: DateTime(2020));
+    for (final isOrigin in [true, false]) {
+      final existing = Connection(
+          person1Id: 'anna',
+          person2Id: 'bert',
+          relationshipType: 'friend',
+          originEventId: isOrigin ? story.id : null,
+          sourceEventIds: isOrigin ? [] : [story.id]);
+      await _pumpDialogHost(tester, db, anna, [anna, bert],
+          allConnections: [existing], initialEvent: story);
+      await _selectOtherPerson(tester, 'Bert');
+      expect(
+          tester
+              .widget<FilledButton>(find.widgetWithText(FilledButton, 'Save'))
+              .onPressed,
+          isNull);
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets(
+      'saves the connection with the viewed person as person1 (direction preserved)',
       (tester) async {
     await _pumpDialogHost(tester, db, anna, [anna, bert]);
 
@@ -132,6 +198,34 @@ void main() {
     expect(saved.person1Id, 'anna');
     expect(saved.person2Id, 'bert');
     expect(saved.relationshipType, RelationshipType.parent.storageValue);
+  });
+
+  testWidgets('can link an existing relationship to a new story with a required title',
+      (tester) async {
+    final existing = Connection(person1Id: 'anna', person2Id: 'bert', relationshipType: 'friend');
+    db.connections[existing.id] = existing;
+    await _pumpDialogHost(tester, db, anna, [anna, bert], allConnections: [existing]);
+    await _selectOtherPerson(tester, 'Bert');
+    await tester.ensureVisible(find.byType(SwitchListTile));
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.pumpAndSettle();
+    final createButton = find.text('Or create new story');
+    await tester.ensureVisible(createButton);
+    await tester.tap(createButton);
+    await tester.pumpAndSettle();
+    final saveButton = find.widgetWithText(FilledButton, 'Save');
+    expect(tester.widget<FilledButton>(saveButton).onPressed, isNull);
+    final titleField = find.widgetWithText(TextField, 'New Story Title');
+    await tester.ensureVisible(titleField);
+    await tester.enterText(titleField, 'A shared memory');
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+    expect(db.connections, hasLength(1));
+    final story = db.events.values.single;
+    expect(story.title, 'A shared memory');
+    expect(story.participantIds, ['anna', 'bert']);
+    expect(db.connections.values.single.sourceEventIds, [story.id]);
   });
 
   testWidgets('can create a brand-new person by name and connect to them', (tester) async {

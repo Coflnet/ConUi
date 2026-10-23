@@ -10,6 +10,7 @@ import '../../services/app_settings_service.dart';
 import '../../services/audio_capture.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
+import '../../widgets/account_required_dialog.dart';
 import '../../services/person_mentions.dart';
 import '../../widgets/transcript_people_picker.dart';
 import '../../services/story_photo_service.dart';
@@ -137,6 +138,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   List<Place> _allPlaces = [];
   Place? _nearbyPlace;
   Place? _useExistingPlace;
+  Place? _savedDraftPlace;
 
   DateTime _date = DateTime.now();
   DatePrecision _datePrecision = DatePrecision.day;
@@ -267,9 +269,14 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   void _showTranscriptionFailure(int failedCount) {
     final l10n = AppLocalizations.of(context);
     final reason = _recorder.liveTranscriptionReason;
-    final message = reason == LiveTranscriptionReason.anonymousLimit ||
-        reason == LiveTranscriptionReason.notSignedIn ||
-            reason == LiveTranscriptionReason.notConfigured ||
+    if (reason == LiveTranscriptionReason.anonymousLimit ||
+        reason == LiveTranscriptionReason.notSignedIn) {
+      showAccountRequiredDialog(context,
+          message: '${messageForTranscriptionReason(l10n, reason)}\n\n${l10n.accountStorySavedBeforeSignIn}',
+          beforeSignIn: () async => !_hasUnsavedContent || await _save(close: false));
+      return;
+    }
+    final message = reason == LiveTranscriptionReason.notConfigured ||
             reason == LiveTranscriptionReason.offline
         ? messageForTranscriptionReason(l10n, reason)
         : l10n.recordingPartsFailedLive(failedCount);
@@ -536,17 +543,18 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   bool get _canSave =>
       !_isSaving &&
       !_isPickingPhotos &&
+      !_isTranscribingNow &&
       (_recorder.state == RecorderState.idle ||
           _recorder.state == RecorderState.failed);
 
-  Future<void> _save() async {
-    if (!_canSave) return;
+  Future<bool> _save({bool close = true}) async {
+    if (!_canSave) return false;
     final l10n = AppLocalizations.of(context);
     final text = _textController.text.trim();
-    if (text.isEmpty && _pendingRecording == null && _photos.isEmpty) {
+    if (close && text.isEmpty && _pendingRecording == null && _photos.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(l10n.quickAddNeedsTextOrRecording)));
-      return;
+      return false;
     }
 
     setState(() => _isSaving = true);
@@ -560,9 +568,13 @@ class QuickAddSheetState extends State<QuickAddSheet> {
       } else {
         final name = _placeNameController.text.trim().isNotEmpty
             ? _placeNameController.text.trim()
-            : defaultPlaceName(position, l10n);
-        place = Place(name: name, latitude: position.latitude, longitude: position.longitude);
+            : await resolveDefaultPlaceName(position, l10n);
+        if (!mounted) return false;
+        place = _savedDraftPlace?.copyWith(name: name,
+                latitude: position.latitude, longitude: position.longitude) ??
+            Place(name: name, latitude: position.latitude, longitude: position.longitude);
         await db.savePlace(place);
+        _savedDraftPlace = place;
       }
 
       final participantIds = await saveStoryPeople(db, [
@@ -595,13 +607,15 @@ class QuickAddSheetState extends State<QuickAddSheet> {
         }
       }
 
-      if (!mounted) return;
-      Navigator.pop(context, QuickAddResult(event: event, place: place));
+      if (!mounted) return false;
+      if (close) Navigator.pop(context, QuickAddResult(event: event, place: place));
+      return true;
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(AppLocalizations.of(context).storySaveFailed)));
       }
+      return false;
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -711,7 +725,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   Widget _buildRecordButton(AppLocalizations l10n) {
     final isRecording = _recorder.state == RecorderState.recording;
     final isBusy = _recorder.state == RecorderState.requestingPermission ||
-        _recorder.state == RecorderState.finishing;
+        _recorder.state == RecorderState.finishing || _isTranscribingNow;
 
     return Column(
       children: [
@@ -760,12 +774,26 @@ class QuickAddSheetState extends State<QuickAddSheet> {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
+          if (!_recorder.isTranscribing) Text(
             messageForTranscriptionReason(l10n, _recorder.liveTranscriptionReason),
             style: Theme.of(context).textTheme.bodySmall,
             textAlign: TextAlign.center,
           ),
         ],
+        if (_recorder.isTranscribing ||
+            _recorder.state == RecorderState.finishing || _isTranscribingNow)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(width: 8),
+                Flexible(child: Text(l10n.quickAddTranscribing)),
+              ],
+            ),
+          ),
         if (_recorder.isAnonymousRecording && _pendingRecording == null)
           Text(l10n.recordingAnonymousAllowance,
               style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
@@ -784,7 +812,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
             padding: const EdgeInsets.only(top: 4),
             child: TextButton(
               onPressed: _isTranscribingNow ? null : _transcribeNow,
-              child: Text(_isTranscribingNow ? l10n.quickAddTranscribing : l10n.quickAddTranscribeNow),
+              child: Text(l10n.quickAddTranscribeNow),
             ),
           ),
       ],

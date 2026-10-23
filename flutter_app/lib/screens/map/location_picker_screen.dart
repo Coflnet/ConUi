@@ -37,7 +37,14 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.locationPickerTitle)),
+      appBar: AppBar(
+        leadingWidth: 100,
+        leading: TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l10n.commonCancel),
+        ),
+        title: Text(l10n.locationPickerTitle),
+      ),
       body: Column(
         children: [
           Container(

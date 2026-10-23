@@ -123,7 +123,45 @@ void main() {
     expect(find.text('Description'), findsOneWidget);
   });
 
-  testWidgets('shows no Connections section when there are none', (tester) async {
+  testWidgets(
+      'both people list origin and source stories once, with working navigation',
+      (tester) async {
+    final origin = Event(
+        id: 'origin',
+        title: 'Family origin',
+        dateTime: DateTime(1900),
+        participantIds: [anna.id]);
+    final source =
+        Event(id: 'source', title: 'Later memory', dateTime: DateTime(1950));
+    final unrelated = Event(
+        id: 'unrelated', title: 'Unrelated story', dateTime: DateTime(2000));
+    for (final event in [origin, source, unrelated]) {
+      db.events[event.id] = event;
+    }
+    db.connections['family'] = Connection(
+        id: 'family',
+        person1Id: anna.id,
+        person2Id: bert.id,
+        relationshipType: 'parent',
+        originEventId: origin.id,
+        sourceEventIds: [origin.id, source.id]);
+    for (final person in [anna, bert]) {
+      await _pumpPersonDetail(tester, db, person.id);
+      expect(find.text('Family origin'), findsOneWidget);
+      expect(find.text('Later memory'), findsOneWidget);
+      expect(find.text('Unrelated story'), findsNothing);
+      final storyTile = find.widgetWithText(ListTile, 'Later memory');
+      await tester.ensureVisible(storyTile);
+      await tester.tap(storyTile);
+      await tester.pumpAndSettle();
+      expect(find.text('Anna is the parent of Bert.'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets('shows no Connections section when there are none',
+      (tester) async {
     await _pumpPersonDetail(tester, db, anna.id);
     expect(find.text('Connections'), findsNothing);
   });

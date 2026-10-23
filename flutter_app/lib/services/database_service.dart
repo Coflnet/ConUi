@@ -512,6 +512,27 @@ class DatabaseService extends ChangeNotifier {
   // of the synced Event/AttachedFile data - see LocalRecordingState's doc
   // comment for what each row means and the deletion rule.
 
+  /// Save boundaries before submitting audio, so a retry after restart uses
+  /// the same recording/segment identity even if local VAD availability changes.
+  Future<void> saveRecordingSegmentLength(String id, int sequence, int length) async {
+    final db = await database;
+    await db.insert('recording_segments', {
+      'recording_id': id, 'sequence': sequence, 'byte_length': length,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  Future<List<int>> getRecordingSegmentLengths(String id) async {
+    final db = await database;
+    final rows = await db.query('recording_segments',
+        where: 'recording_id = ?', whereArgs: [id], orderBy: 'sequence');
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i]['sequence'] != i) {
+        throw StateError('Recording segment boundaries are incomplete');
+      }
+    }
+    return rows.map((row) => row['byte_length'] as int).toList();
+  }
+
   Future<void> saveLocalRecording(LocalRecordingState recording) async {
     final db = await database;
     await db.insert(
@@ -570,6 +591,7 @@ class DatabaseService extends ChangeNotifier {
   /// bytes are deleted too.
   Future<void> deleteLocalRecordingRow(String id) async {
     final db = await database;
+    await db.delete('recording_segments', where: 'recording_id = ?', whereArgs: [id]);
     await db.delete('local_recordings', where: 'id = ?', whereArgs: [id]);
   }
 
@@ -652,6 +674,8 @@ class DatabaseService extends ChangeNotifier {
     // Bookkeeping rows only; actual recording bytes in a RecordingFileStore
     // are intentionally left alone here - see deleteRecordingPermanently's
     // doc comment for why this must never be an implicit side effect.
+    // Keep their segment boundaries too, so retained audio can be retried
+    // under its original recording/segment identities after signing in again.
     await db.delete('local_recordings');
     notifyListeners();
   }

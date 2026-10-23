@@ -11,6 +11,7 @@ import 'package:http/testing.dart';
 
 import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/screens/home_screen.dart';
+import 'package:relationship_manager/screens/persons/persons_screen.dart';
 import 'package:relationship_manager/services/app_settings_service.dart';
 import 'package:relationship_manager/services/auth_service.dart';
 import 'package:relationship_manager/services/database_service.dart';
@@ -32,7 +33,7 @@ void main() {
   });
 
   Future<void> pumpHome(WidgetTester tester, Size size,
-      {bool signIn = false, bool password = false}) async {
+      {bool signIn = false, bool password = false, bool reducedMotion = false}) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -62,11 +63,15 @@ void main() {
           ChangeNotifierProvider<SyncService>.value(value: sync),
           ChangeNotifierProvider<AppSettingsService>.value(value: appSettings),
         ],
-        child: const MaterialApp(
-          locale: Locale('en'),
+        child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: reducedMotion),
+            child: child!,
+          ),
+          locale: const Locale('en'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: [Locale('en'), Locale('de')],
-          home: HomeScreen(),
+          supportedLocales: const [Locale('en'), Locale('de')],
+          home: const HomeScreen(),
         ),
       ),
     );
@@ -107,16 +112,55 @@ void main() {
 
     expect(find.text('People'), findsWidgets); // AppBar title now "People"
   });
+  testWidgets('tab fades retain the same people view and its search state', (tester) async {
+    await pumpHome(tester, const Size(390, 844));
+    Future<void> select(String label) async {
+      await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(label)));
+      await tester.pump();
+    }
+    await select('People');
+    final fadeFinder = find.ancestor(of: find.byType(IndexedStack), matching: find.byType(FadeTransition)).first;
+    expect(tester.widget<FadeTransition>(fadeFinder).opacity.value, lessThan(1));
+    await tester.pump(const Duration(milliseconds: 200));
+    await _settle(tester);
+    final peopleState = tester.state(find.byType(PersonsScreen));
+    await tester.enterText(find.byType(TextField), 'Remember this search');
+    await select('Stories');
+    await tester.pump(const Duration(milliseconds: 200));
+    await select('People');
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.state(find.byType(PersonsScreen)), same(peopleState));
+    expect(find.text('Remember this search'), findsOneWidget);
+    await select('People');
+    expect(tester.widget<FadeTransition>(fadeFinder).opacity.value, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reduced motion switches tabs immediately without fading', (tester) async {
+    await pumpHome(tester, const Size(390, 844), reducedMotion: true);
+    await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('People')));
+    await tester.pump();
+    final fade = tester.widget<FadeTransition>(find.ancestor(
+      of: find.byType(IndexedStack), matching: find.byType(FadeTransition),
+    ).first);
+    expect(fade.opacity.value, 1);
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 1);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('offline sync explains that an account is needed',
       (tester) async {
     await pumpHome(tester, const Size(390, 844));
     await tester.tap(find.byTooltip('Sync now'));
     await _settle(tester);
-    expect(
-        find.text(
-            'Sync requires an account. Your stories remain saved on this device.'),
-        findsOneWidget);
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('Account required'), findsOneWidget);
+    expect(find.text('Create account'), findsOneWidget);
     expect(find.text('Sync complete'), findsNothing);
+    await tester.tap(find.text('Cancel'));
+    await _settle(tester);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
   });
 
   testWidgets('locked sync asks for encryption password', (tester) async {

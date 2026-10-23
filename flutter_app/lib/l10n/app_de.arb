@@ -449,12 +449,13 @@
   "connectionDialogAddNewPerson": "+ Neue Person hinzufügen…",
   "connectionDialogNewPersonName": "Name der neuen Person",
   "connectionDialogPersonIsThe": "{name} ist ...",
+  "connectionDialogLinkExisting": "Diese Geschichte mit der bestehenden Verbindung verknüpfen, ohne sie zu ändern.",
   "connectionDialogAlreadyExists": "Diese Verbindung scheint bereits zu bestehen.",
   "connectionDialogStartDate": "Beginn",
   "connectionDialogEndDate": "Ende",
   "connectionDialogEndDateOngoing": "Kein Ende (andauernd)",
-  "connectionDialogLinkEvent": "Mit Ursprungsgeschichte verknüpfen",
-  "connectionDialogLinkEventSubtitle": "Optional: die Geschichte, aus der diese Verbindung entstand",
+  "connectionDialogLinkEvent": "Mit Geschichte verknüpfen",
+  "connectionDialogLinkEventSubtitle": "Optional: eine Geschichte über diese Verbindung",
   "connectionDialogSelectEvent": "Geschichte auswählen",
   "connectionDialogOrCreateNewEvent": "Oder neue Geschichte anlegen",
   "connectionDialogNewEventTitle": "Titel der neuen Geschichte",
@@ -538,5 +539,9 @@
   "trainingError": "{kind, select, network{Der Server ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut. Dein Entwurf bleibt erhalten.} tooLarge{Diese Meldung ist zu groß. Deaktiviere Audio, wenn es 10 MiB überschreitet. Der Geschichtentext ist auf 32.000 Zeichen, die Korrektur auf 4.000, Personen auf 50, Beziehungen auf 100 und Metadaten auf 64 KiB begrenzt. Kürze bei Bedarf die Geschichte und öffne die Meldung erneut.} unsupported{Der Server konnte diese WAV nicht lesen. Stelle die Originalaufnahme aus einem Backup wieder her oder sende ohne Audio.} rateLimited{Zu viele gleichzeitige Meldungen oder das Tageslimit ist erreicht. Warte einen Moment und versuche es erneut. Ist dein Tageslimit erreicht, versuche es morgen; Gäste können 10 Meldungen pro Tag senden.} unauthorized{Deine Anmeldung ist abgelaufen. Kopiere deine Korrektur, melde dich in den Einstellungen erneut an und öffne diese Meldung wieder. Dein Entwurf bleibt bis zum Schließen erhalten.} unavailable{Meldungen sind derzeit nicht verfügbar. Versuche es später erneut; dein Entwurf bleibt erhalten.} conflict{Diese Beispiel-ID gehört bereits zu einer anderen Meldung. Kopiere deine Korrektur, schließe den Dialog und beginne eine neue Meldung.} missingAudio{Die Originalaufnahme fehlt oder ist unvollständig. Stelle sie aus einem Backup wieder her oder deaktiviere Audio, um den Geschichtentext zu senden.} invalid{Diese Meldung benötigt Audio oder Geschichtentext. Schließe die Originalaufnahme ein oder ergänze Notizen/transkribiere die Geschichte und öffne die Meldung erneut. Falls der Server sie weiter ablehnt, prüfe Text und Audio.} other{Die Meldung konnte nicht gesendet werden. Dein Entwurf bleibt erhalten. Versuche es später erneut.}}",
   "@trainingRecording": {"placeholders": {"name": {"type": "String"}}},
   "@trainingReceipt": {"placeholders": {"id": {"type": "String"}}},
-  "@trainingError": {"placeholders": {"kind": {"type": "String"}}}
+  "@trainingError": {"placeholders": {"kind": {"type": "String"}}},
+  "accountRequiredTitle": "Konto erforderlich",
+  "accountRequiredBody": "Melde dich an oder erstelle ein Konto, um diese Funktion zu nutzen. Deine Geschichten und Aufnahmen bleiben auf diesem Gerät.",
+  "accountCreateButton": "Konto erstellen",
+  "accountStorySavedBeforeSignIn": "Deine aktuelle Geschichte wird auf diesem Gerät gespeichert, bevor du dich anmeldest oder ein Konto erstellst."
 }

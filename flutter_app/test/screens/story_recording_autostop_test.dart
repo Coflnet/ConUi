@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -21,6 +22,74 @@ import '../support/test_database.dart';
 
 void main() {
   for (final quick in [true, false]) {
+    testWidgets('${quick ? 'Quick add' : 'Story form'} shows transcription progress until the final response', (tester) async {
+      final directory = Directory.systemTemp.createTempSync('con-progress-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final db = createTestDatabaseService();
+      await tester.runAsync(db.initialize);
+      final capture = FakeAudioCapture();
+      late Completer<http.Response> response;
+      late Completer<void> requested;
+      await tester.runAsync(() async {
+        response = Completer<http.Response>();
+        requested = Completer<void>();
+      });
+      final recorder = RecorderController(
+        audioCapture: capture,
+        fileStore: NativeRecordingFileStore(baseDirectory: directory),
+        database: db,
+        segmentDuration: const Duration(milliseconds: 100),
+        transcriptionClient: TranscriptionClient(
+          baseUrl: 'https://example.invalid', getToken: () => 'token',
+          httpClient: MockClient((_) {
+            if (!requested.isCompleted) requested.complete();
+            return response.future;
+          }),
+        ),
+      );
+      addTearDown(recorder.dispose);
+      final position = ValueNotifier(const LatLng(10, 10));
+      addTearDown(position.dispose);
+      await tester.pumpWidget(ChangeNotifierProvider<DatabaseService>.value(value: db,
+        child: MaterialApp(localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: quick ? QuickAddSheet(position: position, recorderController: recorder)
+              : AddEventScreen(recorderController: recorder)))));
+      await tester.runAsync(recorder.start);
+      await tester.pump();
+      final l10n = AppLocalizations.of(tester.element(find.byType(Scaffold).first));
+      expect(find.text(l10n.quickAddTranscribing), findsNothing);
+      await tester.runAsync(() async {
+        capture.emitChunk(Uint8List(3200));
+        await requested.future.timeout(const Duration(seconds: 5));
+      });
+      await tester.pump();
+      expect(find.text(l10n.quickAddTranscribing), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      late Future<RecorderStopResult> stopped;
+      await tester.runAsync(() async { stopped = recorder.stop(); });
+      await tester.pump();
+      expect(recorder.state, RecorderState.finishing);
+      expect(find.text(l10n.quickAddTranscribing), findsOneWidget);
+      if (quick) {
+        expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Save story')).onPressed, isNull);
+      } else {
+        expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'Save')).onPressed, isNull);
+      }
+      await tester.runAsync(() async {
+        response.complete(http.Response(jsonEncode({'text': 'Spoken story.'}), 200));
+        await stopped.timeout(const Duration(seconds: 5));
+      });
+      await tester.pump();
+      expect(find.text(l10n.quickAddTranscribing), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(recorder.lastStopResult!.transcript, contains('Spoken story.'));
+      final controller = quick
+          ? tester.widget<TextField>(find.widgetWithText(TextField, 'What happened here?')).controller!
+          : tester.widget<TextFormField>(find.byType(TextFormField).last).controller!;
+      expect(controller.text, recorder.lastStopResult!.transcript);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
     testWidgets('${quick ? 'Quick add' : 'Story form'} keeps audio and notes after automatic stop', (tester) async {
       final directory = Directory.systemTemp.createTempSync('con-autostop-');
       addTearDown(() => directory.deleteSync(recursive: true));

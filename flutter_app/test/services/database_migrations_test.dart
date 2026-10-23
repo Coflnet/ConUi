@@ -135,7 +135,7 @@ void main() {
     final tableNames = tables.map((t) => t['name']).toSet();
     expect(
       tableNames,
-      containsAll(['persons', 'events', 'pending_changes', 'local_recordings']),
+      containsAll(['persons', 'events', 'pending_changes', 'local_recordings', 'recording_segments']),
     );
 
     final version = await db.getVersion();

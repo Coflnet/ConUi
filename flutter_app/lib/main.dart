@@ -8,6 +8,7 @@ import 'services/database_service.dart';
 import 'services/sync_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
+import 'widgets/app_page_transitions.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -70,6 +71,7 @@ class RelationshipManagerApp extends StatelessWidget {
           brightness: Brightness.light,
         ),
         useMaterial3: true,
+        pageTransitionsTheme: appPageTransitionsTheme,
         appBarTheme: const AppBarTheme(
           centerTitle: true,
           elevation: 0,
@@ -94,6 +96,7 @@ class RelationshipManagerApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
         useMaterial3: true,
+        pageTransitionsTheme: appPageTransitionsTheme,
         appBarTheme: const AppBarTheme(
           centerTitle: true,
           elevation: 0,
@@ -114,7 +117,7 @@ class RelationshipManagerApp extends StatelessWidget {
       home: Consumer<AuthService>(
         builder: (context, authService, _) {
           if (authService.isAuthenticated ||
-              (authService.continuedWithoutAccount && !authService.signInFailed)) {
+              authService.continuedWithoutAccount) {
             return const HomeScreen();
           }
           return const LoginScreen();

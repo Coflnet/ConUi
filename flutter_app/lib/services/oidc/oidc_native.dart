@@ -14,6 +14,7 @@ Future<String?> beginOidcLogin(
     allowInsecureConnections: config.allowInsecureConnections,
     scopes: ['openid', 'profile'],
     additionalParameters: {'ui_locales': locale},
+    promptValues: config.createAccount ? ['create'] : null,
   )); // Human authorization has no machine-request deadline.
   if ((authorization.authorizationCode ?? '').isEmpty ||
       (authorization.codeVerifier ?? '').isEmpty ||

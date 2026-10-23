@@ -39,11 +39,20 @@ dependencies:
   collection: ^1.18.0
   idb_shim: ^2.9.9
   record: ^7.1.1
+  vad:
+    git:
+      url: https://github.com/Coflnet/diaflutter.git
+      ref: 23e8a555c349a2ca597ef098974f6c43da5da2f8
   web: ^1.1.0
   geolocator: ^13.0.1
   archive: ^4.2.0
   flutter_contacts: ^2.5.0
   flutter_appauth: ^12.1.0
+
+# Dia's unused microphone handler still declares record 6; we feed its
+# VadIterator from our existing record 7 PCM capture instead.
+dependency_overrides:
+  record: ^7.1.1
 
 dev_dependencies:
   flutter_test:

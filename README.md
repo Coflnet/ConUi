@@ -12,6 +12,8 @@ Story descriptions and recording transcripts automatically suggest people in bot
 
 Record information from a person’s page to capture connections without choosing a location or re-entering that person’s name. Explicit German/English relationship statements also suggest removable connections, including simple relative chains such as “Alex is the brother of Ben, who works at Zeta and is a colleague of Dana”. Repeated recordings reuse the relationship and retain all source stories. Employer and new-car statements are indexed on the relevant person and link back to the original story/recording. Existing employers and notes are preserved. This local first pass supports explicit sentence templates, not general pronoun resolution or arbitrary fact extraction.
 
+New unnamed places use the closest mapped street address within 50 metres. The client queries OpenStreetMap’s Overpass service with the selected coordinates; existing names and manually entered names are preserved. Missing addresses or lookup failures retain the localized coordinate fallback.
+
 Recordings offer an explicit training-sample report: preview the shared story text and extracted information, add a correction, optionally include the selected audio, and consent before uploading. Reports are persisted in the server database. Authorized reviewers can export private JSON/WAV datasets with the [training export script](deployment/training/README.md).
 
 ### Tech Stack
@@ -175,7 +177,9 @@ at least 32 characters and not the development placeholder.
 
 
 
-While a user records a story, the client sends short audio segments (~6s, WAV PCM 16kHz mono is the primary case; `webm`/`ogg`/`mp4`/`mpeg` are also accepted) and the backend streams each one straight through to a speech-to-text upstream and returns the text - it is a pass-through, not a store.
+While a user records a story, the client sends short audio segments (at speech pauses, with a six-second fallback; WAV PCM 16kHz mono is the primary case; `webm`/`ogg`/`mp4`/`mpeg` are also accepted) and the backend streams each one straight through to a speech-to-text upstream and returns the text - it is a pass-through, not a store.
+
+Sentence cuts reuse the Silero v5 `VadIterator` from [Coflnet/DiaFlutter](https://github.com/Coflnet/diaflutter/tree/23e8a555c349a2ca597ef098974f6c43da5da2f8), pinned to that commit (MIT, © 2024–2025 Keyur Maru). It consumes the existing microphone PCM locally and ends an utterance after about 512ms of silence; segments have a one-second minimum to remain below the guest 64-segment limit. Continuous speech or unavailable VAD uses the existing quiet-cut fallback. The model and ONNX Runtime 1.22 web assets are self-hosted; inference does not send audio elsewhere. Original PCM stays intact, and local segment lengths are saved before submission so retries preserve their identities after restart. Record 7 remains the microphone capture dependency; only Dia's PCM iterator is imported, bypassing its Record 6 microphone handler.
 
 * `GET /api/transcription/status` (public) → `{ "available": true|false, "remainingRecordings": 0..3|null, "dailyLimit": 3, "maxDurationSeconds": 60 }`, so the app can show up front whether live text will work.
 * `POST /api/transcription/segment` (public; optional Bearer authentication), body = raw audio bytes, `Content-Type` set to the audio format, optional `?language=xx` (two-letter ISO 639-1) → `{ "text": "..." }`.

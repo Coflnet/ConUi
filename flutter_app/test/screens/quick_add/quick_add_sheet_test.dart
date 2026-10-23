@@ -22,12 +22,14 @@ import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/screens/quick_add/quick_add_sheet.dart';
 import 'package:relationship_manager/services/database_service.dart';
+import 'package:relationship_manager/services/auth_service.dart';
 import 'package:relationship_manager/services/recorder_controller.dart';
 import 'package:relationship_manager/services/recording_file_store_native.dart';
 import 'package:relationship_manager/services/transcription_client.dart';
 
 import '../../support/fake_audio_capture.dart';
 import '../../support/test_database.dart';
+import '../../support/account_prompt_auth.dart';
 
 // The various onPressed callbacks are statically typed as VoidCallback
 // (void Function()), but the actual closures passed in are async and
@@ -62,6 +64,7 @@ RecorderController _buildRecorder({
   String transcribedText = 'said hello',
   String? Function()? getToken,
   String? errorSlug,
+  int remainingRecordings = 3,
 }) {
   return RecorderController(
     audioCapture: capture,
@@ -72,7 +75,7 @@ RecorderController _buildRecorder({
       getToken: getToken ?? () => 'tok',
       httpClient: MockClient(
           (request) async => request.method == 'GET'
-              ? http.Response(jsonEncode({'available': true, 'remainingRecordings': 3}), 200)
+              ? http.Response(jsonEncode({'available': true, 'remainingRecordings': remainingRecordings}), 200)
               : errorSlug != null
                   ? http.Response(jsonEncode({'slug': errorSlug, 'message': 'Sign in to record more.'}), 429)
                   : http.Response(jsonEncode({'text': transcribedText}), 200)),
@@ -82,13 +85,16 @@ RecorderController _buildRecorder({
   );
 }
 
-Widget _wrap(DatabaseService db, Widget child) {
-  return MaterialApp(
+Widget _wrap(DatabaseService db, Widget child, {AccountPromptAuth? auth}) {
+  return MultiProvider(
+    providers: [
+      ChangeNotifierProvider<DatabaseService>.value(value: db),
+      ChangeNotifierProvider<AuthService>(create: (_) => auth ?? AccountPromptAuth()),
+    ],
+    child: MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
-    home: ChangeNotifierProvider<DatabaseService>.value(
-      value: db,
-      child: Scaffold(body: child),
+    home: Scaffold(body: child),
     ),
   );
 }
@@ -428,6 +434,32 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('empty quota-blocked draft can sign in without creating a story', (tester) async {
+    final db = createTestDatabaseService();
+    await tester.runAsync(db.initialize);
+    final recorder = _buildRecorder(capture: FakeAudioCapture(), db: db,
+        tempDir: tempDir, getToken: () => null, remainingRecordings: 0);
+    addTearDown(recorder.dispose);
+    final position = ValueNotifier(const LatLng(10, 10));
+    addTearDown(position.dispose);
+    final auth = AccountPromptAuth();
+    auth.beforeAttempt = () async => expect(await db.getEvents(), isEmpty);
+    await tester.pumpWidget(_wrap(db,
+        QuickAddSheet(position: position, recorderController: recorder), auth: auth));
+    await _settle(tester);
+    final start = tester.widget<GestureDetector>(find.descendant(
+        of: find.bySemanticsLabel('Start recording'), matching: find.byType(GestureDetector))).onTap!;
+    await tester.runAsync(() async => await (start as Function)());
+    await tester.pump();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await _pressAsync(tester, find.widgetWithText(FilledButton, 'Sign in with your account'));
+    await tester.pump();
+    expect(auth.choices, [false]);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets(
       'anonymous quota failure and retry explain sign-in without losing notes',
       (tester) async {
@@ -440,11 +472,13 @@ void main() {
     addTearDown(recorder.dispose);
     final position = ValueNotifier(const LatLng(10, 10));
     addTearDown(position.dispose);
+    final auth = AccountPromptAuth();
     await tester.pumpWidget(_wrap(
-        db, QuickAddSheet(position: position, recorderController: recorder)));
+        db, QuickAddSheet(position: position, recorderController: recorder), auth: auth));
     await _settle(tester);
     final field = find.widgetWithText(TextField, 'What happened here?');
     await tester.enterText(field, 'My notes.');
+    await tester.enterText(find.widgetWithText(TextField, 'Place name (optional)'), 'My place');
     await tester.runAsync(() async {
       await recorder.start();
       capture.emitChunk(Uint8List(1600));
@@ -459,14 +493,39 @@ void main() {
     await tester.runAsync(() async => await (stop as Function)());
     await tester.pump();
     final l10n = AppLocalizations.of(tester.element(field));
-    expect(find.text(l10n.liveTranscriptionAnonymousLimit), findsWidgets);
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.textContaining(l10n.liveTranscriptionAnonymousLimit), findsWidgets);
+    expect(auth.choices, isEmpty);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async => expect(await db.getEvents(), isEmpty));
     final retry = find.widgetWithText(TextButton, l10n.quickAddTranscribeNow);
     expect(retry, findsOneWidget);
-    ScaffoldMessenger.of(tester.element(field)).removeCurrentSnackBar();
-    await tester.pump();
     await _pressAsync(tester, retry);
     await tester.pump();
-    expect(find.text(l10n.liveTranscriptionAnonymousLimit), findsWidgets);
+    expect(find.byType(AlertDialog), findsOneWidget);
+    auth.beforeAttempt = () async {
+      final saved = (await db.getEvents()).single;
+      expect(saved.description, 'My notes.');
+      expect(saved.files.single.id, recorder.lastStopResult!.attachedFile.id);
+      expect((await db.getPlaces()).single.name, 'My place');
+    };
+    await tester.runAsync(() async {
+      await (tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Create account')).onPressed! as Function)();
+    });
+    await tester.pump();
+    expect(auth.choices, [true]);
+    // A failed account attempt keeps the sheet and draft editable; retry saves
+    // the same event and place rather than creating duplicates.
+    await _pressAsync(tester, find.widgetWithText(FilledButton, l10n.loginAccountButton));
+    await tester.pump();
+    expect(auth.choices, [true, false]);
+    await tester.runAsync(() async {
+      expect(await db.getEvents(), hasLength(1));
+      expect(await db.getPlaces(), hasLength(1));
+    });
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
     expect(tester.widget<TextButton>(retry).onPressed, isNotNull);
     expect(tester.widget<TextField>(field).controller!.text, 'My notes.');
     // Missing local audio must also release the retry control.

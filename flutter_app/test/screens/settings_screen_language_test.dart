@@ -137,10 +137,13 @@ void main() {
     await _settle(tester);
     await tester.tap(find.text('Force Sync'));
     await _settle(tester);
-    expect(
-        find.text(
-            'Sync requires an account. Your stories remain saved on this device.'),
-        findsOneWidget);
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('Account required'), findsOneWidget);
+    expect(find.text('Create account'), findsOneWidget);
     expect(find.text('Sync completed successfully'), findsNothing);
+    await tester.tap(find.text('Cancel'));
+    await _settle(tester);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
   });
 }

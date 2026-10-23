@@ -17,8 +17,8 @@ const String _createNewPersonSentinel = '__create_new_person__';
 /// "[viewedPerson] is the parent of [other person]" - which is what keeps the
 /// direction of the stored fact explicit instead of losing it (see
 /// `relationship_type.dart`'s reading rule). A live sentence preview shows exactly the
-/// fact that will be saved, and a non-blocking warning appears if the same fact seems
-/// to already exist.
+/// fact that will be saved. Existing facts can be linked to another story without
+/// creating a duplicate.
 ///
 /// Returns `true` if a connection was saved, `false`/`null` if the dialog was
 /// cancelled.
@@ -106,21 +106,45 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
   bool get _hasOtherPerson =>
       _creatingNewPerson ? _newPersonNameController.text.trim().isNotEmpty : _selectedPerson != null;
 
-  bool get _isDuplicate {
-    if (_creatingNewPerson || _selectedPerson == null) return false;
-    return isDuplicateConnection(
-      existing: widget.allConnections.map((c) => (
-            person1Id: c.person1Id,
-            person2Id: c.person2Id,
-            relationshipType: c.relationshipType,
-          )),
-      person1Id: widget.viewedPerson.id,
-      person2Id: _selectedPerson!.id,
-      type: _type,
-    );
+  Connection? get _existingConnection {
+    if (_creatingNewPerson || _selectedPerson == null) return null;
+    for (final connection in widget.allConnections) {
+      if (!connection.isDeleted &&
+          isDuplicateConnection(
+            existing: [
+              (
+                person1Id: connection.person1Id,
+                person2Id: connection.person2Id,
+                relationshipType: connection.relationshipType
+              )
+            ],
+            person1Id: widget.viewedPerson.id,
+            person2Id: _selectedPerson!.id,
+            type: _type,
+          )) {
+        return connection;
+      }
+    }
+    return null;
   }
 
-  bool get _canSave => !_isSaving && _hasOtherPerson && !_isDuplicate;
+  bool get _hasNewEventLink {
+    if (!_linkEvent) return false;
+    if (_createNewEvent) return _newEventTitleController.text.trim().isNotEmpty;
+    final eventId = _selectedEvent?.id;
+    final existing = _existingConnection;
+    return eventId != null &&
+        eventId != existing?.originEventId &&
+        !(existing?.sourceEventIds.contains(eventId) ?? false);
+  }
+
+  bool get _canSave =>
+      !_isSaving &&
+      _hasOtherPerson &&
+      (_existingConnection == null || _hasNewEventLink) &&
+      (!_linkEvent ||
+          !_createNewEvent ||
+          _newEventTitleController.text.trim().isNotEmpty);
 
   @override
   Widget build(BuildContext context) {
@@ -195,14 +219,22 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
                   style: const TextStyle(fontStyle: FontStyle.italic),
                 ),
               ),
-              if (_isDuplicate) ...[
+              if (_existingConnection != null) ...[
                 const SizedBox(height: 8),
                 Text(
-                  l10n.connectionDialogAlreadyExists,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                  _hasNewEventLink
+                      ? l10n.connectionDialogLinkExisting
+                      : l10n.connectionDialogAlreadyExists,
+                  style: TextStyle(
+                    color: _hasNewEventLink
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.error,
+                    fontSize: 12,
+                  ),
                 ),
               ],
               const SizedBox(height: 16),
+              if (_existingConnection == null || _createNewEvent)
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(l10n.connectionDialogStartDate),
@@ -260,6 +292,7 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
                     labelText: l10n.connectionDialogNewEventTitle,
                     hintText: l10n.connectionDialogNewEventTitleHint,
                   ),
+                  onChanged: (_) => setState(() {}),
                 ),
                 TextButton(
                   onPressed: () => setState(() => _createNewEvent = false),
@@ -269,6 +302,7 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
               const SizedBox(height: 16),
               TextField(
                 controller: _descriptionController,
+                enabled: _existingConnection == null,
                 decoration: InputDecoration(
                   labelText: l10n.connectionDialogDescription,
                   hintText: l10n.connectionDialogDescriptionHint,
@@ -292,7 +326,9 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : Text(l10n.commonAdd),
+              : Text(_existingConnection == null
+                  ? l10n.commonAdd
+                  : l10n.commonSave),
         ),
       ],
     );
@@ -323,6 +359,15 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
       originEventId = newEvent.id;
     } else if (_linkEvent && _selectedEvent != null) {
       originEventId = _selectedEvent!.id;
+    }
+
+    final existing = _existingConnection;
+    if (existing != null) {
+      await db.saveConnection(existing.copyWith(
+        sourceEventIds: [...existing.sourceEventIds, originEventId!],
+      ));
+      if (mounted) Navigator.pop(context, true);
+      return;
     }
 
     final connection = Connection(

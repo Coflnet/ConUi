@@ -48,6 +48,17 @@ void main() {
     expect(request['nonce'], 'nonce');
     expect(request['redirectUrl'], 'com.coflnet.con:/oauthredirect');
   });
+  test('native account creation uses the SDK registration prompt with PKCE',
+      () async {
+    await authCompletion(() => beginOidcLogin(
+        const OidcConfig('https://auth.coflnet.com/auth/realms/con', 'con-app',
+            createAccount: true),
+        'de',
+        MockClient((_) async => http.Response('{}', 200))));
+    final request = calls.first.arguments as Map;
+    expect(request['promptValues'], ['create']);
+    expect((calls.last.arguments as Map)['codeVerifier'], 'pkce');
+  });
   test('native missing verifier cannot exchange or replay a code', () async {
     omitVerifier = true;
     await expectLater(

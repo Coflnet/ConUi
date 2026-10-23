@@ -50,6 +50,19 @@ void main() {
     return 'https://con.coflnet.com/?code=one-use&state=${session['state']}&iss=${Uri.encodeComponent(issuer)}';
   }
 
+  test('account creation requests registration through the PKCE flow',
+      () async {
+    await flow.login(
+        const OidcConfig(issuer, 'con-app', createAccount: true), 'de');
+    final authorize = Uri.parse(navigated!);
+    expect(authorize.queryParameters['prompt'], 'create');
+    expect(authorize.queryParameters['code_challenge_method'], 'S256');
+    final session = jsonDecode(stored!);
+    url =
+        'https://con.coflnet.com/?code=registration&state=${session['state']}';
+    expect(await flow.finish(client), 'idp-token');
+  });
+
   test(
       'PKCE callback exchanges once and clears callback data before the request',
       () async {

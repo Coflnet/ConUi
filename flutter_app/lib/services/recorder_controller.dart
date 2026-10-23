@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:collection';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
@@ -10,7 +9,7 @@ import 'audio_capture.dart';
 import 'database_service.dart';
 import 'page_lifecycle_hooks.dart';
 import 'recording_file_store.dart';
-import 'segment_cutter.dart';
+import 'sentence_segmenter.dart';
 import 'transcription_client.dart';
 import 'wav.dart';
 
@@ -103,8 +102,8 @@ class TranscribeLaterResult {
 }
 
 /// Drives one recording end to end: microphone capture, durable local
-/// storage of every chunk (crash safety), cutting ~[segmentDuration]
-/// segments at a quiet point and sending them for live transcription (at
+/// storage of every chunk (crash safety), cutting segments at VAD speech ends
+/// (with a [segmentDuration] quiet-cut fallback) and sending them for live transcription (at
 /// most [maxConcurrentRequests] in flight, retried with backoff, never
 /// blocking the recording), and producing the final [AttachedFile] +
 /// transcript on [stop].
@@ -119,6 +118,7 @@ class RecorderController extends ChangeNotifier {
   final TranscriptionClient _transcriptionClient;
   final WavFormat format;
   final Duration segmentDuration;
+  final Future<SpeechDetector?> Function() createSpeechDetector;
   final Duration maxDuration;
   final int maxSegmentRetries;
   final int maxConcurrentRequests;
@@ -134,6 +134,7 @@ class RecorderController extends ChangeNotifier {
     required TranscriptionClient transcriptionClient,
     this.format = WavFormat.standard,
     this.segmentDuration = const Duration(seconds: 6),
+    this.createSpeechDetector = DiaSpeechDetector.create,
     this.maxDuration = const Duration(hours: 2),
     this.maxSegmentRetries = 3,
     this.maxConcurrentRequests = 2,
@@ -180,6 +181,9 @@ class RecorderController extends ChangeNotifier {
 
   final List<TranscriptSegment> _segments = [];
   List<TranscriptSegment> get segments => List.unmodifiable(_segments);
+  /// Whether live segments are queued, in flight, or waiting for a retry.
+  bool get isTranscribing =>
+      _segments.any((segment) => segment.text == null && !segment.failed);
   int _nextSequence = 0;
 
   /// An append-only prefix: later answers wait for earlier segments to
@@ -195,7 +199,7 @@ class RecorderController extends ChangeNotifier {
         .trim();
   }
 
-  BytesBuilder _currentSegmentPcm = BytesBuilder();
+  SentenceSegmenter? _segmenter;
   Future<void> _appendChain = Future.value();
 
   StreamSubscription<Uint8List>? _chunkSubscription;
@@ -257,7 +261,15 @@ class RecorderController extends ChangeNotifier {
     _pendingQueue.clear();
     _activeJobs.clear();
     _nextSequence = 0;
-    _currentSegmentPcm = BytesBuilder();
+    final segmenter = SentenceSegmenter(
+      format: format,
+      maxDuration: segmentDuration,
+      onSegment: _enqueueSegment,
+    );
+    _segmenter = segmenter;
+    // Load the model alongside recording setup. PCM stays durable and the
+    // bounded quiet-cut fallback works even before VAD is ready or if it fails.
+    unawaited(_attachSpeechDetector(segmenter));
     _appendChain = Future.value();
     _recordedPcmBytes = 0;
     _liveTranscriptionReason = !_transcriptionClient.isConfigured
@@ -327,50 +339,22 @@ class RecorderController extends ChangeNotifier {
     }
     await _fileStore.appendChunk(_recordingId!, chunk);
     _recordedPcmBytes += chunk.length;
-    _currentSegmentPcm.add(chunk);
-    _maybeCutSegment();
+    await _segmenter!.add(chunk);
     if (_anonymousRecording && !_autoStopping && _recordedPcmBytes >= byteLimit) {
       _autoStopping = true;
       unawaited(stop(reason: StopReason.anonymousLimit));
     }
   }
 
-  void _maybeCutSegment() {
-    final targetBytes =
-        (format.sampleRate * segmentDuration.inMicroseconds / 1000000).round() *
-            format.bytesPerSample;
-    while (_currentSegmentPcm.length >= targetBytes) {
-      _cutAndEnqueueCurrentSegment(targetBytes: targetBytes);
+  Future<void> _attachSpeechDetector(SentenceSegmenter segmenter) async {
+    try {
+      await segmenter.attachDetector(await createSpeechDetector());
+    } catch (_) {
+      // Local VAD is optional; microphone capture and transcription still work.
     }
   }
 
-  /// How far back from the end of a segment-sized buffer to search for a
-  /// quiet cut point. Scaled to [segmentDuration] (rather than always a
-  /// flat 1 second) so a short, configured-for-tests segment duration
-  /// still searches within its own buffer instead of degenerately
-  /// searching from byte 0 of a buffer shorter than a flat window.
-  Duration get _cutSearchWindow {
-    final scaled = segmentDuration ~/ 6;
-    const oneSecond = Duration(seconds: 1);
-    return scaled < oneSecond ? scaled : oneSecond;
-  }
-
-  void _cutAndEnqueueCurrentSegment({bool force = false, int? targetBytes}) {
-    final bytes = _currentSegmentPcm.toBytes();
-    if (bytes.isEmpty) return;
-
-    final cutPoint = force
-        ? bytes.length
-        : findQuietestCutPoint(Uint8List.sublistView(bytes, 0, targetBytes),
-            format: format, searchWindow: _cutSearchWindow);
-    final effectiveCut = cutPoint > 0 ? cutPoint : targetBytes ?? bytes.length;
-
-    final segmentBytes = bytes.sublist(0, effectiveCut);
-    final remainder = bytes.sublist(effectiveCut);
-    _currentSegmentPcm = BytesBuilder()..add(remainder);
-
-    if (segmentBytes.isEmpty) return;
-
+  void _enqueueSegment(Uint8List segmentBytes) {
     final job = TranscriptSegment(sequence: _nextSequence++, pcmBytes: segmentBytes);
     _segments.add(job);
     _pendingQueue.add(job);
@@ -399,6 +383,7 @@ class RecorderController extends ChangeNotifier {
   }) async {
     while (true) {
       try {
+        await _db.saveRecordingSegmentLength(recordingId, job.sequence, job.pcmBytes.length);
         final wav = WavHeader.wrap(job.pcmBytes, format: format);
         final text = await _transcriptionClient.transcribeSegment(
           wav,
@@ -467,7 +452,9 @@ class RecorderController extends ChangeNotifier {
     // Make sure every chunk already delivered has been appended before we
     // flush the trailing partial segment and finalize the file.
     await _appendChain;
-    _cutAndEnqueueCurrentSegment(force: true);
+    _segmenter!.flush();
+    await _segmenter!.dispose();
+    _segmenter = null;
     await _waitForLiveQueueDrain();
 
     final finalizeResult = await _fileStore.finalizeRecording(_recordingId!, format: format);
@@ -518,7 +505,7 @@ class RecorderController extends ChangeNotifier {
     final pcm = bytes.sublist(
         wavHeaderLength, (wavHeaderLength + dataLength).clamp(wavHeaderLength, bytes.length));
 
-    final segments = _splitIntoSegments(pcm);
+    final segments = await _splitIntoSegments(recordingId, pcm);
     final queue = Queue<TranscriptSegment>.of(segments);
     final active = <Future<void>>{};
 
@@ -552,27 +539,31 @@ class RecorderController extends ChangeNotifier {
     );
   }
 
-  List<TranscriptSegment> _splitIntoSegments(Uint8List pcm) {
-    final targetBytes =
-        (format.sampleRate * segmentDuration.inMicroseconds / 1000000).round() *
-            format.bytesPerSample;
+  Future<List<TranscriptSegment>> _splitIntoSegments(String recordingId, Uint8List pcm) async {
     final segments = <TranscriptSegment>[];
     var offset = 0;
-    var seq = 0;
-    while (offset < pcm.length) {
-      final remaining = pcm.length - offset;
-      int cutLength;
-      if (remaining < targetBytes) {
-        cutLength = remaining;
-      } else {
-        final window = Uint8List.sublistView(pcm, offset, offset + targetBytes);
-        final localCut =
-            findQuietestCutPoint(window, format: format, searchWindow: _cutSearchWindow);
-        cutLength = localCut > 0 ? localCut : targetBytes;
-      }
-      final segmentBytes = Uint8List.fromList(pcm.sublist(offset, offset + cutLength));
-      segments.add(TranscriptSegment(sequence: seq++, pcmBytes: segmentBytes));
-      offset += cutLength;
+    for (final length in await _db.getRecordingSegmentLengths(recordingId)) {
+      segments.add(TranscriptSegment(
+        sequence: segments.length,
+        pcmBytes: Uint8List.sublistView(pcm, offset, offset + length),
+      ));
+      offset += length;
+    }
+    // Saved boundaries are authoritative. Legacy recordings and a recovered
+    // trailing buffer keep the prior quiet-cut fallback without a VAD prepass.
+    final segmenter = SentenceSegmenter(
+      format: format,
+      maxDuration: segmentDuration,
+      onSegment: (bytes) => segments.add(TranscriptSegment(
+        sequence: segments.length,
+        pcmBytes: bytes,
+      )),
+    );
+    try {
+      await segmenter.add(Uint8List.sublistView(pcm, offset));
+      segmenter.flush();
+    } finally {
+      await segmenter.dispose();
     }
     return segments;
   }
@@ -580,6 +571,11 @@ class RecorderController extends ChangeNotifier {
   @override
   void dispose() {
     _pageHideUnsubscribe?.call();
+    final segmenter = _segmenter;
+    unawaited(_appendChain.then<void>(
+      (_) async => segmenter?.dispose(),
+      onError: (Object _, StackTrace __) async => segmenter?.dispose(),
+    ));
     _ticker?.cancel();
     _chunkSubscription?.cancel();
     _amplitudeSubscription?.cancel();

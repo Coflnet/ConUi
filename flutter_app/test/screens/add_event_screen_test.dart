@@ -24,12 +24,14 @@ import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/screens/events/add_event_screen.dart';
 import 'package:relationship_manager/services/database_service.dart';
+import 'package:relationship_manager/services/auth_service.dart';
 import 'package:relationship_manager/services/recorder_controller.dart';
 import 'package:relationship_manager/services/recording_file_store_native.dart';
 import 'package:relationship_manager/services/transcription_client.dart';
 
 import '../support/fake_audio_capture.dart';
 import '../support/test_database.dart';
+import '../support/account_prompt_auth.dart';
 
 /// Invokes [finder]'s callback (an IconButton or TextButton's onPressed)
 /// directly and, if it returns a Future, awaits it - all within the real
@@ -77,12 +79,16 @@ void main() {
       maxSegmentRetries: 0,
     );
     addTearDown(controller.dispose);
-    await tester.pumpWidget(MaterialApp(
+    final auth = AccountPromptAuth();
+    await tester.pumpWidget(ChangeNotifierProvider<AuthService>.value(value: auth, child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: ChangeNotifierProvider<DatabaseService>.value(
-        value: db, child: AddEventScreen(recorderController: controller)),
-    ));
+        value: db, child: AddEventScreen(recorderController: controller,
+            initialParticipantIds: const ['chosen-person'])),
+    )));
+    final titleController = tester.widget<TextFormField>(find.widgetWithText(TextFormField, 'Title *')).controller!;
+    await tester.enterText(find.widgetWithText(TextFormField, 'Description'), 'My unsaved notes.');
     await _pressAsync(tester, find.widgetWithIcon(IconButton, Icons.mic));
     await tester.pump();
     final l10n = AppLocalizations.of(
@@ -94,7 +100,25 @@ void main() {
     });
     await _pressAsync(tester, find.widgetWithIcon(IconButton, Icons.stop_circle));
     await tester.pump();
-    expect(find.text(l10n.liveTranscriptionAnonymousLimit), findsWidgets);
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.textContaining(l10n.liveTranscriptionAnonymousLimit), findsWidgets);
+    expect(auth.choices, isEmpty);
+    auth.beforeAttempt = () async {
+      final saved = (await db.getEvents()).single;
+      expect(saved.description, 'My unsaved notes.');
+      expect(saved.title, 'My unsaved notes.');
+      expect(saved.participantIds, ['chosen-person']);
+      expect(saved.files.single.id, controller.lastStopResult!.attachedFile.id);
+    };
+    await tester.runAsync(() async {
+      await (tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Create account')).onPressed! as Function)();
+    });
+    await tester.pump();
+    expect(auth.choices, [true]);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextFormField>(find.widgetWithText(TextFormField, 'Description')).controller!.text, 'My unsaved notes.');
+    expect(titleController.text, isEmpty);
     await tester.runAsync(() async {
       final file = controller.lastStopResult!.attachedFile;
       expect(await NativeRecordingFileStore(baseDirectory: tempDir).exists(file.id), isTrue);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/gen/app_localizations.dart';
 import '../models/models.dart';
@@ -9,6 +10,7 @@ import '../services/auth_service.dart';
 import '../services/database_service.dart';
 import '../services/recording_file_store.dart';
 import '../services/training_sample_client.dart';
+import 'account_required_dialog.dart';
 
 /// One explicit reporting action per recording; opening or cancelling sends nothing.
 class TrainingSampleButton extends StatelessWidget {
@@ -76,6 +78,8 @@ class _TrainingSampleDialogState extends State<TrainingSampleDialog> {
   bool _consent = false;
   bool _sending = false;
   String? _receipt;
+  String get _authDraftKey =>
+      'training-auth-draft-${widget.event.id}-${widget.file.id}';
 
   @override
   void initState() {
@@ -88,7 +92,14 @@ class _TrainingSampleDialogState extends State<TrainingSampleDialog> {
       final people = await widget.db.getPersons();
       final connections =
           await widget.db.getConnectionsForEvent(widget.event.id);
+      final prefs = await SharedPreferences.getInstance();
+      final correction = prefs.getString(_authDraftKey);
       if (!mounted) return;
+      if (correction != null) {
+        _correction.text = correction;
+        await prefs.remove(_authDraftKey);
+        if (!mounted) return;
+      }
       setState(() {
         _snapshot =
             TrainingSampleSnapshot.fromStory(widget.event, people, connections);
@@ -123,6 +134,17 @@ class _TrainingSampleDialogState extends State<TrainingSampleDialog> {
       if (mounted) setState(() => _receipt = id);
     } on TrainingSampleException catch (e) {
       if (mounted) setState(() => _error = e.kind);
+      if (mounted && e.kind == TrainingSampleError.unauthorized) {
+        setState(() => _sending = false);
+        final signedIn =
+            await showAccountRequiredDialog(context, beforeSignIn: () async {
+          final prefs = await SharedPreferences.getInstance();
+          return prefs.setString(_authDraftKey, _correction.text);
+        });
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_authDraftKey);
+        if (signedIn && mounted) setState(() => _error = null);
+      }
     } catch (_) {
       if (mounted) setState(() => _error = TrainingSampleError.other);
     } finally {

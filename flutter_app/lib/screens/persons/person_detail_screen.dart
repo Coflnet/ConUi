@@ -443,12 +443,23 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
   Widget _buildEventsSection(
       BuildContext context, AppLocalizations l10n, DatabaseService db, Person person) {
     final locale = Localizations.localeOf(context).toString();
-    return FutureBuilder<List<Event>>(
-      future: db.getEvents(),
+    return FutureBuilder<List<Object>>(
+      future:
+          Future.wait([db.getEvents(), db.getConnectionsForPerson(person.id)]),
       builder: (context, snapshot) {
-        final allEvents = snapshot.data ?? [];
+        final allEvents = snapshot.data?[0] as List<Event>? ?? [];
+        final connections = snapshot.data?[1] as List<Connection>? ?? [];
+        final linkedEventIds = {
+          ...person.storyFacts.keys,
+          for (final connection in connections.where((c) => !c.isDeleted)) ...[
+            if (connection.originEventId != null) connection.originEventId!,
+            ...connection.sourceEventIds,
+          ],
+        };
         final personEvents = allEvents
-            .where((e) => e.participantIds.contains(person.id))
+            .where((e) =>
+                e.participantIds.contains(person.id) ||
+                linkedEventIds.contains(e.id))
             .toList();
         personEvents.sort((a, b) => Event.compareByDate(b, a));
 

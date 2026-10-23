@@ -49,7 +49,12 @@ class FakeDatabaseService extends DatabaseService {
 
   @override
   Future<List<Connection>> getConnectionsForEvent(String eventId) async =>
-      connections.values.where((c) => c.originEventId == eventId).toList();
+      connections.values
+          .where((c) =>
+              !c.isDeleted &&
+              (c.originEventId == eventId ||
+                  c.sourceEventIds.contains(eventId)))
+          .toList();
 
   @override
   Future<void> saveConnection(Connection connection,

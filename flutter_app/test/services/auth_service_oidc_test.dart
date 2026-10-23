@@ -60,6 +60,23 @@ void main() {
     expect((await db.getEvent(story.id))!.title, 'Local story');
     expect(await db.getPendingChanges(), hasLength(1));
   });
+  test('account creation uses registration and keeps existing local data',
+      () async {
+    final db = createTestDatabaseService();
+    await db.initialize();
+    final story = Event(title: 'Guest story', dateTime: DateTime(2020));
+    await db.saveEvent(story);
+    final auth = AuthService(
+        httpClient: backend(),
+        beginSignIn: (config, locale, _) async {
+          expect(config.createAccount, isTrue);
+          return 'access';
+        });
+    await auth.continueWithoutAccount();
+    expect(await auth.signIn(createAccount: true), isTrue);
+    expect((await db.getEvent(story.id))!.title, 'Guest story');
+    expect(await db.getPendingChanges(), hasLength(1));
+  });
   test('web callback completes during initialize even in remembered local mode',
       () async {
     SharedPreferences.setMockInitialValues({'continued_without_account': true});

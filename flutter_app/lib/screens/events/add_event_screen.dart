@@ -7,6 +7,7 @@ import '../../models/models.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
+import '../../widgets/account_required_dialog.dart';
 import '../../widgets/transcript_people_picker.dart';
 import '../../services/story_photo_service.dart';
 import '../../widgets/story_photo.dart';
@@ -136,8 +137,25 @@ class _AddEventScreenState extends State<AddEventScreen> {
   }
 
   void _showTranscriptionFailure() {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-        messageForTranscriptionReason(AppLocalizations.of(context), _recorder.liveTranscriptionReason))));
+    final l10n = AppLocalizations.of(context);
+    final reason = _recorder.liveTranscriptionReason;
+    if (reason == LiveTranscriptionReason.anonymousLimit ||
+        reason == LiveTranscriptionReason.notSignedIn) {
+      showAccountRequiredDialog(context,
+          message: '${messageForTranscriptionReason(l10n, reason)}\n\n${l10n.accountStorySavedBeforeSignIn}',
+          beforeSignIn: () async {
+            if (_titleController.text.trim().isEmpty &&
+                _descriptionController.text.trim().isEmpty &&
+                _pendingRecording == null && _photos.isEmpty &&
+                _participantIds.isEmpty && _placeId == null) {
+              return true;
+            }
+            return _save(close: false);
+          });
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(messageForTranscriptionReason(l10n, reason))));
   }
 
   @override
@@ -211,9 +229,18 @@ class _AddEventScreenState extends State<AddEventScreen> {
       (_recorder.state == RecorderState.idle ||
           _recorder.state == RecorderState.failed);
 
-  Future<void> _save() async {
-    if (!_canSave) return;
-    if (!_formKey.currentState!.validate()) return;
+  Future<bool> _save({bool close = true}) async {
+    if (!_canSave) return false;
+    if (close && !_formKey.currentState!.validate()) return false;
+
+    var title = _titleController.text.trim();
+    if (!close && title.isEmpty) {
+      final l10n = AppLocalizations.of(context);
+      title = _descriptionController.text.trim().split(RegExp(r'\s+')).take(8).join(' ');
+      if (title.isEmpty) {
+        title = l10n.quickAddDefaultTitle(DateFormat.yMMMd(l10n.localeName).format(_dateTime));
+      }
+    }
 
     setState(() => _isSaving = true);
 
@@ -228,7 +255,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
       ];
       final event = widget.existingEvent != null
           ? widget.existingEvent!.copyWith(
-              title: _titleController.text.trim(),
+              title: title,
               description: _descriptionController.text.trim().isEmpty
                   ? null
                   : _descriptionController.text.trim(),
@@ -241,7 +268,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
             )
           : Event(
               id: _draftEvent.id,
-              title: _titleController.text.trim(),
+              title: title,
               description: _descriptionController.text.trim().isEmpty
                   ? null
                   : _descriptionController.text.trim(),
@@ -264,7 +291,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
         }
       }
 
-      if (mounted) {
+      if (mounted && close) {
         final l10n = AppLocalizations.of(context);
         Navigator.pop(
             context, true); // Return true to indicate save was successful
@@ -277,11 +304,13 @@ class _AddEventScreenState extends State<AddEventScreen> {
                       : l10n.addEventSavedActionCreated))),
         );
       }
+      return true;
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(AppLocalizations.of(context).storySaveFailed)));
       }
+      return false;
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -452,12 +481,24 @@ class _AddEventScreenState extends State<AddEventScreen> {
                   style: const TextStyle(color: Colors.red),
                 ),
               ),
-            if (isRecording)
+            if (isRecording && !_recorder.isTranscribing)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   messageForTranscriptionReason(l10n, _recorder.liveTranscriptionReason),
                   style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            if (_recorder.isTranscribing || state == RecorderState.finishing)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                    const SizedBox(width: 8),
+                    Flexible(child: Text(l10n.quickAddTranscribing)),
+                  ],
                 ),
               ),
             if (_recorder.isAnonymousRecording && _pendingRecording == null)
@@ -650,8 +691,10 @@ class _AddEventScreenState extends State<AddEventScreen> {
     }
 
     if (!mounted) return;
+    final name = await resolveDefaultPlaceName(position, AppLocalizations.of(context));
+    if (!mounted) return;
     final place = Place(
-      name: defaultPlaceName(position, AppLocalizations.of(context)),
+      name: name,
       latitude: position.latitude,
       longitude: position.longitude,
     );

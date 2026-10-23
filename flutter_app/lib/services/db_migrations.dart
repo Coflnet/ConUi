@@ -23,7 +23,18 @@ final List<Migration> dbMigrations = [
   const Migration(version: 1, up: _migration1CreateBaseSchema),
   const Migration(version: 2, up: _migration2CreateLocalRecordingsTable),
   const Migration(version: 3, up: _migration3AddLocalFileBytes),
+  const Migration(version: 4, up: _migration4RecordingSegments),
 ];
+
+Future<void> _migration4RecordingSegments(sqflite_common.DatabaseExecutor db) =>
+    db.execute('''
+      CREATE TABLE recording_segments (
+        recording_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        byte_length INTEGER NOT NULL,
+        PRIMARY KEY (recording_id, sequence)
+      )
+    ''');
 
 /// The schema version the app currently ships. Equal to the highest
 /// migration version.

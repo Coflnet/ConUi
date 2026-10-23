@@ -10,6 +10,7 @@ import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import '../services/database_service.dart';
+import '../widgets/account_required_dialog.dart';
 import 'login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -88,20 +89,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _forceSync() async {
     final l10n = AppLocalizations.of(context);
+    final syncService = context.read<SyncService>();
+    if (syncService.needsSignIn && !await showAccountRequiredDialog(context)) {
+      return;
+    }
+    if (!mounted) return;
     setState(() => _isSyncing = true);
     try {
-      final syncService = context.read<SyncService>();
       await syncService.fullSync();
       await _loadSyncStatus();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(syncService.needsSignIn
-              ? l10n.homeSyncSignInRequired
-              : syncService.needsEncryptionPassword
-                  ? l10n.homeSyncPasswordRequired
-                  : syncService.lastError != null
-                      ? l10n.settingsSyncRecovery
-                      : l10n.settingsSyncCompleted)),
+          SnackBar(content: Text(syncService.needsEncryptionPassword
+              ? l10n.homeSyncPasswordRequired
+              : syncService.lastError != null
+                  ? l10n.settingsSyncRecovery
+                  : l10n.settingsSyncCompleted)),
         );
       }
     } catch (e) {

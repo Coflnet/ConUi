@@ -5,6 +5,7 @@
 //
 // This replaces the counter-app template test, which didn't even compile
 // against this app.
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -12,6 +13,8 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:relationship_manager/main.dart';
+import 'package:relationship_manager/screens/home_screen.dart';
+import 'package:relationship_manager/screens/login_screen.dart';
 import 'package:relationship_manager/services/app_settings_service.dart';
 import 'package:relationship_manager/services/auth_service.dart';
 import 'package:relationship_manager/services/database_service.dart';
@@ -74,5 +77,47 @@ void main() {
     }
 
     expect(find.textContaining('Could not sign in'), findsOneWidget);
+  });
+
+  testWidgets('failed account sign-in keeps the remembered guest home mounted',
+      (tester) async {
+    late DatabaseService db;
+    late AuthService auth;
+    await tester.runAsync(() async {
+      db = createTestDatabaseService();
+      await db.initialize();
+      auth = AuthService(
+        httpClient: MockClient((_) async => http.Response(
+            '{"enabled":true,"issuer":"https://auth.coflnet.com/auth/realms/con","clientId":"con-app"}',
+            200)),
+        beginSignIn: (_, __, ___) async =>
+            throw const FormatException('cancelled'),
+      );
+      await auth.continueWithoutAccount();
+    });
+    addTearDown(auth.dispose);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<DatabaseService>.value(value: db),
+        ChangeNotifierProvider<AuthService>.value(value: auth),
+        ChangeNotifierProvider<SyncService>(
+            create: (_) => SyncService(db, auth)),
+        ChangeNotifierProvider<AppSettingsService>(
+            create: (_) => AppSettingsService()),
+      ],
+      child: const RelationshipManagerApp(),
+    ));
+    final home = tester.state(find.byType(HomeScreen));
+    await tester.runAsync(() async => expect(await auth.signIn(), isFalse));
+    await tester.pump();
+    expect(auth.signInFailed, isTrue);
+    expect(find.byType(LoginScreen), findsNothing);
+    expect(tester.state(find.byType(HomeScreen)), same(home));
+    await tester.runAsync(() async {
+      await db.getEvents();
+      await db.getPlaces();
+      await db.getPersons();
+    });
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:relationship_manager/services/auth_service.dart';
 import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/models/models.dart';
@@ -47,44 +48,47 @@ class _PendingHttp extends CaptureTrainingHttp {
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   Future<void> open(WidgetTester tester, CaptureTrainingHttp httpClient,
       {Locale locale = const Locale('en'), ReportRecordingStore? store}) async {
-    await tester.pumpWidget(MaterialApp(
-        locale: locale,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Builder(
-            builder: (context) => Scaffold(
-                    body: TextButton(
-                  child: const Text('Open report'),
-                  onPressed: () => showDialog<void>(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (_) => TrainingSampleDialog(
-                          event: Event(
-                              id: 'story',
-                              title: 'Local story',
-                              description:
-                                  'Typed notes. James is the brother of Paul. James works at Google.',
-                              dateTime: DateTime(2020),
-                              participantIds: [
-                                'james'
-                              ]),
-                          file: AttachedFile(
-                              id: 'recording',
-                              fileName: 'private-owner-name.wav',
-                              filePath: 'recording',
-                              mimeType: 'audio/wav',
-                              size: 48,
-                              kind: AttachedFile.kindRecording),
-                          store: store ?? ReportRecordingStore(),
-                          db: _StoryDatabase(),
-                          client: TrainingSampleClient(
-                              baseUrl: 'https://example.invalid',
-                              getToken: () => null,
-                              httpClient: httpClient),
-                          language: 'en')),
-                )))));
+    await tester.pumpWidget(ChangeNotifierProvider<AuthService>(
+        create: (_) => AuthService(),
+        child: MaterialApp(
+            locale: locale,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Builder(
+                builder: (context) => Scaffold(
+                        body: TextButton(
+                      child: const Text('Open report'),
+                      onPressed: () => showDialog<void>(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (_) => TrainingSampleDialog(
+                              event: Event(
+                                  id: 'story',
+                                  title: 'Local story',
+                                  description:
+                                      'Typed notes. James is the brother of Paul. James works at Google.',
+                                  dateTime: DateTime(2020),
+                                  participantIds: [
+                                    'james'
+                                  ]),
+                              file: AttachedFile(
+                                  id: 'recording',
+                                  fileName: 'private-owner-name.wav',
+                                  filePath: 'recording',
+                                  mimeType: 'audio/wav',
+                                  size: 48,
+                                  kind: AttachedFile.kindRecording),
+                              store: store ?? ReportRecordingStore(),
+                              db: _StoryDatabase(),
+                              client: TrainingSampleClient(
+                                  baseUrl: 'https://example.invalid',
+                                  getToken: () => null,
+                                  httpClient: httpClient),
+                              language: 'en')),
+                    ))))));
     await tester.tap(find.text('Open report'));
     await tester.pumpAndSettle();
   }
@@ -256,6 +260,11 @@ void main() {
     await choose(tester, 'training-consent');
     await tester.tap(find.byKey(const Key('training-submit')));
     await tester.pumpAndSettle();
+    expect(find.text('Konto erforderlich'), findsOneWidget);
+    expect(find.text('Konto erstellen'), findsOneWidget);
+    expect(httpClient.calls, 1);
+    await tester.tap(find.widgetWithText(TextButton, 'Abbrechen').last);
+    await tester.pumpAndSettle();
     expect(
         find.textContaining('Deine Anmeldung ist abgelaufen'), findsOneWidget);
     expect(find.textContaining('raw-private-error'), findsNothing);
@@ -265,5 +274,32 @@ void main() {
             .controller!
             .text,
         'Korrektur');
+    expect(httpClient.calls, 1);
+  });
+
+  testWidgets(
+      'reopening a report restores the correction saved before web authentication',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'training-auth-draft-story-recording': 'Preserved correction',
+    });
+    final httpClient = CaptureTrainingHttp();
+    await open(tester, httpClient);
+    expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('training-correction')))
+            .controller!
+            .text,
+        'Preserved correction');
+    expect(httpClient.calls, 0);
+    expect(
+        tester
+            .widget<CheckboxListTile>(find.byKey(const Key('training-consent')))
+            .value,
+        false);
+    expect(
+        (await SharedPreferences.getInstance())
+            .getString('training-auth-draft-story-recording'),
+        isNull);
   });
 }

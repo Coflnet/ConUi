@@ -1146,6 +1146,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.5.3"
+  vad:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: "23e8a555c349a2ca597ef098974f6c43da5da2f8"
+      resolved-ref: "23e8a555c349a2ca597ef098974f6c43da5da2f8"
+      url: "https://github.com/Coflnet/diaflutter.git"
+    source: git
+    version: "0.0.7"
   vector_math:
     dependency: transitive
     description:

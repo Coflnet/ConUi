@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../l10n/gen/app_localizations.dart';
 import '../services/database_service.dart';
 import '../services/sync_service.dart';
+import '../widgets/account_required_dialog.dart';
 import 'persons/persons_screen.dart';
 import 'events/events_screen.dart';
 import 'map/map_screen.dart';
@@ -37,7 +38,9 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+class _HomeScreenState extends State<HomeScreen>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+  late final AnimationController _tabTransition;
   int _selectedIndex = 0;
   bool _isSearching = false;
   final _searchController = TextEditingController();
@@ -54,6 +57,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _tabTransition = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+      value: 1,
+    );
     WidgetsBinding.instance.addObserver(this);
     // Delay sync to after the first frame to avoid calling notifyListeners during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -65,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
+    _tabTransition.dispose();
     super.dispose();
   }
 
@@ -119,6 +128,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _wideLayoutBreakpoint = 840.0;
 
   void _onDestinationSelected(int index) {
+    if (index != _selectedIndex && !MediaQuery.disableAnimationsOf(context)) {
+      _tabTransition.forward(from: 0);
+    }
     setState(() {
       _selectedIndex = index;
       if (_isSearching) {
@@ -135,12 +147,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final isWide = MediaQuery.sizeOf(context).width >= _wideLayoutBreakpoint;
     final bodyContent = _isSearching && _searchQuery.isNotEmpty
         ? _buildSearchResults(l10n)
-        : IndexedStack(
-            index: _selectedIndex,
-            children: [
-              for (final (index, screen) in _screens.indexed)
-                HeroMode(enabled: index == _selectedIndex, child: screen),
-            ],
+        : FadeTransition(
+            opacity: MediaQuery.disableAnimationsOf(context)
+                ? const AlwaysStoppedAnimation(1.0)
+                : _tabTransition.drive(CurveTween(curve: Curves.easeOutCubic)),
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: [
+                for (final (index, screen) in _screens.indexed)
+                  HeroMode(enabled: index == _selectedIndex, child: screen),
+              ],
+            ),
           );
 
     return Scaffold(
@@ -185,17 +202,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               return IconButton(
                 icon: const Icon(Icons.sync),
                 onPressed: () async {
+                  if (syncService.needsSignIn &&
+                      !await showAccountRequiredDialog(context)) {
+                    return;
+                  }
+                  if (!context.mounted) return;
                   await syncService.forceFullSync();
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                          content: Text(syncService.needsSignIn
-                              ? l10n.homeSyncSignInRequired
-                              : syncService.needsEncryptionPassword
-                                  ? l10n.homeSyncPasswordRequired
-                                  : syncService.lastError != null
-                                      ? l10n.settingsSyncRecovery
-                                      : l10n.homeSyncComplete)),
+                          content: Text(syncService.needsEncryptionPassword
+                              ? l10n.homeSyncPasswordRequired
+                              : syncService.lastError != null
+                                  ? l10n.settingsSyncRecovery
+                                  : l10n.homeSyncComplete)),
                     );
                   }
                 },
