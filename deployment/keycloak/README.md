@@ -60,6 +60,16 @@ For Google sign-in, see [the scoped provider setup](google_login.md). OAuth
 credentials and identity-provider permissions are prerequisites; the helper
 never changes the master realm or automatically links accounts by email.
 
+## Live rollout status
+
+On 2026-10-23, Fleet revision `b8b74560` rolled the registration themes across
+all three Keycloak replicas. The scoped helper applied and verified optional
+names and email-first ordering in Con, Wald, Vereiner and RFInD. RFInD retains
+closed self-registration; the master realm was verified unchanged. The OpenBao
+child used for administration was revoked, verified invalid with HTTP 403 and
+its token artifacts removed. Google login remains inactive pending OAuth
+credentials and scoped identity-provider administration; its egress flag is off.
+
 ## Original provisioning reference
 
 Con reuses the existing RFInD Keycloak server. Its separate `con` realm and
