@@ -81,12 +81,13 @@ public class OidcConfigurationTests
         try
         {
             await File.WriteAllTextAsync(path, """{"jwt":{"secret":"test-only-file-secret-at-least-32-characters"},"Oidc":{"Issuer":"https://identity.example.test/realms/con","ClientId":"con-app","Audience":"con-api"},"S3":{"ENDPOINT":"https://storage.example.test"},"CASSANDRA":{"HOSTS":"database.example.test"}}""");
-            foreach (var key in keys) Environment.SetEnvironmentVariable(key, "");
+            // .NET 8 deletes empty environment strings; a blank is preserved on both .NET 8 and newer runtimes.
+            foreach (var key in keys) Environment.SetEnvironmentVariable(key, " ");
             await using var app = RelationshipManagerApp.Build([], builder =>
                 builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["CON_CONFIG_FILE"] = path }), environmentName: "Production");
             Assert.That(app.Services.GetRequiredService<OidcSettings>().Enabled, Is.False);
-            Assert.That(app.Configuration["S3:ENDPOINT"], Is.Empty);
-            Assert.That(app.Configuration["CASSANDRA:HOSTS"], Is.Empty);
+            Assert.That(app.Configuration["S3:ENDPOINT"], Is.EqualTo(" "));
+            Assert.That(app.Configuration["CASSANDRA:HOSTS"], Is.EqualTo(" "));
             Assert.That(app.Configuration["jwt:secret"], Is.EqualTo("test-only-file-secret-at-least-32-characters"));
         }
         finally

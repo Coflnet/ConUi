@@ -69,7 +69,7 @@ RUN flutter build web --release --no-web-resources-cdn
 ########################################################################################
 # Stage: build - restores and publishes the ASP.NET Core backend
 ########################################################################################
-FROM mcr.microsoft.com/dotnet/sdk:8.0@sha256:78235e09001f52b6592c458ac010775ebac6725422e80cd0c1650590f67b2743 AS build
+FROM mcr.microsoft.com/dotnet/sdk:8.0@sha256:738f72aff955d5c5690e06b6fc8ecd1b90ead564099a257ac528ff720b8da85f AS build
 WORKDIR /src
 
 # Restore cached separately from the source: this layer only invalidates when the csproj changes.
@@ -125,7 +125,7 @@ COPY --from=flutter-test /web/pubspec.yaml /flutter-test.ok
 # TimeZoneInfo, or culture-sensitive parsing/formatting - the only date handling is
 # DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() (culture-independent) - so the ICU and timezone
 # database -extra adds are not needed, and -noble-chiseled's smaller surface is strictly better.
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble-chiseled@sha256:c7d217effa07b444d8d4bb72d1f00da60f5421ed94438c2ce0ad00b550da9dd5 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble-chiseled@sha256:d8d1c7a3c308253e99d4da20f31ce49f9a4c99e78d9e939db7ad901609057a42 AS final
 WORKDIR /app
 
 ENV ASPNETCORE_URLS=http://+:8000
