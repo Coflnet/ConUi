@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +9,9 @@ import '../../models/models.dart';
 import '../../relationships/relationship_text.dart';
 import '../../relationships/relationship_type.dart';
 import '../../services/database_service.dart';
+import '../../services/local_draft_store.dart';
+import '../../services/interaction_feedback.dart';
+import '../../widgets/unsaved_draft_guard.dart';
 
 /// Opens the "Edit Connection" dialog for [connection], viewed from [viewedPerson]'s
 /// side (the type dropdown - and a "Swap direction" shortcut for directed types - edit
@@ -25,6 +30,7 @@ Future<bool?> showEditConnectionDialog(
 }) {
   return showDialog<bool>(
     context: context,
+    barrierDismissible: false,
     builder: (context) => _EditConnectionDialog(
       connection: connection,
       viewedPerson: viewedPerson,
@@ -55,6 +61,9 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
   DateTime? _endDate;
   late final TextEditingController _descriptionController;
   bool _isSaving = false;
+  final _guard = GlobalKey<UnsavedDraftGuardState>();
+  late String _originalDraft;
+
 
   @override
   void initState() {
@@ -69,6 +78,28 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
     _startDate = widget.connection.startDate;
     _endDate = widget.connection.endDate;
     _descriptionController = TextEditingController(text: widget.connection.description ?? '');
+    _originalDraft = jsonEncode(_draft());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restoreDraft());
+  }
+
+  String get _draftKey => 'connection.edit.${widget.connection.id}';
+  Map<String, dynamic> _draft() => {'type': _type.name,
+    'start': _startDate.toIso8601String(), 'end': _endDate?.toIso8601String(),
+    'description': _descriptionController.text};
+  Future<void> _restoreDraft() async {
+    try {
+      final value = await LocalDraftStore.read(_draftKey);
+      if (value == null || !mounted || jsonEncode(_draft()) != _originalDraft) return;
+      setState(() {
+        _type = RelationshipType.values.firstWhere((type) => type.name == value['type']);
+        _startDate = DateTime.parse(value['start'] as String);
+        _endDate = DateTime.tryParse(value['end'] as String? ?? '');
+        _descriptionController.text = value['description'] as String;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).storyDraftRestored)));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).storyDraftSaveFailed)));
+    }
   }
 
   @override
@@ -81,7 +112,13 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final locale = Localizations.localeOf(context).toString();
-    return AlertDialog(
+    return UnsavedDraftGuard(
+      key: _guard,
+      isDirty: () => jsonEncode(_draft()) != _originalDraft,
+      isBusy: () => _isSaving,
+      onSaveDraft: () async { await LocalDraftStore.write(_draftKey, _draft()); return true; },
+      onDiscard: () => LocalDraftStore.remove(_draftKey),
+      child: AlertDialog(
       title: Text(l10n.connectionDialogEditTitle),
       content: SizedBox(
         width: 400,
@@ -112,7 +149,7 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
                           .map((t) => DropdownMenuItem(
                               value: t, child: Text(RelationshipText.label(l10n, t))))
                           .toList(),
-                      onChanged: (t) => setState(() => _type = t ?? _type),
+                      onChanged: (t) { setState(() => _type = t ?? _type); context.read<InteractionFeedback?>()?.play(FeedbackCue.selection); },
                     ),
                   ),
                   if (_type.isDirected)
@@ -147,8 +184,8 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
                   final date = await showDatePicker(
                     context: context,
                     initialDate: _startDate,
-                    firstDate: DateTime(1900),
-                    lastDate: DateTime.now(),
+                    firstDate: DateTime(1),
+                    lastDate: _startDate.isAfter(DateTime.now()) ? _startDate : DateTime.now(),
                   );
                   if (date != null) setState(() => _startDate = date);
                 },
@@ -174,7 +211,7 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
                   final date = await showDatePicker(
                     context: context,
                     initialDate: _endDate ?? DateTime.now(),
-                    firstDate: DateTime(1900),
+                    firstDate: DateTime(1),
                     lastDate: DateTime(2100),
                   );
                   if (date != null) setState(() => _endDate = date);
@@ -195,7 +232,7 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () async { if (await _guard.currentState!.confirm() && context.mounted) Navigator.pop(context); },
           child: Text(l10n.commonCancel),
         ),
         FilledButton(
@@ -209,35 +246,46 @@ class _EditConnectionDialogState extends State<_EditConnectionDialog> {
               : Text(l10n.commonSave),
         ),
       ],
-    );
+    ));
   }
 
   Future<void> _save() async {
+    if (_endDate != null && _endDate!.isBefore(_startDate)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).relationshipDatesInvalid)));
+      return;
+    }
     setState(() => _isSaving = true);
-    final db = context.read<DatabaseService>();
+    try {
+      final db = context.read<DatabaseService>();
 
-    // The dropdown edits the *viewed* person's own role; convert back to the stored
-    // "person1 is the <type> of person2" form depending on which side they are.
-    final storageType = widget.viewedPerson.id == widget.connection.person1Id
-        ? _type.storageValue
-        : inverseOf(_type).storageValue;
+      // The dropdown edits the *viewed* person's own role; convert back to the stored
+      // "person1 is the <type> of person2" form depending on which side they are.
+      final storageType = widget.viewedPerson.id == widget.connection.person1Id
+          ? _type.storageValue
+          : inverseOf(_type).storageValue;
 
-    final updated = Connection(
-      id: widget.connection.id,
-      person1Id: widget.connection.person1Id,
-      person2Id: widget.connection.person2Id,
-      relationshipType: storageType,
-      originEventId: widget.connection.originEventId,
-      sourceEventIds: widget.connection.sourceEventIds,
-      description:
-          _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
-      startDate: _startDate,
-      endDate: _endDate,
-      createdAt: widget.connection.createdAt,
-      updatedAt: DateTime.now(),
-    );
-    await db.saveConnection(updated);
+      final updated = Connection(
+        id: widget.connection.id,
+        person1Id: widget.connection.person1Id,
+        person2Id: widget.connection.person2Id,
+        relationshipType: storageType,
+        originEventId: widget.connection.originEventId,
+        sourceEventIds: widget.connection.sourceEventIds,
+        description:
+            _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+        startDate: _startDate,
+        endDate: _endDate,
+        createdAt: widget.connection.createdAt,
+        updatedAt: DateTime.now(),
+      );
+      await db.saveConnection(updated);
 
-    if (mounted) Navigator.pop(context, true);
+      await LocalDraftStore.remove(_draftKey);
+      if (mounted) { context.read<InteractionFeedback?>()?.play(FeedbackCue.success); Navigator.pop(context, true); }
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).peopleSaveFailed)));
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 }

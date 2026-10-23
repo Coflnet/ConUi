@@ -46,6 +46,7 @@ class SyncService extends ChangeNotifier {
   String? _encryptionSalt;
   bool _needsEncryptionPassword = false;
   bool get needsEncryptionPassword => _needsEncryptionPassword;
+  bool get isUnlocked => _keyMatchesAccount;
 
   SyncService(this._db, this._auth,
       {http.Client? httpClient, RecordingFileStore? recordingFileStore})
@@ -86,6 +87,13 @@ class SyncService extends ChangeNotifier {
     _encryptionSalt = salt;
     _encryptionRevision++;
     _needsEncryptionPassword = false;
+    _safeNotifyListeners();
+  }
+
+  void lockEncryption() {
+    _encryptionUserId = _encryptionSalt = null;
+    _encryptionRevision++;
+    _needsEncryptionPassword = true;
     _safeNotifyListeners();
   }
 

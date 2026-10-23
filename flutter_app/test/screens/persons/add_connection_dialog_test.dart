@@ -1,13 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/relationships/relationship_type.dart';
 import 'package:relationship_manager/screens/persons/add_connection_dialog.dart';
+import 'package:relationship_manager/screens/persons/edit_connection_dialog.dart';
 import 'package:relationship_manager/services/database_service.dart';
 
 import '../support/fake_database_service.dart';
+
+class _FailConnectionOnce extends FakeDatabaseService {
+  bool fail = true;
+  @override
+  Future<void> saveConnection(Connection connection, {bool recordPendingChange = true}) async {
+    if (fail) { fail = false; throw StateError('disk unavailable'); }
+    await super.saveConnection(connection);
+  }
+}
 
 Future<void> _pumpDialogHost(
   WidgetTester tester,
@@ -17,6 +28,7 @@ Future<void> _pumpDialogHost(
   List<Connection> allConnections = const [],
   List<Event> allEvents = const [],
   Event? initialEvent,
+  Connection? editing,
 }) async {
   await tester.pumpWidget(
     // The Provider must sit *above* MaterialApp's own Navigator: showDialog() pushes
@@ -33,7 +45,9 @@ Future<void> _pumpDialogHost(
           builder: (context) => Scaffold(
             body: Center(
               child: ElevatedButton(
-                onPressed: () => showAddConnectionDialog(
+                onPressed: () => editing != null ? showEditConnectionDialog(context,
+                  connection: editing, viewedPerson: viewedPerson,
+                  otherPerson: allPersons.firstWhere((person) => person.id != viewedPerson.id)) : showAddConnectionDialog(
                   context,
                   viewedPerson: viewedPerson,
                   allPersons: allPersons,
@@ -82,6 +96,7 @@ void main() {
   late Person bert;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     db = FakeDatabaseService();
     anna = Person(id: 'anna', name: 'Anna');
     bert = Person(id: 'bert', name: 'Bert');
@@ -179,6 +194,8 @@ void main() {
           isNull);
       await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
     }
   });
 
@@ -250,4 +267,63 @@ void main() {
     final newPersonId = db.persons.values.firstWhere((p) => p.name == 'Clara').id;
     expect(saved.person2Id, newPersonId);
   });
+  testWidgets('partial save retry reuses the newly created person and connection', (tester) async {
+    db = _FailConnectionOnce();
+    await _pumpDialogHost(tester, db, anna, [anna]);
+    await tester.tap(find.byKey(const Key('add-connection-person-dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('+ Add new person…').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'Clara');
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pumpAndSettle();
+    expect(db.persons, hasLength(1));
+    expect(find.text('Could not save your changes. They are still here. Try again.'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pumpAndSettle();
+    expect(db.persons, hasLength(1));
+    expect(db.connections, hasLength(1));
+  });
+
+  testWidgets('Cancel keeps editing or saves a draft that restores the relationship', (tester) async {
+    await _pumpDialogHost(tester, db, anna, [anna, bert]);
+    await _selectOtherPerson(tester, 'Bert');
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Keep editing'));
+    await tester.pumpAndSettle();
+    expect(find.text('Anna is the friend of Bert.'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save draft'));
+    await tester.pumpAndSettle();
+    expect(db.connections, isEmpty);
+    await tester.tap(find.text('open dialog'));
+    await tester.pumpAndSettle();
+    expect(find.text('Anna is the friend of Bert.'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pumpAndSettle();
+    expect(db.connections, hasLength(1));
+  });
+
+  testWidgets('editing retries a failed save while retaining notes and provenance', (tester) async {
+    db = _FailConnectionOnce();
+    final connection = Connection(id: 'edge', person1Id: anna.id, person2Id: bert.id,
+      relationshipType: 'friend', sourceEventIds: ['story'], description: 'Original');
+    db.connections[connection.id] = connection;
+    await _pumpDialogHost(tester, db, anna, [anna, bert], editing: connection);
+    await tester.enterText(find.byType(TextField), 'Edited notes');
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.widgetWithText(TextField, 'Edited notes'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+    expect(db.connections, hasLength(1));
+    expect(db.connections['edge']!.description, 'Edited notes');
+    expect(db.connections['edge']!.sourceEventIds, ['story']);
+  });
+
 }

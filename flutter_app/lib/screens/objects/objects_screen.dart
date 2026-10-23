@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../services/database_service.dart';
+import '../../services/interaction_feedback.dart';
 
 class ObjectsScreen extends StatefulWidget {
   const ObjectsScreen({super.key});
@@ -50,7 +51,7 @@ class _ObjectsScreenState extends State<ObjectsScreen> {
                                   label: Text(
                                       l10n.objectsStoryCountChip(object.eventIds.length)))
                               : null,
-                          onTap: () => _showObjectDetails(context, l10n, db, object),
+                          onTap: () => showObjectDetails(context, object),
                         );
                       },
                     ),
@@ -120,7 +121,10 @@ class _ObjectsScreenState extends State<ObjectsScreen> {
                     : descController.text.trim(),
               );
               await db.saveObject(object);
-              if (context.mounted) Navigator.pop(context);
+              if (context.mounted) {
+                context.read<InteractionFeedback?>()?.play(FeedbackCue.success);
+                Navigator.pop(context);
+              }
             },
             child: Text(l10n.commonAdd),
           ),
@@ -129,11 +133,14 @@ class _ObjectsScreenState extends State<ObjectsScreen> {
     );
   }
 
-  void _showObjectDetails(
-      BuildContext context, AppLocalizations l10n, DatabaseService db, EventObject object) {
-    showModalBottomSheet(
+}
+
+Future<void> showObjectDetails(BuildContext context, EventObject object) {
+  final l10n = AppLocalizations.of(context);
+  final db = context.read<DatabaseService>();
+  return showModalBottomSheet<void>(
       context: context,
-      builder: (context) => Padding(
+      builder: (context) => SafeArea(child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -166,7 +173,6 @@ class _ObjectsScreenState extends State<ObjectsScreen> {
             ),
           ],
         ),
-      ),
+      )),
     );
-  }
 }

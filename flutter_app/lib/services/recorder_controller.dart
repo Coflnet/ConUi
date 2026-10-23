@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../models/models.dart';
 import 'audio_capture.dart';
 import 'database_service.dart';
+import 'interaction_feedback.dart';
 import 'page_lifecycle_hooks.dart';
 import 'recording_file_store.dart';
 import 'sentence_segmenter.dart';
@@ -125,6 +126,11 @@ class RecorderController extends ChangeNotifier {
   final int maxSegmentRetries;
   final int maxConcurrentRequests;
   final String? language;
+  final InteractionFeedback? feedback;
+  bool _feedbackCapture = false;
+  bool _disposed = false;
+  bool _canRetryStop = false;
+  bool get canRetryStop => _canRetryStop;
   final Duration Function(int attempt) backoff;
   final PageLifecycleUnsubscribe Function(void Function() onMightBeClosing)
       _registerPageHideHook;
@@ -141,6 +147,7 @@ class RecorderController extends ChangeNotifier {
     this.maxSegmentRetries = 3,
     this.maxConcurrentRequests = 2,
     this.language,
+    this.feedback,
     Duration Function(int attempt)? backoff,
     // Overridable for tests; defaults to the real platform hook (a no-op
     // everywhere except web - see page_lifecycle_hooks.dart).
@@ -231,7 +238,9 @@ class RecorderController extends ChangeNotifier {
   /// explains why (permission denied / no microphone / other) - it never
   /// throws.
   Future<void> start() async {
-    if (_state == RecorderState.recording ||
+    if (_disposed || _canRetryStop ||
+        _state == RecorderState.finishing ||
+        _state == RecorderState.recording ||
         _state == RecorderState.requestingPermission) {
       return;
     }
@@ -241,7 +250,8 @@ class RecorderController extends ChangeNotifier {
     _lastStopResult = null;
     _anonymousRecording = _transcriptionClient.getToken() == null;
     notifyListeners();
-    if (_anonymousRecording && await _transcriptionClient.remainingAnonymousRecordings() == 0) {
+    if (_anonymousRecording &&
+        await _transcriptionClient.remainingAnonymousRecordings() == 0) {
       _liveTranscriptionReason = LiveTranscriptionReason.anonymousLimit;
       _state = RecorderState.idle;
       notifyListeners();
@@ -250,9 +260,23 @@ class RecorderController extends ChangeNotifier {
 
     final Stream<Uint8List> chunkStream;
     try {
+      _feedbackCapture = feedback != null;
+      await feedback?.beginRecording();
+      if (_disposed) {
+        await _endFeedback(silent: true);
+        return;
+      }
       chunkStream = await _audioCapture.start(format: format);
-    } on AudioCaptureException catch (e) {
-      _failure = e;
+      if (_disposed) {
+        await _audioCapture.stop();
+        await _endFeedback(silent: true);
+        return;
+      }
+    } catch (e) {
+      await _endFeedback(failed: true);
+      _failure = e is AudioCaptureException
+          ? e
+          : AudioCaptureException(AudioCaptureFailureReason.other, '$e');
       _state = RecorderState.failed;
       notifyListeners();
       return;
@@ -281,12 +305,22 @@ class RecorderController extends ChangeNotifier {
     _startedAt = DateTime.now();
     _autoStopping = false;
 
-    await _fileStore.beginRecording(_recordingId!, format: format);
-    await _db.saveLocalRecording(LocalRecordingState(
-      id: _recordingId!,
-      state: RecordingLifecycleState.recording,
-    ));
+    try {
+      await _fileStore.beginRecording(_recordingId!, format: format);
+      await _db.saveLocalRecording(LocalRecordingState(
+        id: _recordingId!,
+        state: RecordingLifecycleState.recording,
+      ));
+    } catch (e) {
+      await _audioCapture.stop();
+      await _endFeedback(failed: true);
+      _failure = AudioCaptureException(AudioCaptureFailureReason.other, '$e');
+      _state = RecorderState.failed;
+      notifyListeners();
+      return;
+    }
 
+    if (_disposed) return;
     _state = RecorderState.recording;
     notifyListeners();
 
@@ -295,7 +329,8 @@ class RecorderController extends ChangeNotifier {
       _inputLevel = level;
       notifyListeners();
     });
-    _ticker = Timer.periodic(const Duration(milliseconds: 200), (_) => _onTick());
+    _ticker =
+        Timer.periodic(const Duration(milliseconds: 200), (_) => _onTick());
     // On web, catches the tab being hidden/closed while recording so the
     // recording gets finalized now (state -> complete) rather than left
     // for RecordingRecoveryService to patch up (state -> recovered) at
@@ -444,62 +479,73 @@ class RecorderController extends ChangeNotifier {
   /// retries) to settle before returning, so the result's transcript is
   /// final.
   Future<RecorderStopResult> stop({StopReason reason = StopReason.user}) async {
-    if (_state != RecorderState.recording) {
+    if (_state != RecorderState.recording && !(_state == RecorderState.failed && _canRetryStop)) {
       throw StateError('RecorderController.stop() called in state $_state');
     }
 
     _state = RecorderState.finishing;
+    _canRetryStop = false;
     notifyListeners();
 
-    _pageHideUnsubscribe?.call();
-    _pageHideUnsubscribe = null;
-    _ticker?.cancel();
-    _ticker = null;
-    await _chunkSubscription?.cancel();
-    _chunkSubscription = null;
-    await _amplitudeSubscription?.cancel();
-    _amplitudeSubscription = null;
-    await _audioCapture.stop();
+    try {
+      _pageHideUnsubscribe?.call();
+      _pageHideUnsubscribe = null;
+      _ticker?.cancel();
+      _ticker = null;
+      await _chunkSubscription?.cancel();
+      _chunkSubscription = null;
+      await _amplitudeSubscription?.cancel();
+      _amplitudeSubscription = null;
+      await _audioCapture.stop();
+      await _endFeedback();
 
-    // Make sure every chunk already delivered has been appended before we
-    // flush the trailing partial segment and finalize the file.
-    await _appendChain;
-    await _segmenter!.flush();
-    await _segmenter!.dispose();
-    _segmenter = null;
-    await _waitForLiveQueueDrain();
+      // Make sure every chunk already delivered has been appended before we
+      // flush the trailing partial segment and finalize the file.
+      await _appendChain;
+      await _segmenter?.flush();
+      await _segmenter?.dispose();
+      _segmenter = null;
+      await _waitForLiveQueueDrain();
 
-    final finalizeResult = await _fileStore.finalizeRecording(_recordingId!, format: format);
-    final attachedFile = AttachedFile(
-      id: _recordingId!,
-      fileName: '$_recordingId.wav',
-      filePath: _recordingId!,
-      mimeType: 'audio/wav',
-      size: finalizeResult.sizeBytes,
-      durationMs: finalizeResult.durationMs,
-      sha256: finalizeResult.sha256Hex,
-      kind: AttachedFile.kindRecording,
-    );
+      final finalizeResult =
+          await _fileStore.finalizeRecording(_recordingId!, format: format);
+      final attachedFile = AttachedFile(
+        id: _recordingId!,
+        fileName: '$_recordingId.wav',
+        filePath: _recordingId!,
+        mimeType: 'audio/wav',
+        size: finalizeResult.sizeBytes,
+        durationMs: finalizeResult.durationMs,
+        sha256: finalizeResult.sha256Hex,
+        kind: AttachedFile.kindRecording,
+      );
 
-    await _db.saveLocalRecording(LocalRecordingState(
-      id: _recordingId!,
-      state: RecordingLifecycleState.complete,
-      sizeBytes: finalizeResult.sizeBytes,
-      sha256: finalizeResult.sha256Hex,
-      durationMs: finalizeResult.durationMs,
-    ));
+      await _db.saveLocalRecording(LocalRecordingState(
+        id: _recordingId!,
+        state: RecordingLifecycleState.complete,
+        sizeBytes: finalizeResult.sizeBytes,
+        sha256: finalizeResult.sha256Hex,
+        durationMs: finalizeResult.durationMs,
+      ));
 
-    final result = RecorderStopResult(
-      attachedFile: attachedFile,
-      transcript: liveTranscript,
-      failedSegments: _segments.where((s) => s.failed).toList(),
-      stopReason: reason,
-    );
+      final result = RecorderStopResult(
+        attachedFile: attachedFile,
+        transcript: liveTranscript,
+        failedSegments: _segments.where((s) => s.failed).toList(),
+        stopReason: reason,
+      );
 
-    _state = RecorderState.idle;
-    _lastStopResult = result;
-    notifyListeners();
-    return result;
+      _state = RecorderState.idle;
+      _lastStopResult = result;
+      notifyListeners();
+      return result;
+    } catch (e) {
+      _failure = AudioCaptureException(AudioCaptureFailureReason.other, '$e');
+      _state = RecorderState.failed;
+      _canRetryStop = true;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   /// For a recording that was made offline (or whose live transcription
@@ -596,7 +642,23 @@ class RecorderController extends ChangeNotifier {
   }
 
   @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
+  Future<void> _endFeedback({bool failed = false, bool silent = false}) async {
+    if (!_feedbackCapture) return;
+    _feedbackCapture = false;
+    await feedback?.endRecording(failed: failed, silent: silent);
+  }
+
+  @override
   void dispose() {
+    _disposed = true;
+    unawaited(_audioCapture
+        .stop()
+        .then((_) => _endFeedback(silent: true))
+        .catchError((Object _) {}));
     _pageHideUnsubscribe?.call();
     final segmenter = _segmenter;
     unawaited(_appendChain.then<void>(

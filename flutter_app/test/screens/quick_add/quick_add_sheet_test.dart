@@ -1,3 +1,5 @@
+import 'package:relationship_manager/screens/map/location_picker_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 // Widget tests for QuickAddSheet: the save rules (text-or-recording
 // required, person creation, nearby place proposal/reuse), live transcript
 // text never overwriting what the user typed, and the unsaved-content
@@ -116,6 +118,7 @@ void main() {
   late Directory tempDir;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     tempDir = Directory.systemTemp.createTempSync('quick_add_sheet_test');
   });
 
@@ -621,7 +624,7 @@ void main() {
 
       final future = key.currentState!.confirmDiscardIfNeeded();
       await tester.pump();
-      expect(find.text('Discard this story?'), findsOneWidget);
+      expect(find.text('Keep your changes?'), findsOneWidget);
 
       await tester.tap(find.text('Keep editing'));
       await tester.pump();
@@ -676,7 +679,7 @@ void main() {
       await tester.pump();
 
       expect(find.text(
-          'The recording stays saved on this device (you can attach it to a story later); everything else will be lost.'),
+          'Save a draft on this device, discard your changes, or keep editing.'),
           findsOneWidget);
 
       await tester.tap(find.text('Discard'));
@@ -734,6 +737,44 @@ void main() {
       expect(event.files.single.kind, AttachedFile.kindRecording);
     });
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('Change position preserves typed draft and only unpins after confirmation', (tester) async {
+    final db = createTestDatabaseService();
+    final pinned = Place(name: 'Original place', latitude: 10, longitude: 10);
+    await tester.runAsync(() async { await db.initialize(); await db.savePlace(pinned); });
+    final recorder = _buildRecorder(capture: FakeAudioCapture(), db: db, tempDir: tempDir);
+    addTearDown(recorder.dispose);
+    final position = ValueNotifier<LatLng>(const LatLng(10, 10));
+    await tester.pumpWidget(_wrap(db, QuickAddSheet(position: position, initialPlace: pinned, recorderController: recorder)));
+    await _settle(tester);
+    await tester.enterText(find.widgetWithText(TextField, 'What happened here?'), 'Keep these story notes');
+    final change = find.widgetWithText(TextButton, 'Change position');
+    await tester.ensureVisible(change);
+    await tester.tap(change);
+    await tester.pumpAndSettle();
+    Navigator.of(tester.element(find.byType(LocationPickerScreen))).pop();
+    await tester.pumpAndSettle();
+    expect(position.value, const LatLng(10, 10));
+    expect(tester.widget<TextField>(find.widgetWithText(TextField, 'Original place')).enabled, isFalse);
+    await tester.ensureVisible(change);
+    await tester.tap(change);
+    await tester.pumpAndSettle();
+    Navigator.of(tester.element(find.byType(LocationPickerScreen))).pop(const LatLng(20, 20));
+    await tester.pumpAndSettle();
+    expect(position.value, const LatLng(20, 20));
+    expect(find.text('Keep these story notes'), findsOneWidget);
+    final l10n = AppLocalizations.of(tester.element(find.byType(QuickAddSheet)));
+    expect(tester.widget<TextField>(find.widgetWithText(TextField, l10n.quickAddPlaceNameLabel)).enabled, isTrue);
+    await _pressAsync(tester, find.widgetWithText(FilledButton, 'Save story'));
+    await tester.runAsync(() async {
+      final event = (await db.getEvents()).single;
+      expect(event.description, 'Keep these story notes');
+      final place = await db.getPlace(event.placeId!);
+      expect(place!.id, isNot(pinned.id));
+      expect(place.latitude, 20);
+      expect(place.longitude, 20);
+    });
   });
 
 }

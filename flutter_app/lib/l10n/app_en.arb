@@ -682,5 +682,70 @@
   "accountRequiredTitle": "Account required",
   "accountRequiredBody": "Sign in or create an account to use this feature. Your stories and recordings stay on this device.",
   "accountCreateButton": "Create account",
-  "accountStorySavedBeforeSignIn": "Your current story will be saved on this device before you continue to sign in or create an account."
+  "accountStorySavedBeforeSignIn": "Your current story will be saved on this device before you continue to sign in or create an account.",
+  "storyDraftTitle": "Keep your changes?",
+  "storyDraftBody": "Save a draft on this device, discard your changes, or keep editing.",
+  "storyDraftSave": "Save draft",
+  "storyDraftDiscard": "Discard",
+  "storyDraftKeepEditing": "Keep editing",
+  "storyDraftSaveFailed": "The draft could not be saved. Your changes are still here. Try again.",
+  "storyDraftRestored": "Saved draft restored",
+  "storyDatePrecision": "Date precision",
+  "storyExactTime": "Date and time",
+  "storyTitleSuggestion": "Suggested from your story. You can edit it.",
+  "storyYearRange": "Enter a year from 1 to 2100.",
+  "quickAddChangePosition": "Change position",
+  "placesOptionalNameLabel": "Name (optional)",
+  "placesLocationRequired": "Choose a location before adding this place.",
+  "placesSaveFailed": "Could not save this place. Your changes are still here. Try again.",
+  "savedDataLoadFailed": "Could not load your saved data. Try again.",
+  "mapLocationUnavailable": "Your current location is unavailable",
+  "mapLocationFallbackExplanation": "Location access may be off or unavailable. Choose a location for your story, or use the centre of the map.",
+  "mapUseMapCentre": "Use map centre",
+  "mapGettingLocation": "Finding your location…",
+  "objectNotFound": "This object is no longer available.",
+  "locationPickerZoomIn": "Zoom in",
+  "locationPickerZoomOut": "Zoom out",
+  "syncUnlockTitle": "Unlock encrypted sync",
+  "syncUnlockBody": "Use the same encryption password on every device. For your first sync, choose a password and keep it safe. It is separate from your account password and is never sent to the server.",
+  "syncPasswordRequired": "Enter your encryption password.",
+  "syncUnlockFailed": "Could not unlock and sync. Check your encryption password and connection, then try again. Your local changes are still saved.",
+  "syncUnlockAction": "Unlock and sync",
+  "settingsFeedbackSection": "Feedback",
+  "settingsHaptics": "Haptic feedback",
+  "settingsHapticsDescription": "Subtle taps on supported devices. Quiet while recording.",
+  "settingsSounds": "Sound feedback",
+  "settingsSoundsDescription": "Soft sounds for actions and saves. Quiet while recording.",
+  "settingsFeedbackPreview": "Try feedback",
+  "peopleSaveFailed": "Could not save your changes. They are still here. Try again.",
+  "peopleDatesInvalid": "The death date must not be before the birthday.",
+  "contactsImportTitle": "Import contacts",
+  "contactsImportHelp": "Choose contacts to add to People on this device. Existing contacts are skipped. Nothing is changed in your address book.",
+  "contactsFromDevice": "Choose from address book",
+  "contactsFromFile": "Choose vCard file (.vcf)",
+  "contactsPermissionDenied": "Contact access was not allowed. Enable it in device settings, or choose a vCard file.",
+  "contactsOpenSettings": "Open device settings",
+  "contactsReadFailed": "Could not read contacts. Try again or choose another vCard file.",
+  "contactsSaveFailed": "Some contacts could not be added. Your selection is kept; try again. Already added contacts will be skipped.",
+  "contactsEmpty": "No contacts with a name, email address, or phone number were found.",
+  "contactsAlreadyAdded": "Already in People",
+  "contactsImported": "Added {count} contacts",
+  "contactsImportSelected": "Import selected ({count})",
+  "@contactsImported": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@contactsImportSelected": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "relationshipDatesInvalid": "The end date must not be before the start date.",
+  "storyRetryFinish": "Retry finishing recording",
+  "storyRecordingStopFailed": "The recording could not be finished. Your original audio is still on this device. Try again."
 }

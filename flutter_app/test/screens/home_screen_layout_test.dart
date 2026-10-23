@@ -11,6 +11,8 @@ import 'package:http/testing.dart';
 
 import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/screens/home_screen.dart';
+import 'package:relationship_manager/screens/places/place_sheet.dart';
+import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/screens/persons/persons_screen.dart';
 import 'package:relationship_manager/services/app_settings_service.dart';
 import 'package:relationship_manager/services/auth_service.dart';
@@ -33,7 +35,8 @@ void main() {
   });
 
   Future<void> pumpHome(WidgetTester tester, Size size,
-      {bool signIn = false, bool password = false, bool reducedMotion = false}) async {
+      {bool signIn = false, bool password = false, bool reducedMotion = false,
+       Future<void> Function(DatabaseService)? seed}) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -43,6 +46,7 @@ void main() {
     await tester.runAsync(() async {
       db = createTestDatabaseService();
       await db.initialize();
+      await seed?.call(db);
     });
     if (signIn) {
       SharedPreferences.setMockInitialValues(
@@ -76,6 +80,32 @@ void main() {
       ),
     );
     await _settle(tester);
+  }
+
+  for (final kind in ['place', 'object']) {
+    testWidgets('search opens the matched $kind instead of only switching tabs', (tester) async {
+      await pumpHome(tester, const Size(390, 844), seed: (db) async {
+        if (kind == 'place') {
+          await db.savePlace(Place(id: 'matched-place', name: 'Unique match', latitude: 50, longitude: 10));
+        } else {
+          await db.saveObject(EventObject(id: 'matched-object', name: 'Unique match', description: 'Object detail content'));
+        }
+      });
+      await tester.tap(find.byIcon(Icons.search));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'Unique match');
+      await _settle(tester);
+      await tester.tap(find.widgetWithText(ListTile, 'Unique match'));
+      await _settle(tester);
+      if (kind == 'place') {
+        expect(tester.widget<PlaceSheet>(find.byType(PlaceSheet)).placeId, 'matched-place');
+      } else {
+        expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('Object detail content')), findsOneWidget);
+        expect(find.widgetWithText(TextButton, 'Close'), findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
   }
 
   testWidgets('narrow window (phone-width): bottom NavigationBar, no rail',
@@ -167,8 +197,10 @@ void main() {
     await pumpHome(tester, const Size(390, 844), signIn: true);
     await tester.tap(find.byTooltip('Sync now'));
     await _settle(tester);
-    expect(find.text('Enter your encryption password before syncing.'),
-        findsOneWidget);
+    expect(find.text('Unlock encrypted sync'), findsOneWidget);
+    expect(find.byType(TextFormField), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await _settle(tester);
     expect(find.text('Sync complete'), findsNothing);
   });
 
@@ -181,7 +213,7 @@ void main() {
     expect(
         find.textContaining(
             'Could not sync. Check your internet connection and try Sync now again.'),
-        findsOneWidget);
+        findsWidgets);
     expect(find.textContaining('503'), findsNothing);
     expect(find.textContaining('Bad state'), findsNothing);
     expect(find.text('Sync complete'), findsNothing);

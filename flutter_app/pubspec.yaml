@@ -58,6 +58,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.1
+  shared_preferences_platform_interface: 2.4.1
 
 flutter:
   uses-material-design: true
@@ -65,6 +66,7 @@ flutter:
   assets:
     - assets/
     - assets/vad/
+    - assets/feedback/
   fonts:
     # Bundled so the web build never requests fonts.gstatic.com for the
     # Material default font (Roboto) or a symbol fallback - see

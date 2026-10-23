@@ -121,6 +121,31 @@ class TranscriptPeopleController extends ChangeNotifier {
     return selected.values.toList();
   }
 
+  Map<String, dynamic> exportDraft() => {
+    'drafts': _drafts.map((key, person) => MapEntry(key, person.toJson())),
+    'choices': _choices,
+    'dismissed': _dismissed.toList(),
+    'dismissedIds': _dismissedIds.toList(),
+    'dismissedConnections': _dismissedConnections.toList(),
+    'dismissedFacts': _dismissedFacts.toList(),
+    'preferredIds': _preferredIds.toList(),
+  };
+
+  bool get hasDraftDecisions => _choices.isNotEmpty || _dismissed.isNotEmpty ||
+      _dismissedIds.isNotEmpty || _dismissedConnections.isNotEmpty || _dismissedFacts.isNotEmpty;
+
+  void restoreDraft(Map<String, dynamic> draft) {
+    _drafts.addAll((draft['drafts'] as Map<String, dynamic>? ?? {}).map(
+      (key, value) => MapEntry(key, Person.fromJson(Map<String, dynamic>.from(value)))));
+    _choices.addAll(Map<String, String>.from(draft['choices'] ?? {}));
+    _dismissed.addAll(List<String>.from(draft['dismissed'] ?? []));
+    _dismissedIds.addAll(List<String>.from(draft['dismissedIds'] ?? []));
+    _dismissedConnections.addAll(List<String>.from(draft['dismissedConnections'] ?? []));
+    _dismissedFacts.addAll(List<String>.from(draft['dismissedFacts'] ?? []));
+    _preferredIds = Set<String>.from(draft['preferredIds'] ?? []);
+    _recognize();
+  }
+
   void preferPersonIds(Set<String> ids) {
     _preferredIds = ids;
     _dismissedIds.removeAll(ids);

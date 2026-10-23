@@ -34,6 +34,7 @@
     <!-- Recording a story's audio and reaching the sync/transcription
          backend. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.READ_CONTACTS"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Centering the map / placing the "Add story" pin at the device's
          current position. Optional at runtime - denial falls back to the

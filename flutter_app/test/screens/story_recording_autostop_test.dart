@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -22,6 +23,7 @@ import '../support/fake_speech_detector.dart';
 import '../support/test_database.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   for (final quick in [true, false]) {
     testWidgets('${quick ? 'Quick add' : 'Story form'} shows transcription progress until the final response', (tester) async {
       final directory = Directory.systemTemp.createTempSync('con-progress-');
@@ -57,6 +59,11 @@ void main() {
           supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(body: quick ? QuickAddSheet(position: position, recorderController: recorder)
               : AddEventScreen(recorderController: recorder)))));
+      for (var frame = 0; frame < 2; frame++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
       await tester.runAsync(recorder.start);
       await tester.pump();
       final l10n = AppLocalizations.of(tester.element(find.byType(Scaffold).first));
@@ -86,9 +93,10 @@ void main() {
       expect(find.text(l10n.quickAddTranscribing), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(recorder.lastStopResult!.transcript, contains('Spoken story.'));
+      if (!quick) await tester.scrollUntilVisible(find.widgetWithText(TextFormField, 'Description'), 150, scrollable: find.byType(Scrollable).first);
       final controller = quick
           ? tester.widget<TextField>(find.widgetWithText(TextField, 'What happened here?')).controller!
-          : tester.widget<TextFormField>(find.byType(TextFormField).last).controller!;
+          : tester.widget<TextFormField>(find.widgetWithText(TextFormField, 'Description')).controller!;
       expect(controller.text, recorder.lastStopResult!.transcript);
       await tester.pumpWidget(const SizedBox.shrink());
     });
@@ -120,7 +128,8 @@ void main() {
         await tester.enterText(find.widgetWithText(TextField, 'What happened here?'), 'My notes.');
       } else {
         await tester.enterText(find.byType(TextFormField).first, 'Auto-stopped story');
-        await tester.enterText(find.byType(TextFormField).last, 'My notes.');
+        await tester.scrollUntilVisible(find.widgetWithText(TextFormField, 'Description'), 150, scrollable: find.byType(Scrollable).first);
+        await tester.enterText(find.widgetWithText(TextFormField, 'Description'), 'My notes.');
       }
       await tester.runAsync(() async {
         final Function start = quick

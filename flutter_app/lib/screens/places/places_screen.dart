@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../services/database_service.dart';
+import '../../services/interaction_feedback.dart';
 import 'place_sheet.dart';
+import '../map/location_picker_screen.dart';
+import '../map/nearby_place.dart';
 
 /// The places list. The map (with its own "tap to add" and marker flow)
 /// now lives in the dedicated Map tab - see [MapScreen] - so this screen
@@ -29,6 +34,12 @@ class _PlacesScreenState extends State<PlacesScreen> {
             }
 
             final l10n = AppLocalizations.of(context);
+            if (snapshot.hasError) {
+              return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(l10n.savedDataLoadFailed, textAlign: TextAlign.center),
+                TextButton(onPressed: () => setState(() {}), child: Text(l10n.commonRetry)),
+              ]));
+            }
             final places = snapshot.data ?? [];
             return Scaffold(
               body: places.isEmpty ? _buildEmptyState(l10n) : _buildListView(places),
@@ -63,6 +74,7 @@ class _PlacesScreenState extends State<PlacesScreen> {
   Widget _buildListView(List<Place> places) {
     return ListView.builder(
       itemCount: places.length,
+      padding: const EdgeInsets.only(bottom: 88),
       itemBuilder: (context, index) {
         final place = places[index];
         return ListTile(
@@ -80,67 +92,98 @@ class _PlacesScreenState extends State<PlacesScreen> {
     );
   }
 
-  void _showAddPlaceDialog() {
+  Future<void> _showAddPlaceDialog() async {
     final l10n = AppLocalizations.of(context);
+    final db = context.read<DatabaseService>();
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final initialPosition = LatLng(prefs.getDouble('places_map_lat') ?? 50,
+        prefs.getDouble('places_map_lng') ?? 10);
     final nameController = TextEditingController();
     final addressController = TextEditingController();
-    final latController = TextEditingController();
-    final lngController = TextEditingController();
+    LatLng? position;
+    Future<String>? suggestedName;
+    String? error;
+    bool saving = false;
 
-    showDialog(
+    final route = DialogRoute<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l10n.placesAdd),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                  controller: nameController,
-                  decoration: InputDecoration(labelText: l10n.placesNameLabel)),
-              const SizedBox(height: 8),
-              TextField(
-                  controller: addressController,
-                  decoration: InputDecoration(labelText: l10n.placesAddressLabel)),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                      child: TextField(
-                          controller: latController,
-                          decoration: InputDecoration(labelText: l10n.placesLatitudeLabel),
-                          keyboardType: TextInputType.number)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                      child: TextField(
-                          controller: lngController,
-                          decoration: InputDecoration(labelText: l10n.placesLongitudeLabel),
-                          keyboardType: TextInputType.number)),
-                ],
+      builder: (dialogContext) => StatefulBuilder(builder: (context, update) => PopScope(
+        canPop: !saving,
+        child: AlertDialog(
+          title: Text(l10n.placesAdd),
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            FutureBuilder<String>(
+              future: suggestedName,
+              builder: (context, snapshot) => TextField(
+                controller: nameController,
+                enabled: !saving,
+                decoration: InputDecoration(labelText: l10n.placesOptionalNameLabel,
+                    hintText: snapshot.data ?? l10n.quickAddPlaceNameHint),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 8),
+            TextField(controller: addressController, enabled: !saving,
+                decoration: InputDecoration(labelText: l10n.placesAddressLabel)),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: saving ? null : () async {
+                final selected = await Navigator.push<LatLng>(context, MaterialPageRoute(
+                  builder: (_) => LocationPickerScreen(
+                    initialPosition: position ?? initialPosition,
+                    initialZoom: position == null ? prefs.getDouble('places_map_zoom') ?? 5 : 15,
+                  ),
+                ));
+                if (selected == null || !context.mounted) return;
+                update(() {
+                  position = selected;
+                  suggestedName = resolveDefaultPlaceName(selected, l10n);
+                  error = null;
+                });
+              },
+              icon: const Icon(Icons.map_outlined),
+              label: Text(position == null ? l10n.locationPickerTitle : l10n.quickAddChangePosition),
+            ),
+            if (position != null) Text(
+              '${position!.latitude.toStringAsFixed(5)}, ${position!.longitude.toStringAsFixed(5)}'),
+            if (error != null) Padding(padding: const EdgeInsets.only(top: 8),
+                child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
+          ])),
+          actions: [
+            TextButton(onPressed: saving ? null : () => Navigator.pop(context),
+                child: Text(l10n.commonCancel)),
+            TextButton(
+              onPressed: saving ? null : () async {
+                if (position == null) {
+                  update(() => error = l10n.placesLocationRequired);
+                  return;
+                }
+                update(() { saving = true; error = null; });
+                try {
+                  final name = nameController.text.trim().isNotEmpty
+                      ? nameController.text.trim() : await suggestedName!;
+                  final place = Place(name: name, latitude: position!.latitude,
+                    longitude: position!.longitude,
+                    address: addressController.text.trim().isEmpty ? null : addressController.text.trim());
+                  await db.savePlace(place);
+                  if (context.mounted) {
+                    context.read<InteractionFeedback?>()?.play(FeedbackCue.success);
+                    Navigator.pop(context);
+                  }
+                } catch (_) {
+                  if (context.mounted) update(() { saving = false; error = l10n.placesSaveFailed; });
+                }
+              },
+              child: saving ? const SizedBox(width: 18, height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2)) : Text(l10n.commonAdd),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.commonCancel)),
-          TextButton(
-            onPressed: () async {
-              if (nameController.text.trim().isEmpty) return;
-              final db = context.read<DatabaseService>();
-              final place = Place(
-                name: nameController.text.trim(),
-                latitude: double.tryParse(latController.text) ?? 0,
-                longitude: double.tryParse(lngController.text) ?? 0,
-                address:
-                    addressController.text.trim().isEmpty ? null : addressController.text.trim(),
-              );
-              await db.savePlace(place);
-              if (context.mounted) Navigator.pop(context);
-            },
-            child: Text(l10n.commonAdd),
-          ),
-        ],
-      ),
+      )),
     );
+    await Navigator.of(context, rootNavigator: true).push(route);
+    await route.completed;
+    nameController.dispose();
+    addressController.dispose();
   }
 }

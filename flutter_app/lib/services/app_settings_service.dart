@@ -9,6 +9,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AppSettingsService extends ChangeNotifier {
   static const _languageKey = 'settings_app_language';
   static const _recordingLanguageKey = 'settings_recording_language';
+  static const _hapticsKey = 'settings_haptics';
+  static const _soundsKey = 'settings_sounds';
+
+  bool hapticsEnabled = true;
+  bool soundsEnabled = false;
 
   bool _initialized = false;
   bool get isInitialized => _initialized;
@@ -31,6 +36,8 @@ class AppSettingsService extends ChangeNotifier {
     final lang = prefs.getString(_languageKey);
     _languageOverride = lang == null ? null : Locale(lang);
     _recordingLanguageOverride = prefs.getString(_recordingLanguageKey);
+    hapticsEnabled = prefs.getBool(_hapticsKey) ?? true;
+    soundsEnabled = prefs.getBool(_soundsKey) ?? false;
     _initialized = true;
     notifyListeners();
   }
@@ -44,6 +51,18 @@ class AppSettingsService extends ChangeNotifier {
     } else {
       await prefs.setString(_languageKey, locale.languageCode);
     }
+  }
+
+  Future<void> setHapticsEnabled(bool enabled) async {
+    hapticsEnabled = enabled;
+    notifyListeners();
+    await (await SharedPreferences.getInstance()).setBool(_hapticsKey, enabled);
+  }
+
+  Future<void> setSoundsEnabled(bool enabled) async {
+    soundsEnabled = enabled;
+    notifyListeners();
+    await (await SharedPreferences.getInstance()).setBool(_soundsKey, enabled);
   }
 
   Future<void> setRecordingLanguageOverride(String? languageCode) async {

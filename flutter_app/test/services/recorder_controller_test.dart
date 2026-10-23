@@ -7,6 +7,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:relationship_manager/services/interaction_feedback.dart';
+import 'package:relationship_manager/services/app_settings_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:relationship_manager/models/models.dart';
@@ -75,10 +77,12 @@ void main() {
     Duration segmentDuration = _segmentDuration,
     Duration maxDuration = const Duration(hours: 2),
     int maxSegmentRetries = 2,
+    InteractionFeedback? feedback,
     Future<SpeechDetector?> Function()? createSpeechDetector,
   }) {
     return RecorderController(
       audioCapture: capture,
+      feedback: feedback,
       createSpeechDetector: createSpeechDetector ?? () async => EndingDetector(frames: 1000, minSpeechFrames: 1),
       fileStore: store,
       database: db,
@@ -101,6 +105,48 @@ void main() {
               '{"text": "seg-${request.bodyBytes.length}"}', 200)),
     );
   }
+
+  test('feedback finishes before microphone capture and resumes only after stop', () async {
+    final cues = <FeedbackCue>[];
+    final settings = AppSettingsService()..soundsEnabled = true;
+    final pendingStart = Completer<void>();
+    final feedback = InteractionFeedback(settings,
+      hapticPlayer: (_) async { expect(capture.isRecording, isFalse); },
+      soundPlayer: (cue) async {
+        expect(capture.isRecording, isFalse);
+        cues.add(cue);
+        if (cue == FeedbackCue.recordingStart) await pendingStart.future;
+      },
+    );
+    final controller = buildController(client: echoClient(), feedback: feedback);
+    final start = controller.start();
+    await Future<void>.delayed(Duration.zero);
+    expect(capture.isRecording, isFalse);
+    expect(controller.state, RecorderState.requestingPermission);
+    pendingStart.complete();
+    await start;
+    expect(capture.isRecording, isTrue);
+    await feedback.play(FeedbackCue.success);
+    expect(cues, [FeedbackCue.recordingStart]);
+    capture.emitChunk(_pcmChunk(1000, 3200));
+    await Future<void>.delayed(Duration.zero);
+    await controller.stop();
+    expect(cues, [FeedbackCue.recordingStart, FeedbackCue.recordingStop]);
+    controller.dispose();
+  });
+
+  test('permission denial releases feedback suppression for retry', () async {
+    final cues = <FeedbackCue>[];
+    final feedback = InteractionFeedback(AppSettingsService(),
+        hapticPlayer: (cue) async => cues.add(cue));
+    capture.failureOnStart = AudioCaptureException(AudioCaptureFailureReason.permissionDenied, 'denied');
+    final controller = buildController(client: echoClient(), feedback: feedback);
+    await controller.start();
+    expect(controller.state, RecorderState.failed);
+    await feedback.play(FeedbackCue.selection);
+    expect(cues, [FeedbackCue.recordingStart, FeedbackCue.error, FeedbackCue.selection]);
+    controller.dispose();
+  });
 
   test('silence and its final tail never upload, including after restart', () async {
     var requests = 0;

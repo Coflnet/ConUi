@@ -14,6 +14,7 @@ import '../../widgets/recovered_recordings_banner.dart';
 import '../places/place_sheet.dart';
 import '../quick_add/quick_add_sheet.dart';
 import 'draggable_pin_marker.dart';
+import 'location_picker_screen.dart';
 import 'map_tile_layer.dart';
 import 'place_clustering.dart';
 
@@ -59,6 +60,7 @@ class MapScreenState extends State<MapScreen> {
   double _zoom = _defaultZoom;
   bool _positionInitialized = false;
   bool _fittedToPlacesOnce = false;
+  bool _gettingLocation = false;
 
   ValueNotifier<LatLng>? _pendingPin;
   double _currentZoom = _defaultZoom;
@@ -162,11 +164,37 @@ class MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _addStoryButtonPressed() async {
-    final location = await _locationService.getCurrentLocation();
-    final position = location != null
-        ? LatLng(location.latitude, location.longitude)
-        : _lastKnownCenter;
-    await _startQuickAddAt(position);
+    if (_gettingLocation) return;
+    setState(() => _gettingLocation = true);
+    try {
+      final location = await _locationService.getCurrentLocation();
+      if (!mounted) return;
+      LatLng? position;
+      if (location != null) {
+        position = LatLng(location.latitude, location.longitude);
+      } else {
+        final l10n = AppLocalizations.of(context);
+        final useCentre = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+          title: Text(l10n.mapLocationUnavailable),
+          content: Text(l10n.mapLocationFallbackExplanation),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.commonCancel)),
+            TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l10n.locationPickerTitle)),
+            TextButton(onPressed: () => Navigator.pop(context, true), child: Text(l10n.mapUseMapCentre)),
+          ],
+        ));
+        if (useCentre == null || !mounted) return;
+        position = useCentre ? _lastKnownCenter : await Navigator.push<LatLng>(context,
+          MaterialPageRoute(builder: (_) => LocationPickerScreen(
+            initialPosition: _lastKnownCenter, initialZoom: _currentZoom)),
+        );
+      }
+      if (position == null || !mounted) return;
+      _mapController.move(position, location == null ? _currentZoom : _deviceLocationZoom);
+      await _startQuickAddAt(position);
+    } finally {
+      if (mounted) setState(() => _gettingLocation = false);
+    }
   }
 
   Future<void> _onMarkerTapped(MapMarkerGroup group) async {
@@ -179,8 +207,8 @@ class MapScreenState extends State<MapScreen> {
     final chosen = await showModalBottomSheet<Place>(
       context: context,
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: ListView(
+          shrinkWrap: true,
           children: [
             ListTile(title: Text(l10n.mapChooseAPlace)),
             const Divider(height: 1),
@@ -210,6 +238,13 @@ class MapScreenState extends State<MapScreen> {
         return FutureBuilder<List<Object>>(
           future: Future.wait([db.getPlaces(), db.getEvents()]),
           builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              final l10n = AppLocalizations.of(context);
+              return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(l10n.savedDataLoadFailed, textAlign: TextAlign.center),
+                TextButton(onPressed: () => setState(() {}), child: Text(l10n.commonRetry)),
+              ]));
+            }
             final places = (snapshot.data?[0] as List<Place>?) ?? const [];
             final events = (snapshot.data?[1] as List<Event>?) ?? const [];
             _maybeFitToPlaces(places);
@@ -272,9 +307,11 @@ class MapScreenState extends State<MapScreen> {
                   bottom: 24,
                   right: 16,
                   child: FloatingActionButton.extended(
-                    onPressed: _addStoryButtonPressed,
-                    icon: const Icon(Icons.add_location_alt),
-                    label: Text(AppLocalizations.of(context).mapAddStory),
+                    onPressed: _gettingLocation ? null : _addStoryButtonPressed,
+                    icon: _gettingLocation ? const SizedBox(width: 20, height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.add_location_alt),
+                    label: Text(_gettingLocation ? AppLocalizations.of(context).mapGettingLocation
+                        : AppLocalizations.of(context).mapAddStory),
                   ),
                 ),
               ],

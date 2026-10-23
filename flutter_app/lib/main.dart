@@ -6,6 +6,7 @@ import 'services/app_settings_service.dart';
 import 'services/auth_service.dart';
 import 'services/database_service.dart';
 import 'services/sync_service.dart';
+import 'services/interaction_feedback.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'widgets/app_page_transitions.dart';
@@ -31,6 +32,10 @@ void main() async {
         ChangeNotifierProvider.value(value: authService),
         ChangeNotifierProvider.value(value: syncService),
         ChangeNotifierProvider.value(value: appSettings),
+        Provider<InteractionFeedback>(
+          create: (_) => InteractionFeedback(appSettings),
+          dispose: (_, feedback) => feedback.dispose(),
+        ),
       ],
       child: const RelationshipManagerApp(),
     ),

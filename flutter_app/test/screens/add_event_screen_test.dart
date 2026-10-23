@@ -1,3 +1,6 @@
+import 'package:relationship_manager/services/local_draft_store.dart';
+import 'package:relationship_manager/widgets/unsaved_draft_guard.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 // Widget test for AddEventScreen's recording integration: the record
 // button drives a RecorderController (fakes underneath - no real
 // microphone/backend), the live transcript flows into the description
@@ -54,6 +57,7 @@ void main() {
   late Directory tempDir;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     tempDir = Directory.systemTemp.createTempSync('add_event_screen_test');
   });
 
@@ -89,7 +93,10 @@ void main() {
         value: db, child: AddEventScreen(recorderController: controller,
             initialParticipantIds: const ['chosen-person'])),
     )));
+    await tester.pumpAndSettle();
     final titleController = tester.widget<TextFormField>(find.widgetWithText(TextFormField, 'Title *')).controller!;
+    await tester.scrollUntilVisible(find.widgetWithText(TextFormField, 'Description'), 150,
+        scrollable: find.byType(Scrollable).first);
     await tester.enterText(find.widgetWithText(TextFormField, 'Description'), 'My unsaved notes.');
     await _pressAsync(tester, find.widgetWithIcon(IconButton, Icons.mic));
     await tester.pump();
@@ -120,12 +127,13 @@ void main() {
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(tester.widget<TextFormField>(find.widgetWithText(TextFormField, 'Description')).controller!.text, 'My unsaved notes.');
-    expect(titleController.text, isEmpty);
+    expect(titleController.text, 'My unsaved notes.');
     await tester.runAsync(() async {
       final file = controller.lastStopResult!.attachedFile;
       expect(await NativeRecordingFileStore(baseDirectory: tempDir).exists(file.id), isTrue);
     });
     await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
   });
 
   testWidgets(
@@ -165,6 +173,7 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
 
     final micButton = find.byWidgetPredicate(
         (w) => w is IconButton && (w.icon as Icon).icon == Icons.mic);
@@ -241,7 +250,8 @@ void main() {
       id: 'original-story',
       title: 'An existing story',
       description: 'Original typed notes.',
-      dateTime: DateTime(2020, 5, 2),
+      dateTime: DateTime(1985, 5),
+      datePrecision: DatePrecision.month,
       participantIds: [manual.id],
     );
     await tester.runAsync(() async {
@@ -287,6 +297,7 @@ void main() {
         child: AddEventScreen(existingEvent: original, recorderController: recorder),
       ),
     ));
+    await tester.pumpAndSettle();
 
     await _pressAsync(tester, find.widgetWithIcon(IconButton, Icons.mic));
     await tester.pump();
@@ -301,6 +312,8 @@ void main() {
     await _pressAsync(tester, find.widgetWithIcon(IconButton, Icons.stop_circle));
     await tester.pump();
     expect(transcriptionRequests, 1);
+    await tester.scrollUntilVisible(find.widgetWithText(TextFormField, 'Description'), 150,
+        scrollable: find.byType(Scrollable).first);
     expect(find.byWidgetPredicate((w) => w is TextFormField &&
         w.controller?.text == 'Original typed notes. $transcript'), findsOneWidget);
     final recordingFile = recorder.lastStopResult!.attachedFile;
@@ -319,6 +332,8 @@ void main() {
       expect(people.where((p) => p.name == paul.name).single.id, paul.id);
       final saved = (await db.getEvent(original.id))!;
       expect(saved.title, original.title);
+      expect(saved.dateTime, DateTime(1985, 5));
+      expect(saved.datePrecision, DatePrecision.month);
       expect(saved.description, 'Original typed notes. $transcript');
       expect(saved.participantIds, unorderedEquals([manual.id, paul.id, jane.id]));
       expect(saved.files.single.kind, AttachedFile.kindRecording);
@@ -327,6 +342,7 @@ void main() {
       expect((await db.getLocalRecording(recordingFile.id))!.eventId, original.id);
     });
     await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
   });
 
   testWidgets('person information recording saves chained relationships and facts without a place',
@@ -376,7 +392,10 @@ void main() {
         ),
       ),
     ));
-    await tester.enterText(find.byType(TextFormField).at(1), 'Typed notes.');
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.widgetWithText(TextFormField, 'Description'), 150,
+        scrollable: find.byType(Scrollable).first);
+    await tester.enterText(find.widgetWithText(TextFormField, 'Description'), 'Typed notes.');
     await _pressAsync(tester, find.widgetWithIcon(IconButton, Icons.mic));
     await tester.pump();
     await tester.runAsync(() async {
@@ -388,6 +407,8 @@ void main() {
     await _pressAsync(tester, find.widgetWithIcon(IconButton, Icons.stop_circle));
     await tester.pump();
     expect(transcriptionRequests, 1);
+    await tester.scrollUntilVisible(find.widgetWithText(TextFormField, 'Description'), 150,
+        scrollable: find.byType(Scrollable).first);
     expect(find.byWidgetPredicate((widget) => widget is TextFormField &&
         widget.controller?.text == 'Typed notes. $transcript'), findsOneWidget);
     final recordingFile = recorder.lastStopResult!.attachedFile;
@@ -428,6 +449,108 @@ void main() {
       expect(saved.files.single.kind, AttachedFile.kindRecording);
       expect(await store.exists(recordingFile.id), isTrue);
       expect((await db.getLocalRecording(recordingFile.id))!.eventId, saved.id);
+    });
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('saving an active recording draft restores text, people and original audio', (tester) async {
+    final db = createTestDatabaseService();
+    await tester.runAsync(db.initialize);
+    final capture = FakeAudioCapture();
+    final store = NativeRecordingFileStore(baseDirectory: tempDir);
+    final recorder = RecorderController(
+      createSpeechDetector: () async => EndingDetector(minSpeechFrames: 1),
+      audioCapture: capture, fileStore: store, database: db,
+      transcriptionClient: TranscriptionClient(baseUrl: 'https://api.example.com', getToken: () => 'tok',
+        httpClient: MockClient((_) async => http.Response(jsonEncode({'text': 'Recorded memory.'}), 200))),
+      backoff: (_) => Duration.zero,
+    );
+    addTearDown(recorder.dispose);
+    Widget form() => MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: ChangeNotifierProvider<DatabaseService>.value(value: db,
+        child: AddEventScreen(recorderController: recorder, initialParticipantIds: const ['chosen-person'])),
+    );
+    await tester.pumpWidget(form());
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.widgetWithText(TextFormField, 'Description'), 150,
+      scrollable: find.byType(Scrollable).first);
+    await tester.enterText(find.widgetWithText(TextFormField, 'Description'), 'My typed memory.');
+    await _pressAsync(tester, find.widgetWithIcon(IconButton, Icons.mic));
+    await tester.runAsync(() async {
+      capture.emitChunk(Uint8List(1600));
+      await Future<void>.delayed(Duration.zero);
+    });
+    final guard = tester.state<UnsavedDraftGuardState>(find.byType(UnsavedDraftGuard));
+    late Future<bool> close;
+    await tester.runAsync(() async { close = guard.confirm(); });
+    await tester.pump();
+    expect(recorder.state, RecorderState.recording, reason: 'Keep editing must not stop capture');
+    await tester.tap(find.text('Save draft'));
+    await tester.runAsync(() async => expect(await close, isTrue));
+    await tester.pump();
+    expect(recorder.state, RecorderState.idle);
+    final recordingId = recorder.lastStopResult!.attachedFile.id;
+    final draft = await LocalDraftStore.read('story:new');
+    expect((draft!['event'] as Map)['participantIds'], ['chosen-person']);
+    expect((draft['recording'] as Map)['id'], recordingId);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(form());
+    await tester.pumpAndSettle();
+    expect(find.text('Saved draft restored'), findsOneWidget);
+    await tester.scrollUntilVisible(find.widgetWithText(TextFormField, 'Description'), 150,
+      scrollable: find.byType(Scrollable).first);
+    expect(tester.widget<TextFormField>(find.widgetWithText(TextFormField, 'Description')).controller!.text,
+      'My typed memory. Recorded memory.');
+    await _pressAsync(tester, find.widgetWithText(TextButton, 'Save'));
+    await tester.runAsync(() async {
+      final event = (await db.getEvents()).single;
+      expect(event.title, 'My typed memory. Recorded memory.');
+      expect(event.participantIds, ['chosen-person']);
+      expect(event.files.single.id, recordingId);
+      expect((await db.getLocalRecording(recordingId))!.eventId, event.id);
+      expect((await store.readBytes(recordingId)).sublist(44), Uint8List(1600));
+    });
+    expect(await LocalDraftStore.read('story:new'), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('cancelling precision picker preserves displayed and saved precision', (tester) async {
+    final db = createTestDatabaseService();
+    final original = Event(title: 'Exact memory', dateTime: DateTime(1985, 4, 9, 17, 25));
+    await tester.runAsync(() async { await db.initialize(); await db.saveEvent(original); });
+    final recorder = RecorderController(createSpeechDetector: () async => null,
+      audioCapture: FakeAudioCapture(), fileStore: NativeRecordingFileStore(baseDirectory: tempDir),
+      database: db, transcriptionClient: TranscriptionClient(baseUrl: 'https://example.invalid', getToken: () => null));
+    addTearDown(recorder.dispose);
+    await tester.pumpWidget(MaterialApp(localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      initialRoute: '/editor', routes: {
+        '/': (_) => const Scaffold(),
+        '/editor': (_) => ChangeNotifierProvider<DatabaseService>.value(value: db,
+          child: AddEventScreen(existingEvent: original, recorderController: recorder)),
+      }));
+    await tester.pumpAndSettle();
+    final field = find.byType(DropdownButton<DatePrecision>);
+    await tester.tap(field);
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizations.of(tester.element(find.byType(AddEventScreen)));
+    await tester.tap(find.text(l10n.quickAddAYear).last);
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<DropdownButton<DatePrecision>>(field).value, DatePrecision.time);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(DatePickerDialog), findsNothing);
+    await _pressAsync(tester, find.widgetWithText(TextButton, 'Save'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      final saved = (await db.getEvents()).single;
+      expect(saved.dateTime, original.dateTime);
+      expect(saved.datePrecision, DatePrecision.time);
     });
     await tester.pumpWidget(const SizedBox.shrink());
   });

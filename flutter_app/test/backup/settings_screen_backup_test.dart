@@ -62,7 +62,7 @@ Widget _wrap({
       providers: [
         ChangeNotifierProvider<DatabaseService>.value(value: db),
         ChangeNotifierProvider<AuthService>(create: (_) => AuthService()),
-        Provider<SyncService>(create: (_) => SyncService(db, AuthService())),
+        ChangeNotifierProvider<SyncService>(create: (_) => SyncService(db, AuthService())),
         ChangeNotifierProvider<AppSettingsService>(create: (_) => AppSettingsService()),
       ],
       child: SettingsScreen(backupService: backupService),
@@ -116,7 +116,7 @@ void main() {
       providers: [
         ChangeNotifierProvider<DatabaseService>.value(value: db),
         ChangeNotifierProvider<AuthService>(create: (_) => AuthService()),
-        Provider<SyncService>(create: (_) => SyncService(db, AuthService())),
+        ChangeNotifierProvider<SyncService>(create: (_) => SyncService(db, AuthService())),
         ChangeNotifierProvider<AppSettingsService>(create: (_) => AppSettingsService()),
       ],
       child: MaterialApp(

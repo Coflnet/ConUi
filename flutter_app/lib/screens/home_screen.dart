@@ -3,11 +3,12 @@ import 'package:provider/provider.dart';
 import '../l10n/gen/app_localizations.dart';
 import '../services/database_service.dart';
 import '../services/sync_service.dart';
-import '../widgets/account_required_dialog.dart';
+import '../widgets/sync_prompt.dart';
 import 'persons/persons_screen.dart';
 import 'events/events_screen.dart';
 import 'map/map_screen.dart';
 import 'places/places_screen.dart';
+import 'places/place_sheet.dart';
 import 'objects/objects_screen.dart';
 import 'settings_screen.dart';
 import 'persons/person_detail_screen.dart';
@@ -201,24 +202,7 @@ class _HomeScreenState extends State<HomeScreen>
               }
               return IconButton(
                 icon: const Icon(Icons.sync),
-                onPressed: () async {
-                  if (syncService.needsSignIn &&
-                      !await showAccountRequiredDialog(context)) {
-                    return;
-                  }
-                  if (!context.mounted) return;
-                  await syncService.forceFullSync();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text(syncService.needsEncryptionPassword
-                              ? l10n.homeSyncPasswordRequired
-                              : syncService.lastError != null
-                                  ? l10n.settingsSyncRecovery
-                                  : l10n.homeSyncComplete)),
-                    );
-                  }
-                },
+                onPressed: () => syncWithPrompts(context),
                 tooltip: l10n.homeSyncNow,
               );
             },
@@ -234,7 +218,18 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ],
       ),
-      body: isWide
+      body: Column(children: [
+        Consumer<SyncService>(builder: (context, sync, _) {
+          if (!sync.needsEncryptionPassword && sync.lastError == null) return const SizedBox.shrink();
+          return MaterialBanner(
+            content: Text(sync.needsEncryptionPassword ? l10n.homeSyncPasswordRequired : l10n.settingsSyncRecovery),
+            actions: [TextButton(
+              onPressed: sync.isSyncing ? null : () => syncWithPrompts(context),
+              child: Text(sync.needsEncryptionPassword ? l10n.syncUnlockAction : l10n.commonRetry),
+            )],
+          );
+        }),
+        Expanded(child: isWide
           ? Row(
               children: [
                 NavigationRail(
@@ -254,7 +249,8 @@ class _HomeScreenState extends State<HomeScreen>
                 Expanded(child: bodyContent),
               ],
             )
-          : bodyContent,
+          : bodyContent),
+      ]),
       bottomNavigationBar: isWide
           ? null
           : NavigationBar(
@@ -422,7 +418,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  void _navigateToResult(SearchResult result) {
+  Future<void> _navigateToResult(SearchResult result) async {
     setState(() {
       _isSearching = false;
       _searchController.clear();
@@ -448,9 +444,28 @@ class _HomeScreenState extends State<HomeScreen>
         break;
       case SearchResultType.object:
         setState(() => _selectedIndex = 4);
+        try {
+          final object = await context.read<DatabaseService>().getObject(result.id);
+          if (!mounted) return;
+          if (object != null) {
+            await showObjectDetails(context, object);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(AppLocalizations.of(context).objectNotFound)));
+          }
+        } catch (_) {
+          if (!mounted) return;
+          final l10n = AppLocalizations.of(context);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(l10n.savedDataLoadFailed),
+            action: SnackBarAction(label: l10n.commonRetry,
+                onPressed: () => _navigateToResult(result)),
+          ));
+        }
         break;
       case SearchResultType.place:
         setState(() => _selectedIndex = 3);
+        await PlaceSheet.show(context, placeId: result.id);
         break;
     }
   }

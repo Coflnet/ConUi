@@ -10,7 +10,10 @@ import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import '../services/database_service.dart';
-import '../widgets/account_required_dialog.dart';
+import '../widgets/sync_prompt.dart';
+import '../services/interaction_feedback.dart';
+import '../services/local_draft_store.dart';
+import 'contacts/contacts_import_screen.dart';
 import 'login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -29,7 +32,6 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _isSyncing = false;
-  String? _lastSyncTime;
   int _pendingChanges = 0;
 
   late final BackupService _backupService;
@@ -88,31 +90,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _forceSync() async {
-    final l10n = AppLocalizations.of(context);
-    final syncService = context.read<SyncService>();
-    if (syncService.needsSignIn && !await showAccountRequiredDialog(context)) {
-      return;
-    }
-    if (!mounted) return;
     setState(() => _isSyncing = true);
     try {
-      await syncService.fullSync();
+      await syncWithPrompts(context);
       await _loadSyncStatus();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(syncService.needsEncryptionPassword
-              ? l10n.homeSyncPasswordRequired
-              : syncService.lastError != null
-                  ? l10n.settingsSyncRecovery
-                  : l10n.settingsSyncCompleted)),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.settingsSyncRecovery)),
-        );
-      }
     } finally {
       if (mounted) setState(() => _isSyncing = false);
     }
@@ -166,8 +147,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (confirmed == true && mounted) {
       final db = context.read<DatabaseService>();
-      await db.clearAllData();
       final auth = context.read<AuthService>();
+      await db.clearAllData();
+      await LocalDraftStore.clearAll();
       await auth.logout();
     }
   }
@@ -244,6 +226,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final appSettings = context.watch<AppSettingsService>();
+    final lastSyncTime = context.watch<SyncService>().lastSyncTime;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
       body: ListView(
@@ -263,11 +246,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 : const Icon(Icons.chevron_right),
             onTap: _isSyncing ? null : _forceSync,
           ),
-          if (_lastSyncTime != null)
+          if (lastSyncTime != null)
             ListTile(
               leading: const Icon(Icons.schedule),
               title: Text(l10n.settingsLastSync),
-              subtitle: Text(_lastSyncTime!),
+              subtitle: Text(_formatDateTime(lastSyncTime)),
             ),
 
           const Divider(),
@@ -344,9 +327,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: Text(l10n.settingsImportContactsTitle),
             subtitle: Text(l10n.settingsImportContactsSubtitle),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => _importContacts(),
+            onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const ContactsImportScreen())),
           ),
 
+          const Divider(),
+
+          _buildSectionHeader(l10n.settingsFeedbackSection),
+          SwitchListTile(
+            title: Text(l10n.settingsHaptics),
+            subtitle: Text(l10n.settingsHapticsDescription),
+            value: appSettings.hapticsEnabled,
+            onChanged: appSettings.setHapticsEnabled,
+          ),
+          SwitchListTile(
+            title: Text(l10n.settingsSounds),
+            subtitle: Text(l10n.settingsSoundsDescription),
+            value: appSettings.soundsEnabled,
+            onChanged: appSettings.setSoundsEnabled,
+          ),
+          ListTile(
+            leading: const Icon(Icons.play_circle_outline),
+            title: Text(l10n.settingsFeedbackPreview),
+            onTap: appSettings.soundsEnabled || appSettings.hapticsEnabled
+                ? () => context
+                    .read<InteractionFeedback?>()
+                    ?.play(FeedbackCue.success)
+                : null,
+          ),
           const Divider(),
 
           // Account Section
@@ -445,20 +455,5 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _formatDateTime(DateTime dt) {
     final locale = Localizations.localeOf(context).toString();
     return DateFormat.yMd(locale).add_Hm().format(dt.toLocal());
-  }
-
-  Future<void> _importContacts() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(AppLocalizations.of(context).settingsImportContactsPlaceholder)),
-    );
-    // TODO: Implement contact import. The `contacts_service` package this
-    // was originally slated to use was removed from pubspec.yaml - it's
-    // incompatible with the current Flutter engine (still references the
-    // long-removed v1 PluginRegistry.Registrar Android embedding API,
-    // which fails to compile) and was never actually called from here
-    // anyway (this button only ever showed the placeholder snackbar
-    // below). Pick a maintained alternative (e.g. `flutter_contacts`) when
-    // implementing this for real.
-    // This requires platform-specific permissions setup
   }
 }

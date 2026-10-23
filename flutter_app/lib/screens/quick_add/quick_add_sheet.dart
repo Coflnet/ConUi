@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
@@ -14,6 +13,11 @@ import '../../widgets/account_required_dialog.dart';
 import '../../services/person_mentions.dart';
 import '../../widgets/transcript_people_picker.dart';
 import '../../services/story_photo_service.dart';
+import '../../services/local_draft_store.dart';
+import '../../services/interaction_feedback.dart';
+import '../../widgets/unsaved_draft_guard.dart';
+import '../../widgets/story_date_picker.dart';
+import '../map/location_picker_screen.dart';
 import '../../widgets/story_photo.dart';
 import '../../services/record_package_audio_capture.dart';
 import '../../services/recorder_controller.dart';
@@ -89,7 +93,7 @@ class QuickAddSheet extends StatefulWidget {
   /// Where the story's place should be, read live from this notifier so a
   /// pin the user drags on the map behind the sheet updates the position
   /// used at save time (see [DraggablePinMarker]).
-  final ValueListenable<LatLng> position;
+  final ValueNotifier<LatLng> position;
 
   /// When set, the sheet is pinned to this already-existing place (e.g.
   /// opened via its "Add story here" action) instead of proposing or
@@ -111,13 +115,15 @@ class QuickAddSheet extends StatefulWidget {
   /// created story and place, or null if the user cancelled/discarded.
   static Future<QuickAddResult?> show(
     BuildContext context, {
-    required ValueListenable<LatLng> position,
+    required ValueNotifier<LatLng> position,
     Place? initialPlace,
   }) {
     return showModalBottomSheet<QuickAddResult>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
+      isDismissible: false,
+      enableDrag: false,
       builder: (context) => QuickAddSheet(position: position, initialPlace: initialPlace),
     );
   }
@@ -151,11 +157,19 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   String _liveTextAlreadyShown = '';
   bool _isSaving = false;
   bool _isPickingPhotos = false;
-  final _draftEvent = Event(title: '', dateTime: DateTime.now());
+  Event _draftEvent = Event(title: '', dateTime: DateTime.now());
   final List<AttachedFile> _photos = [];
   bool _isTranscribingNow = false;
   bool _hasFailedTranscription = false;
   bool _loadedLookups = false;
+  bool _lookupFailed = false;
+  bool _draftLoading = true;
+  bool _draftRestored = false;
+  bool _finalizingDraft = false;
+  bool _placePinned = false;
+  bool _positionChanged = false;
+  final _draftGuard = GlobalKey<UnsavedDraftGuardState>();
+  String get _draftKey => 'quick-story:${widget.initialPlace?.id ?? "new"}';
 
   @override
   void initState() {
@@ -169,10 +183,98 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     }
     _recorder.addListener(_onRecorderChanged);
     if (widget.initialPlace != null) {
+      _placePinned = true;
       _useExistingPlace = widget.initialPlace;
       _placeNameController.text = widget.initialPlace!.name;
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadLookups());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _restoreDraft();
+      if (mounted) _loadLookups();
+    });
+  }
+
+  Future<void> _restoreDraft() async {
+    try {
+      final draft = await LocalDraftStore.read(_draftKey);
+      if (!mounted || draft == null) return;
+      _draftEvent = Event.fromJson(Map<String, dynamic>.from(draft['event']));
+      _textController.text = _draftEvent.description ?? '';
+      _titleController.text = _draftEvent.title;
+      _date = _draftEvent.dateTime;
+      _datePrecision = _draftEvent.datePrecision;
+      _photos.addAll((draft['photos'] as List).map((file) => AttachedFile.fromJson(Map<String, dynamic>.from(file))));
+      if (draft['recording'] != null) _pendingRecording = AttachedFile.fromJson(Map<String, dynamic>.from(draft['recording']));
+      _hasFailedTranscription = draft['failedTranscription'] == true;
+      _liveTextAlreadyShown = draft['liveText'] as String? ?? '';
+      _placeNameController.text = draft['placeName'] as String? ?? '';
+      if (draft['place'] != null) _useExistingPlace = Place.fromJson(Map<String, dynamic>.from(draft['place']));
+      _placePinned = draft['placePinned'] == true;
+      _positionChanged = draft['positionChanged'] == true;
+      widget.position.value = LatLng(draft['latitude'], draft['longitude']);
+      _selectedPersons.addAll((draft['persons'] as List).map((pick) => pick['person'] != null
+        ? PersonPick.existing(Person.fromJson(Map<String, dynamic>.from(pick['person'])))
+        : PersonPick.newName(pick['name'] as String)));
+      _peoplePicker.restoreDraft(Map<String, dynamic>.from(draft['people'] ?? {}));
+      _draftRestored = true;
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).storyDraftSaveFailed)));
+    } finally {
+      if (mounted) setState(() => _draftLoading = false);
+    }
+  }
+
+  Future<void> _stopForDraft() async {
+    _finalizingDraft = true;
+    try {
+      if (_recorder.state == RecorderState.recording || _recorder.canRetryStop) await _recorder.stop();
+    } finally {
+      _finalizingDraft = false;
+    }
+  }
+
+  Future<bool> _saveDraft() async {
+    await _stopForDraft();
+    await LocalDraftStore.write(_draftKey, {
+      'event': Event(id: _draftEvent.id, title: _titleController.text,
+        description: _textController.text, dateTime: _date, datePrecision: _datePrecision).toJson(),
+      'photos': _photos.map((file) => file.toJson()).toList(),
+      'recording': _pendingRecording?.toJson(), 'failedTranscription': _hasFailedTranscription,
+      'liveText': _liveTextAlreadyShown, 'placeName': _placeNameController.text,
+      'place': _useExistingPlace?.toJson(), 'placePinned': _placePinned, 'positionChanged': _positionChanged,
+      'latitude': widget.position.value.latitude, 'longitude': widget.position.value.longitude,
+      'persons': _selectedPersons.map((pick) => {'person': pick.existing?.toJson(), 'name': pick.newName}).toList(),
+      'people': _peoplePicker.exportDraft(),
+    });
+    return true;
+  }
+
+  Future<void> _discardDraft() async {
+    await _stopForDraft();
+    await LocalDraftStore.remove(_draftKey);
+  }
+
+  Future<void> _changePosition() async {
+    final place = _useExistingPlace;
+    final point = await Navigator.push<LatLng>(context, MaterialPageRoute(builder: (_) =>
+      LocationPickerScreen(initialPosition: place == null ? widget.position.value : LatLng(place.latitude, place.longitude))));
+    if (point == null || !mounted) return;
+    setState(() {
+      _placePinned = false;
+      if (place != null && _placeNameController.text == place.name) _placeNameController.clear();
+      _positionChanged = true;
+      _useExistingPlace = null;
+      widget.position.value = point;
+      _updateNearbyPlace(point);
+      _suggestedPlaceName = null;
+      _suggestedPosition = null;
+    });
+    final name = await resolveDefaultPlaceName(point, AppLocalizations.of(context));
+    if (mounted && widget.position.value == point) {
+      setState(() {
+      _suggestedPosition = point;
+      _suggestedPlaceName = name;
+    });
+    }
   }
 
   static RecorderController _buildDefaultRecorderController(BuildContext context) {
@@ -188,11 +290,13 @@ class QuickAddSheetState extends State<QuickAddSheet> {
         getToken: () => auth.token,
       ),
       language: settings.effectiveRecordingLanguage,
+      feedback: context.read<InteractionFeedback?>(),
     );
   }
 
   Future<void> _loadLookups() async {
     final db = context.read<DatabaseService>();
+    try {
     final persons = await db.getPersons();
     final places = await db.getPlaces();
     if (!mounted) return;
@@ -200,6 +304,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
       _allPersons = persons;
       _allPlaces = places;
       _loadedLookups = true;
+      _lookupFailed = false;
       _updateNearbyPlace(widget.position.value);
     });
     final point = widget.position.value;
@@ -210,6 +315,9 @@ class QuickAddSheetState extends State<QuickAddSheet> {
       _suggestedPosition = point;
       _suggestedPlaceName = name;
     });
+    } catch (_) {
+      if (mounted) setState(() => _lookupFailed = true);
+    }
   }
 
   void _updateNearbyPlace(LatLng point) {
@@ -217,7 +325,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     // Don't second-guess a place the sheet was explicitly opened for (e.g.
     // the place sheet's "Add story here"); only clear an existing-place
     // choice the user made themselves via the nearby-place proposal.
-    if (widget.initialPlace == null && _nearbyPlace == null && _useExistingPlace != null) {
+    if (!_placePinned && _nearbyPlace == null && _useExistingPlace != null) {
       _useExistingPlace = null;
     }
   }
@@ -233,7 +341,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
         _pendingRecording?.id != result.attachedFile.id) {
       _pendingRecording = result.attachedFile;
       _hasFailedTranscription = result.failedSegments.isNotEmpty;
-      if (_hasFailedTranscription) _showTranscriptionFailure(result.failedSegments.length);
+      if (_hasFailedTranscription && !_finalizingDraft) _showTranscriptionFailure(result.failedSegments.length);
     }
     setState(() {});
   }
@@ -265,14 +373,24 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   }
 
   Future<void> _toggleRecording() async {
-    if (_recorder.state == RecorderState.recording) {
-      await _recorder.stop();
-      return;
-    }
-    _liveTextAlreadyShown = '';
-    await _recorder.start();
-    if (mounted && _recorder.liveTranscriptionReason == LiveTranscriptionReason.anonymousLimit) {
-      _showTranscriptionFailure(0);
+    final stopping = _recorder.state == RecorderState.recording || _recorder.canRetryStop;
+    try {
+      if (stopping) {
+        await _recorder.stop();
+        return;
+      }
+      _liveTextAlreadyShown = '';
+      await _recorder.start();
+      if (mounted && _recorder.liveTranscriptionReason == LiveTranscriptionReason.anonymousLimit) {
+        _showTranscriptionFailure(0);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(stopping ? AppLocalizations.of(context).storyRecordingStopFailed : AppLocalizations.of(context).micOtherError),
+        action: SnackBarAction(label: stopping ? AppLocalizations.of(context).storyRetryFinish : AppLocalizations.of(context).commonRetry,
+          onPressed: _toggleRecording)));
+      }
     }
   }
 
@@ -303,9 +421,12 @@ class QuickAddSheetState extends State<QuickAddSheet> {
       if (!mounted) return;
       _hasFailedTranscription = result.failedSegments.isNotEmpty;
       if (result.transcript.isNotEmpty) {
-        final sep = _textController.text.trim().isEmpty ? '' : ' ';
-        _textController.text =
-            '${_textController.text}$sep${result.transcript}'.trim();
+        final current = _textController.text;
+        if (_liveTextAlreadyShown.isNotEmpty && current.endsWith(_liveTextAlreadyShown)) {
+          _textController.text = current.substring(0, current.length - _liveTextAlreadyShown.length) + result.transcript;
+        } else if (!current.contains(result.transcript)) {
+          _textController.text = [current.trim(), result.transcript].where((part) => part.isNotEmpty).join(' ');
+        }
         _liveTextAlreadyShown = result.transcript;
       }
       if (_hasFailedTranscription) {
@@ -362,6 +483,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
 
   void _clearExistingPlaceChoice() {
     setState(() {
+      _placePinned = false;
       _useExistingPlace = null;
       _placeNameController.clear();
     });
@@ -375,145 +497,32 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     });
   }
 
-  Future<void> _pickYear() async {
-    final l10n = AppLocalizations.of(context);
-    final controller = TextEditingController(text: _date.year.toString());
-    final year = await showDialog<int>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.quickAddWhichYear),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dialogContext), child: Text(l10n.commonCancel)),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, int.tryParse(controller.text.trim())),
-            child: Text(l10n.commonOk),
-          ),
-        ],
-      ),
-    );
-    if (year != null && mounted) {
-      setState(() {
-        _date = DateTime(year);
-        _datePrecision = DatePrecision.year;
-      });
-    }
-  }
-
-  Future<void> _pickMonthAndYear() async {
-    final l10n = AppLocalizations.of(context);
-    var month = _date.month;
-    var year = _date.year;
-    final result = await showDialog<DateTime>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: Text(l10n.quickAddWhichMonth),
-          content: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButton<int>(
-                value: month,
-                items: [
-                  for (var m = 1; m <= 12; m++)
-                    DropdownMenuItem(value: m, child: Text(DateFormat.MMMM().format(DateTime(2000, m)))),
-                ],
-                onChanged: (v) => setDialogState(() => month = v ?? month),
-              ),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: 90,
-                child: TextField(
-                  keyboardType: TextInputType.number,
-                  controller: TextEditingController(text: year.toString()),
-                  onChanged: (v) => year = int.tryParse(v) ?? year,
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(dialogContext), child: Text(l10n.commonCancel)),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, DateTime(year, month)),
-              child: Text(l10n.commonOk),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (result != null && mounted) {
-      setState(() {
-        _date = result;
-        _datePrecision = DatePrecision.month;
-      });
-    }
-  }
-
-  Future<void> _pickExactDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _date,
-      firstDate: DateTime(1900),
-      lastDate: DateTime.now(),
-    );
+  Future<void> _pickDate(DatePrecision precision) async {
+    final picked = await pickStoryDate(context, _date, precision);
     if (picked != null && mounted) {
       setState(() {
-        _date = picked;
-        _datePrecision = DatePrecision.day;
-      });
+      _date = picked;
+      _datePrecision = precision;
+    });
     }
   }
 
   bool get _hasUnsavedContent =>
+      _draftRestored || _positionChanged || _peoplePicker.hasDraftDecisions ||
       _textController.text.trim().isNotEmpty ||
       _pendingRecording != null ||
       _photos.isNotEmpty ||
       _recorder.state == RecorderState.recording ||
       _selectedPersons.isNotEmpty ||
-      _placeNameController.text.trim().isNotEmpty ||
-      _titleController.text.trim().isNotEmpty;
+      (_placeNameController.text.trim().isNotEmpty &&
+        (!_placePinned || _placeNameController.text != widget.initialPlace?.name)) ||
+      _titleController.text.trim().isNotEmpty ||
+      _datePrecision != DatePrecision.day || !_isSameDay(_date, DateTime.now());
 
-  /// Returns true if it's safe to close the sheet now (nothing to lose, or
-  /// the user confirmed discarding). A recording in progress is stopped
-  /// first so its audio is finalized and durably kept - never silently
-  /// dropped - and surfaces afterwards as a recording not attached to any
-  /// story (see the map's recovered-recordings banner).
+  /// Evaluate the same guard for both the sheet's close button and back.
+  /// Explicit draft save/discard finalizes capture; Keep editing leaves it running.
   Future<bool> confirmDiscardIfNeeded() async {
-    if (!_hasUnsavedContent) return true;
-
-    if (_recorder.state == RecorderState.recording) {
-      final result = await _recorder.stop();
-      _pendingRecording = result.attachedFile;
-    }
-    if (!mounted) return true;
-
-    final l10n = AppLocalizations.of(context);
-    final discard = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.quickAddDiscardTitle),
-        content: Text(_pendingRecording != null
-            ? l10n.quickAddDiscardBodyWithRecording
-            : l10n.quickAddDiscardBody),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(l10n.quickAddKeepEditing),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(l10n.quickAddDiscard, style: const TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-    return discard ?? false;
+    return await _draftGuard.currentState!.confirm();
   }
 
   String _deriveTitle(AppLocalizations l10n, String text, String placeName) {
@@ -552,7 +561,9 @@ class QuickAddSheetState extends State<QuickAddSheet> {
 
   bool get _canSave =>
       !_isSaving &&
+      !_recorder.canRetryStop &&
       !_isPickingPhotos &&
+      !_draftLoading &&
       !_isTranscribingNow &&
       (_recorder.state == RecorderState.idle ||
           _recorder.state == RecorderState.failed);
@@ -619,7 +630,10 @@ class QuickAddSheetState extends State<QuickAddSheet> {
         }
       }
 
+      await LocalDraftStore.remove(_draftKey);
+      _draftRestored = false;
       if (!mounted) return false;
+      context.read<InteractionFeedback?>()?.play(FeedbackCue.success);
       if (close) Navigator.pop(context, QuickAddResult(event: event, place: place));
       return true;
     } catch (_) {
@@ -650,19 +664,17 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        if (await confirmDiscardIfNeeded() && mounted) {
-          Navigator.pop(context);
-        }
-      },
+    return UnsavedDraftGuard(
+      key: _draftGuard,
+      isDirty: () => _hasUnsavedContent,
+      isBusy: () => _isSaving || _isPickingPhotos || _draftLoading || _isTranscribingNow ||
+        _recorder.state == RecorderState.finishing || _recorder.state == RecorderState.requestingPermission,
+      onSaveDraft: _saveDraft, onDiscard: _discardDraft,
       child: Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
-          child: SingleChildScrollView(
+          child: AbsorbPointer(absorbing: _draftLoading, child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -678,7 +690,14 @@ class QuickAddSheetState extends State<QuickAddSheet> {
                     ),
                   ),
                 ),
-                Text(l10n.quickAddTitle, style: Theme.of(context).textTheme.titleLarge),
+                Row(children: [
+                  Expanded(child: Text(l10n.quickAddTitle, style: Theme.of(context).textTheme.titleLarge)),
+                  IconButton(tooltip: l10n.commonCancel, icon: const Icon(Icons.close), onPressed: () async {
+                    if (await confirmDiscardIfNeeded() && mounted) Navigator.pop(this.context);
+                  }),
+                ]),
+                if (_draftRestored) Text(l10n.storyDraftRestored),
+                if (_draftLoading) const LinearProgressIndicator(),
                 const SizedBox(height: 16),
                 _buildRecordButton(l10n),
                 const SizedBox(height: 12),
@@ -728,7 +747,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
                 ),
               ],
             ),
-          ),
+          )),
         ),
       ),
     );
@@ -743,7 +762,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
       children: [
         Center(
           child: Semantics(
-            label: isRecording ? l10n.quickAddStopRecording : l10n.quickAddStartRecording,
+            label: isRecording ? l10n.quickAddStopRecording : _recorder.canRetryStop ? l10n.storyRetryFinish : l10n.quickAddStartRecording,
             button: true,
             child: GestureDetector(
               onTap: isBusy ? null : _toggleRecording,
@@ -757,7 +776,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
                       : Theme.of(context).colorScheme.primary,
                 ),
                 child: Icon(
-                  isRecording ? Icons.stop : Icons.mic,
+                  isRecording ? Icons.stop : _recorder.canRetryStop ? Icons.refresh : Icons.mic,
                   color: Colors.white,
                   size: 40,
                 ),
@@ -770,7 +789,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
             child: Text(
-              messageForMicFailure(l10n, _recorder.failure!.reason),
+              _recorder.canRetryStop ? l10n.storyRecordingStopFailed : messageForMicFailure(l10n, _recorder.failure!.reason),
               style: const TextStyle(color: Colors.red),
               textAlign: TextAlign.center,
             ),
@@ -819,7 +838,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
         if (!isRecording &&
             _pendingRecording != null &&
             (_textController.text.trim().isEmpty ||
-                (_hasFailedTranscription && _liveTextAlreadyShown.isEmpty)))
+                _hasFailedTranscription))
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: TextButton(
@@ -941,18 +960,18 @@ class QuickAddSheetState extends State<QuickAddSheet> {
             ChoiceChip(
               label: Text(l10n.quickAddAYear),
               selected: _datePrecision == DatePrecision.year,
-              onSelected: (_) => _pickYear(),
+              onSelected: (_) => _pickDate(DatePrecision.year),
             ),
             ChoiceChip(
               label: Text(l10n.quickAddMonthAndYear),
               selected: _datePrecision == DatePrecision.month,
-              onSelected: (_) => _pickMonthAndYear(),
+              onSelected: (_) => _pickDate(DatePrecision.month),
             ),
             ChoiceChip(
               label: Text(l10n.quickAddExactDate),
               selected: _datePrecision == DatePrecision.day &&
                   !_isSameDay(_date, DateTime.now()),
-              onSelected: (_) => _pickExactDate(),
+              onSelected: (_) => _pickDate(DatePrecision.day),
             ),
           ],
         ),
@@ -997,7 +1016,11 @@ class QuickAddSheetState extends State<QuickAddSheet> {
               onPressed: _useNearbyPlace,
             ),
           ),
-        if (!_loadedLookups)
+        TextButton.icon(onPressed: _changePosition, icon: const Icon(Icons.edit_location_alt_outlined),
+          label: Text(l10n.quickAddChangePosition)),
+        if (_lookupFailed)
+          TextButton(onPressed: _loadLookups, child: Text(l10n.commonRetry)),
+        if (!_loadedLookups && !_lookupFailed)
           const Padding(
             padding: EdgeInsets.only(top: 4),
             child: LinearProgressIndicator(minHeight: 2),

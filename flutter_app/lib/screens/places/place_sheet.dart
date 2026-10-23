@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../services/database_service.dart';
+import '../../services/interaction_feedback.dart';
 import '../../services/address_service.dart';
 import '../../services/recording_file_store.dart';
 import '../../widgets/recording_player.dart';
@@ -51,6 +52,8 @@ class PlaceSheetState extends State<PlaceSheet> {
     final trimmed = newName.trim();
     if (trimmed.isEmpty || trimmed == place.name) return;
     await db.savePlace(place.copyWith(name: trimmed));
+    if (!mounted) return;
+    context.read<InteractionFeedback?>()?.play(FeedbackCue.success);
     _refresh();
   }
 
@@ -76,6 +79,7 @@ class PlaceSheetState extends State<PlaceSheet> {
         latitude: newPosition.latitude, longitude: newPosition.longitude));
     if (!mounted) return;
     if (_nameController.text == originalName) _nameController.text = name;
+    context.read<InteractionFeedback?>()?.play(FeedbackCue.success);
     _refresh();
   }
 
@@ -120,6 +124,15 @@ class PlaceSheetState extends State<PlaceSheet> {
           key: ValueKey(_refreshKey),
           future: Future.wait([db.getPlace(widget.placeId), db.getEvents(), db.getPersons()]),
           builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              final l10n = AppLocalizations.of(context);
+              return SizedBox(height: 200, child: Center(child: Column(
+                mainAxisSize: MainAxisSize.min, children: [
+                  Text(l10n.savedDataLoadFailed, textAlign: TextAlign.center),
+                  TextButton(onPressed: _refresh, child: Text(l10n.commonRetry)),
+                ],
+              )));
+            }
             if (!snapshot.hasData) {
               return const SizedBox(
                   height: 200, child: Center(child: CircularProgressIndicator()));

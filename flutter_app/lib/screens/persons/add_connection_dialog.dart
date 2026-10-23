@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +9,9 @@ import '../../models/models.dart';
 import '../../relationships/relationship_text.dart';
 import '../../relationships/relationship_type.dart';
 import '../../services/database_service.dart';
+import '../../services/local_draft_store.dart';
+import '../../services/interaction_feedback.dart';
+import '../../widgets/unsaved_draft_guard.dart';
 
 const String _createNewPersonSentinel = '__create_new_person__';
 
@@ -34,6 +39,7 @@ Future<bool?> showAddConnectionDialog(
     ..sort((a, b) => a.name.compareTo(b.name));
   return showDialog<bool>(
     context: context,
+    barrierDismissible: false,
     builder: (context) => _AddConnectionDialog(
       viewedPerson: viewedPerson,
       otherPersons: otherPersons,
@@ -78,6 +84,12 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
   bool _createNewEvent = false;
   final _newEventTitleController = TextEditingController();
   bool _isSaving = false;
+  String _newPersonId = Person(name: '').id;
+  String _newEventId = Event(title: '', dateTime: DateTime.now()).id;
+  String _connectionId = Connection(person1Id: '', person2Id: '', relationshipType: '').id;
+  final _guard = GlobalKey<UnsavedDraftGuardState>();
+  late String _originalDraft;
+
 
   @override
   void initState() {
@@ -85,6 +97,42 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
     _selectedEvent = widget.initialEvent;
     _linkEvent = _selectedEvent != null;
     if (_selectedEvent != null) _startDate = _selectedEvent!.dateTime;
+    _originalDraft = jsonEncode(_draft());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restoreDraft());
+  }
+
+  String get _draftKey => 'connection.new.${widget.viewedPerson.id}';
+  Map<String, dynamic> _draft() => {
+    'personId': _selectedPerson?.id, 'creatingPerson': _creatingNewPerson,
+    'name': _newPersonNameController.text, 'type': _type.name,
+    'eventId': _selectedEvent?.id, 'description': _descriptionController.text,
+    'start': _startDate.toIso8601String(), 'linkEvent': _linkEvent,
+    'createEvent': _createNewEvent, 'eventTitle': _newEventTitleController.text,
+    'newPersonId': _newPersonId, 'newEventId': _newEventId, 'connectionId': _connectionId,
+  };
+  Future<void> _restoreDraft() async {
+    try {
+      final value = await LocalDraftStore.read(_draftKey);
+      if (value == null || !mounted || jsonEncode(_draft()) != _originalDraft) return;
+      setState(() {
+        _selectedPerson = widget.otherPersons.where((person) => person.id == value['personId']).firstOrNull;
+        _creatingNewPerson = value['creatingPerson'] as bool;
+        _newPersonNameController.text = value['name'] as String;
+        _type = RelationshipType.values.firstWhere((type) => type.name == value['type']);
+        _selectedEvent = widget.events.where((event) => event.id == value['eventId']).firstOrNull;
+        _descriptionController.text = value['description'] as String;
+        _startDate = DateTime.parse(value['start'] as String);
+        _linkEvent = value['linkEvent'] as bool;
+        _createNewEvent = value['createEvent'] as bool;
+        _newEventTitleController.text = value['eventTitle'] as String;
+        _newPersonId = value['newPersonId'] as String;
+        _newEventId = value['newEventId'] as String;
+        _connectionId = value['connectionId'] as String;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).storyDraftRestored)));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).storyDraftSaveFailed)));
+    }
   }
 
   @override
@@ -150,7 +198,13 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final locale = Localizations.localeOf(context).toString();
-    return AlertDialog(
+    return UnsavedDraftGuard(
+      key: _guard,
+      isDirty: () => jsonEncode(_draft()) != _originalDraft,
+      isBusy: () => _isSaving,
+      onSaveDraft: () async { await LocalDraftStore.write(_draftKey, _draft()); return true; },
+      onDiscard: () => LocalDraftStore.remove(_draftKey),
+      child: AlertDialog(
       title: Text(l10n.connectionDialogAddTitle),
       content: SizedBox(
         width: 400,
@@ -203,7 +257,7 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
                     .map((t) =>
                         DropdownMenuItem(value: t, child: Text(RelationshipText.label(l10n, t))))
                     .toList(),
-                onChanged: (t) => setState(() => _type = t ?? _type),
+                onChanged: (t) { setState(() => _type = t ?? _type); context.read<InteractionFeedback?>()?.play(FeedbackCue.selection); },
               ),
               const SizedBox(height: 12),
               Container(
@@ -244,7 +298,7 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
                   final date = await showDatePicker(
                     context: context,
                     initialDate: _startDate,
-                    firstDate: _startDate.isBefore(DateTime(1900)) ? _startDate : DateTime(1900),
+                    firstDate: DateTime(1),
                     lastDate: _startDate.isAfter(DateTime.now()) ? _startDate : DateTime.now(),
                   );
                   if (date != null) setState(() => _startDate = date);
@@ -315,7 +369,7 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () async { if (await _guard.currentState!.confirm() && context.mounted) Navigator.pop(context); },
           child: Text(l10n.commonCancel),
         ),
         FilledButton(
@@ -331,56 +385,66 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
                   : l10n.commonSave),
         ),
       ],
-    );
+    ));
   }
 
   Future<void> _save() async {
     setState(() => _isSaving = true);
-    final db = context.read<DatabaseService>();
+    try {
+      final db = context.read<DatabaseService>();
 
-    final String otherPersonId;
-    if (_creatingNewPerson) {
-      final newPerson = Person(name: _newPersonNameController.text.trim());
-      await db.savePerson(newPerson);
-      otherPersonId = newPerson.id;
-    } else {
-      otherPersonId = _selectedPerson!.id;
-    }
+      final String otherPersonId;
+      if (_creatingNewPerson) {
+        final newPerson = Person(id: _newPersonId, name: _newPersonNameController.text.trim());
+        await db.savePerson(newPerson);
+        otherPersonId = newPerson.id;
+      } else {
+        otherPersonId = _selectedPerson!.id;
+      }
 
-    String? originEventId;
-    if (_linkEvent && _createNewEvent && _newEventTitleController.text.trim().isNotEmpty) {
-      final newEvent = Event(
-        title: _newEventTitleController.text.trim(),
-        dateTime: _startDate,
-        type: EventType.social,
-        participantIds: [widget.viewedPerson.id, otherPersonId],
+      String? originEventId;
+      if (_linkEvent && _createNewEvent && _newEventTitleController.text.trim().isNotEmpty) {
+        final newEvent = Event(
+          id: _newEventId,
+          title: _newEventTitleController.text.trim(),
+          dateTime: _startDate,
+          type: EventType.social,
+          participantIds: [widget.viewedPerson.id, otherPersonId],
+        );
+        await db.saveEvent(newEvent);
+        originEventId = newEvent.id;
+      } else if (_linkEvent && _selectedEvent != null) {
+        originEventId = _selectedEvent!.id;
+      }
+
+      final existing = _existingConnection;
+      if (existing != null) {
+        await db.saveConnection(existing.copyWith(
+          sourceEventIds: [...existing.sourceEventIds, originEventId!],
+        ));
+        await LocalDraftStore.remove(_draftKey);
+        if (mounted) { context.read<InteractionFeedback?>()?.play(FeedbackCue.success); Navigator.pop(context, true); }
+        return;
+      }
+
+      final connection = Connection(
+        id: _connectionId,
+        person1Id: widget.viewedPerson.id,
+        person2Id: otherPersonId,
+        relationshipType: _type.storageValue,
+        originEventId: originEventId,
+        description:
+            _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+        startDate: _startDate,
       );
-      await db.saveEvent(newEvent);
-      originEventId = newEvent.id;
-    } else if (_linkEvent && _selectedEvent != null) {
-      originEventId = _selectedEvent!.id;
+      await db.saveConnection(connection);
+
+      await LocalDraftStore.remove(_draftKey);
+      if (mounted) { context.read<InteractionFeedback?>()?.play(FeedbackCue.success); Navigator.pop(context, true); }
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).peopleSaveFailed)));
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
-
-    final existing = _existingConnection;
-    if (existing != null) {
-      await db.saveConnection(existing.copyWith(
-        sourceEventIds: [...existing.sourceEventIds, originEventId!],
-      ));
-      if (mounted) Navigator.pop(context, true);
-      return;
-    }
-
-    final connection = Connection(
-      person1Id: widget.viewedPerson.id,
-      person2Id: otherPersonId,
-      relationshipType: _type.storageValue,
-      originEventId: originEventId,
-      description:
-          _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
-      startDate: _startDate,
-    );
-    await db.saveConnection(connection);
-
-    if (mounted) Navigator.pop(context, true);
   }
 }

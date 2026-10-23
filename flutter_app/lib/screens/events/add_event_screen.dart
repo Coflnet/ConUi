@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -10,6 +12,10 @@ import '../../services/database_service.dart';
 import '../../widgets/account_required_dialog.dart';
 import '../../widgets/transcript_people_picker.dart';
 import '../../services/story_photo_service.dart';
+import '../../services/local_draft_store.dart';
+import '../../services/interaction_feedback.dart';
+import '../../widgets/unsaved_draft_guard.dart';
+import '../../widgets/story_date_picker.dart';
 import '../../widgets/story_photo.dart';
 import '../../services/record_package_audio_capture.dart';
 import '../../services/recorder_controller.dart';
@@ -49,13 +55,23 @@ class _AddEventScreenState extends State<AddEventScreen> {
   String? _placeId;
   bool _isSaving = false;
   bool _isPickingPhotos = false;
-  late final Event _draftEvent;
+  late Event _draftEvent;
+  final _draftGuard = GlobalKey<UnsavedDraftGuardState>();
+  late String _initialContent;
+  bool _draftLoading = true;
+  bool _draftRestored = false;
+  bool _finalizingDraft = false;
+  bool _titleEdited = false;
+  bool _isTranscribingNow = false;
+  bool _hasFailedTranscription = false;
+  DatePrecision _datePrecision = DatePrecision.time;
+  String get _draftKey => 'story:${widget.existingEvent?.id ?? "new"}';
   final List<AttachedFile> _photos = [];
 
   late final RecorderController _recorder;
   bool _ownsRecorder = false;
   AttachedFile? _pendingRecording;
-  String? _descriptionBeforeRecording;
+  String _liveTextAlreadyShown = '';
 
   @override
   void initState() {
@@ -67,6 +83,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
       _descriptionController.text = e.description ?? '';
       _type = e.type;
       _dateTime = e.dateTime;
+      _datePrecision = e.datePrecision;
       _endDateTime = e.endDateTime;
       _participantIds = List.from(e.participantIds);
       _placeId = e.placeId;
@@ -86,6 +103,99 @@ class _AddEventScreenState extends State<AddEventScreen> {
     _recorder.addListener(_onRecorderChanged);
     _peoplePicker = TranscriptPeopleController(_descriptionController, context.read<DatabaseService>(), preferredIds: _participantIds.toSet());
     _peoplePicker.addListener(_onPeopleChanged);
+    _titleEdited = _titleController.text.isNotEmpty;
+    _initialContent = jsonEncode(_currentEvent().toJson());
+    _descriptionController.addListener(_updateSuggestedTitle);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restoreDraft());
+  }
+
+  Event _currentEvent({String? title, List<String>? participants}) => Event.fromJson({
+    ..._draftEvent.toJson(),
+    'title': title ?? _titleController.text,
+    'description': _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+    'type': _type.name,
+    'dateTime': _dateTime.toIso8601String(),
+    'datePrecision': _datePrecision.name,
+    'endDateTime': _endDateTime?.toIso8601String(),
+    'participantIds': participants ?? _participantIds,
+    'placeId': _placeId,
+    'files': [..._draftEvent.files, if (_pendingRecording != null) _pendingRecording!, ..._photos]
+        .map((file) => file.toJson()).toList(),
+  });
+
+  bool get _hasUnsavedContent => _draftRestored ||
+      _recorder.state == RecorderState.recording ||
+      jsonEncode(_currentEvent().toJson()) != _initialContent || _peoplePicker.hasDraftDecisions;
+
+  Future<void> _restoreDraft() async {
+    try {
+      final draft = await LocalDraftStore.read(_draftKey);
+      if (!mounted || draft == null) return;
+      final event = Event.fromJson(Map<String, dynamic>.from(draft['event']));
+      _draftEvent = widget.existingEvent ?? event.copyWith(files: []);
+      _titleEdited = draft['titleEdited'] == true;
+      _titleController.text = event.title;
+      _descriptionController.text = event.description ?? '';
+      _type = event.type;
+      _dateTime = event.dateTime;
+      _datePrecision = event.datePrecision;
+      _endDateTime = event.endDateTime;
+      _participantIds = event.participantIds;
+      _placeId = event.placeId;
+      _photos.addAll((draft['photos'] as List).map((file) => AttachedFile.fromJson(Map<String, dynamic>.from(file))));
+      if (draft['recording'] != null) _pendingRecording = AttachedFile.fromJson(Map<String, dynamic>.from(draft['recording']));
+      _hasFailedTranscription = draft['failedTranscription'] == true;
+      _liveTextAlreadyShown = draft['liveText'] as String? ?? '';
+      _peoplePicker.restoreDraft(Map<String, dynamic>.from(draft['people'] ?? {}));
+      _draftRestored = true;
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLocalizations.of(context).storyDraftSaveFailed)));
+      }
+    } finally {
+      if (mounted) setState(() => _draftLoading = false);
+    }
+  }
+
+  Future<void> _stopForDraft() async {
+    _finalizingDraft = true;
+    try {
+      if (_recorder.state == RecorderState.recording || _recorder.canRetryStop) await _recorder.stop();
+    } finally {
+      _finalizingDraft = false;
+    }
+  }
+
+  Future<bool> _saveDraft() async {
+    await _stopForDraft();
+    await LocalDraftStore.write(_draftKey, {
+      'event': _currentEvent().toJson(), 'titleEdited': _titleEdited,
+      'photos': _photos.map((file) => file.toJson()).toList(),
+      'recording': _pendingRecording?.toJson(),
+      'failedTranscription': _hasFailedTranscription, 'liveText': _liveTextAlreadyShown,
+      'people': _peoplePicker.exportDraft(),
+    });
+    return true;
+  }
+
+  Future<void> _discardDraft() async {
+    await _stopForDraft();
+    await LocalDraftStore.remove(_draftKey);
+  }
+
+  String _suggestedTitle() {
+    final text = _descriptionController.text.trim();
+    if (text.isNotEmpty) {
+      final title = text.split(RegExp(r'\s+')).take(8).join(' ');
+      return title.length < text.length ? '$title…' : title;
+    }
+    final l10n = AppLocalizations.of(context);
+    return l10n.quickAddDefaultTitle(formatDateWithPrecision(_dateTime, _datePrecision, l10n.localeName));
+  }
+
+  void _updateSuggestedTitle() {
+    if (!_titleEdited && mounted) _titleController.text = _suggestedTitle();
   }
 
   static RecorderController _buildDefaultRecorderController(BuildContext context) {
@@ -101,6 +211,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
         getToken: () => auth.token,
       ),
       language: settings.effectiveRecordingLanguage,
+      feedback: context.read<InteractionFeedback?>(),
     );
   }
 
@@ -110,30 +221,30 @@ class _AddEventScreenState extends State<AddEventScreen> {
 
   void _onRecorderChanged() {
     if (!mounted) return;
-    // While recording, the live transcript flows straight into the
-    // description field so the user sees it forming as they talk.
-    if (_recorder.state == RecorderState.recording) {
-      final live = _recorder.liveTranscript;
-      if (live.isNotEmpty) {
-        _descriptionController.text = [
-          if (_descriptionBeforeRecording?.trim().isNotEmpty ?? false) _descriptionBeforeRecording!.trim(),
-          live,
-        ].join(' ');
-      }
+    if (_recorder.state == RecorderState.recording || _recorder.state == RecorderState.finishing) {
+      _appendLiveTranscript();
     }
     final result = _recorder.lastStopResult;
     if (_recorder.state == RecorderState.idle && result != null &&
         _pendingRecording?.id != result.attachedFile.id) {
       _pendingRecording = result.attachedFile;
-      if (result.transcript.isNotEmpty) {
-        _descriptionController.text = [
-          if (_descriptionBeforeRecording?.trim().isNotEmpty ?? false) _descriptionBeforeRecording!.trim(),
-          result.transcript,
-        ].join(' ');
-      }
-      if (result.failedSegments.isNotEmpty) _showTranscriptionFailure();
+      _appendLiveTranscript();
+      _hasFailedTranscription = result.failedSegments.isNotEmpty;
+      if (_hasFailedTranscription && !_finalizingDraft) _showTranscriptionFailure();
     }
     setState(() {});
+  }
+
+  void _appendLiveTranscript() {
+    final live = _recorder.liveTranscript;
+    if (live.length <= _liveTextAlreadyShown.length) return;
+    final delta = live.substring(_liveTextAlreadyShown.length);
+    final separator = _liveTextAlreadyShown.isEmpty && _descriptionController.text.isNotEmpty &&
+        !_descriptionController.text.endsWith(' ') ? ' ' : '';
+    final selection = _descriptionController.selection;
+    _descriptionController.value = TextEditingValue(
+      text: '${_descriptionController.text}$separator$delta', selection: selection);
+    _liveTextAlreadyShown = live;
   }
 
   void _showTranscriptionFailure() {
@@ -171,15 +282,25 @@ class _AddEventScreenState extends State<AddEventScreen> {
   }
 
   Future<void> _toggleRecording() async {
-    if (_recorder.state == RecorderState.recording) {
-      await _recorder.stop();
-      return;
-    }
+    final stopping = _recorder.state == RecorderState.recording || _recorder.canRetryStop;
+    try {
+      if (stopping) {
+        await _recorder.stop();
+        return;
+      }
 
-    _descriptionBeforeRecording = _descriptionController.text;
-    await _recorder.start();
-    if (mounted && _recorder.liveTranscriptionReason == LiveTranscriptionReason.anonymousLimit) {
-      _showTranscriptionFailure();
+      _liveTextAlreadyShown = '';
+      await _recorder.start();
+      if (mounted && _recorder.liveTranscriptionReason == LiveTranscriptionReason.anonymousLimit) {
+        _showTranscriptionFailure();
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(stopping ? AppLocalizations.of(context).storyRecordingStopFailed : AppLocalizations.of(context).micOtherError),
+        action: SnackBarAction(label: stopping ? AppLocalizations.of(context).storyRetryFinish : AppLocalizations.of(context).commonRetry,
+          onPressed: _toggleRecording)));
+      }
     }
   }
 
@@ -203,44 +324,59 @@ class _AddEventScreenState extends State<AddEventScreen> {
   }
 
   Future<void> _selectDateTime() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _dateTime,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-    );
-    if (date == null) return;
-
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_dateTime),
-    );
-    if (time == null) return;
-
-    setState(() {
-      _dateTime =
-          DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final date = await pickStoryDate(context, _dateTime, _datePrecision);
+    if (date != null && mounted) {
+      setState(() {
+      _dateTime = date;
+      _updateSuggestedTitle();
     });
+    }
+  }
+
+  Future<void> _transcribeNow() async {
+    final recording = _pendingRecording;
+    if (recording == null || _isTranscribingNow) return;
+    setState(() => _isTranscribingNow = true);
+    try {
+      final result = await _recorder.transcribeStoredRecording(recording.id);
+      if (!mounted) return;
+      _hasFailedTranscription = result.failedSegments.isNotEmpty;
+      if (result.transcript.isNotEmpty) {
+        final current = _descriptionController.text;
+        final previous = _liveTextAlreadyShown;
+        if (previous.isNotEmpty && current.endsWith(previous)) {
+          _descriptionController.text = current.substring(0, current.length - previous.length) + result.transcript;
+        } else if (!current.contains(result.transcript)) {
+          _descriptionController.text = [current.trim(), result.transcript].where((part) => part.isNotEmpty).join(' ');
+        }
+        _liveTextAlreadyShown = result.transcript;
+      }
+      if (_hasFailedTranscription) _showTranscriptionFailure();
+    } catch (_) {
+      if (mounted) {
+        _hasFailedTranscription = true;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).liveTranscriptionFailing)));
+      }
+    } finally {
+      if (mounted) setState(() => _isTranscribingNow = false);
+    }
   }
 
   bool get _canSave =>
       !_isSaving &&
+      !_recorder.canRetryStop &&
       !_isPickingPhotos &&
+      !_draftLoading &&
+      !_isTranscribingNow &&
       (_recorder.state == RecorderState.idle ||
           _recorder.state == RecorderState.failed);
 
   Future<bool> _save({bool close = true}) async {
     if (!_canSave) return false;
+    if (_titleController.text.trim().isEmpty) _titleController.text = _suggestedTitle();
     if (close && !_formKey.currentState!.validate()) return false;
 
     var title = _titleController.text.trim();
-    if (!close && title.isEmpty) {
-      final l10n = AppLocalizations.of(context);
-      title = _descriptionController.text.trim().split(RegExp(r'\s+')).take(8).join(' ');
-      if (title.isEmpty) {
-        title = l10n.quickAddDefaultTitle(DateFormat.yMMMd(l10n.localeName).format(_dateTime));
-      }
-    }
 
     setState(() => _isSaving = true);
 
@@ -248,37 +384,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
       final db = context.read<DatabaseService>();
       final detectedIds = await saveStoryPeople(db, await _peoplePicker.peopleForSave());
       final participantIds = {..._participantIds, ...detectedIds}.toList();
-      final newFiles = <AttachedFile>[
-        ...(widget.existingEvent?.files ?? const []),
-        if (_pendingRecording != null) _pendingRecording!,
-        ..._photos,
-      ];
-      final event = widget.existingEvent != null
-          ? widget.existingEvent!.copyWith(
-              title: title,
-              description: _descriptionController.text.trim().isEmpty
-                  ? null
-                  : _descriptionController.text.trim(),
-              type: _type,
-              dateTime: _dateTime,
-              endDateTime: _endDateTime,
-              participantIds: participantIds,
-              placeId: _placeId,
-              files: newFiles,
-            )
-          : Event(
-              id: _draftEvent.id,
-              title: title,
-              description: _descriptionController.text.trim().isEmpty
-                  ? null
-                  : _descriptionController.text.trim(),
-              type: _type,
-              dateTime: _dateTime,
-              endDateTime: _endDateTime,
-              participantIds: participantIds,
-              placeId: _placeId,
-              files: newFiles,
-            );
+      final event = _currentEvent(title: title, participants: participantIds);
 
       await db.saveEvent(event);
       await _peoplePicker.saveInformation(event);
@@ -291,6 +397,10 @@ class _AddEventScreenState extends State<AddEventScreen> {
         }
       }
 
+      await LocalDraftStore.remove(_draftKey);
+      _draftRestored = false;
+      _initialContent = jsonEncode(_currentEvent().toJson());
+      if (mounted) context.read<InteractionFeedback?>()?.play(FeedbackCue.success);
       if (mounted && close) {
         final l10n = AppLocalizations.of(context);
         Navigator.pop(
@@ -321,7 +431,13 @@ class _AddEventScreenState extends State<AddEventScreen> {
     final l10n = AppLocalizations.of(context);
     final locale = Localizations.localeOf(context).toString();
     final participantCount = {..._participantIds, ..._peoplePicker.selectedPeople.map((p) => p.id)}.length;
-    return Scaffold(
+    return UnsavedDraftGuard(
+      key: _draftGuard,
+      isDirty: () => _hasUnsavedContent,
+      isBusy: () => _isSaving || _isTranscribingNow || _draftLoading || _isPickingPhotos ||
+        _recorder.state == RecorderState.finishing || _recorder.state == RecorderState.requestingPermission,
+      onSaveDraft: _saveDraft, onDiscard: _discardDraft,
+      child: Scaffold(
       appBar: AppBar(
         title: Text(widget.existingEvent != null ? l10n.addEventTitleEdit : l10n.addEventTitleNew),
         actions: [
@@ -336,21 +452,24 @@ class _AddEventScreenState extends State<AddEventScreen> {
           ),
         ],
       ),
-      body: Form(
+      body: _draftLoading ? const Center(child: CircularProgressIndicator()) : Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            if (_draftRestored) Text(l10n.storyDraftRestored),
             TextFormField(
               controller: _titleController,
+              onChanged: (_) => _titleEdited = true,
               decoration: InputDecoration(
+                  helperText: !_titleEdited ? l10n.storyTitleSuggestion : null,
                   labelText: l10n.addEventTitleFieldLabel, prefixIcon: const Icon(Icons.title)),
               validator: (v) =>
                   v == null || v.trim().isEmpty ? l10n.addEventTitleRequired : null,
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<EventType>(
-              value: _type,
+              initialValue: _type,
               decoration: InputDecoration(
                   labelText: l10n.addEventTypeLabel, prefixIcon: const Icon(Icons.category)),
               items: EventType.values
@@ -359,9 +478,26 @@ class _AddEventScreenState extends State<AddEventScreen> {
               onChanged: (v) => setState(() => _type = v ?? EventType.other),
             ),
             const SizedBox(height: 16),
+            InputDecorator(
+              decoration: InputDecoration(labelText: l10n.storyDatePrecision),
+              child: DropdownButtonHideUnderline(child: DropdownButton<DatePrecision>(
+              value: _datePrecision,
+              isExpanded: true,
+              items: [
+                DropdownMenuItem(value: DatePrecision.year, child: Text(l10n.quickAddAYear)),
+                DropdownMenuItem(value: DatePrecision.month, child: Text(l10n.quickAddMonthAndYear)),
+                DropdownMenuItem(value: DatePrecision.day, child: Text(l10n.quickAddExactDate)),
+                DropdownMenuItem(value: DatePrecision.time, child: Text(l10n.storyExactTime)),
+              ],
+              onChanged: (value) async {
+                if (value == null) return;
+                final date = await pickStoryDate(context, _dateTime, value);
+                if (date != null && mounted) setState(() { _datePrecision = value; _dateTime = date; _updateSuggestedTitle(); });
+              },
+            ))),
             ListTile(
               leading: const Icon(Icons.schedule),
-              title: Text(DateFormat.yMMMd(locale).add_jm().format(_dateTime)),
+              title: Text(formatDateWithPrecision(_dateTime, _datePrecision, locale)),
               subtitle: Text(l10n.addEventStartTimeSubtitle),
               onTap: _selectDateTime,
             ),
@@ -432,14 +568,14 @@ class _AddEventScreenState extends State<AddEventScreen> {
           ],
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildRecordingCard(AppLocalizations l10n) {
     final state = _recorder.state;
     final isRecording = state == RecorderState.recording;
     final isBusy = state == RecorderState.requestingPermission ||
-        state == RecorderState.finishing;
+        state == RecorderState.finishing || _isTranscribingNow;
 
     return Card(
       child: Padding(
@@ -451,10 +587,10 @@ class _AddEventScreenState extends State<AddEventScreen> {
               children: [
                 IconButton(
                   icon: Icon(
-                    isRecording ? Icons.stop_circle : Icons.mic,
+                    isRecording ? Icons.stop_circle : _recorder.canRetryStop ? Icons.refresh : Icons.mic,
                     color: isRecording ? Colors.red : null,
                   ),
-                  tooltip: isRecording ? l10n.quickAddStopRecording : l10n.quickAddStartRecording,
+                  tooltip: isRecording ? l10n.quickAddStopRecording : _recorder.canRetryStop ? l10n.storyRetryFinish : l10n.quickAddStartRecording,
                   iconSize: 36,
                   onPressed: isBusy ? null : _toggleRecording,
                 ),
@@ -477,7 +613,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  messageForMicFailure(l10n, _recorder.failure!.reason),
+                  _recorder.canRetryStop ? l10n.storyRecordingStopFailed : messageForMicFailure(l10n, _recorder.failure!.reason),
                   style: const TextStyle(color: Colors.red),
                 ),
               ),
@@ -489,7 +625,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
-            if (_recorder.isTranscribing || state == RecorderState.finishing)
+            if (_recorder.isTranscribing || state == RecorderState.finishing || _isTranscribingNow)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Row(
@@ -508,6 +644,10 @@ class _AddEventScreenState extends State<AddEventScreen> {
               Text(l10n.liveTranscriptionAnonymousLimit),
             if (_recorder.lastStopResult?.stopReason == StopReason.anonymousLimit)
               Text(l10n.recordingAnonymousStopped),
+            if (_pendingRecording != null && !isRecording &&
+                (_hasFailedTranscription || _descriptionController.text.trim().isEmpty))
+              TextButton(onPressed: isBusy ? null : _transcribeNow,
+                child: Text(l10n.quickAddTranscribeNow)),
             if (_pendingRecording != null && !isRecording)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
@@ -540,7 +680,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
       firstDate: _dateTime,
       lastDate: DateTime(2100),
     );
-    if (date == null) return;
+    if (date == null || !mounted) return;
 
     final time = await showTimePicker(
       context: context,
@@ -556,7 +696,8 @@ class _AddEventScreenState extends State<AddEventScreen> {
     });
   }
 
-  void _selectParticipants() async {
+  Future<void> _selectParticipants() async {
+    try {
     final l10n = AppLocalizations.of(context);
     final db = context.read<DatabaseService>();
     final persons = await db.getPersons();
@@ -599,9 +740,18 @@ class _AddEventScreenState extends State<AddEventScreen> {
       ),
     );
     setState(() {});
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLocalizations.of(context).storySaveFailed),
+        action: SnackBarAction(label: AppLocalizations.of(context).commonRetry,
+          onPressed: _selectParticipants)));
+      }
+    }
   }
 
-  void _selectPlace() async {
+  Future<void> _selectPlace() async {
+    try {
     final l10n = AppLocalizations.of(context);
     final db = context.read<DatabaseService>();
     final places = await db.getPlaces();
@@ -644,6 +794,14 @@ class _AddEventScreenState extends State<AddEventScreen> {
         ],
       ),
     );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLocalizations.of(context).storySaveFailed),
+        action: SnackBarAction(label: AppLocalizations.of(context).commonRetry,
+          onPressed: _selectPlace)));
+      }
+    }
   }
 
   /// The "pick on map" action: opens the same [LocationPickerScreen] the
@@ -651,6 +809,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
   /// place within 50m (see [findNearbyPlace]) or creates a new one with a
   /// sensible default name at that spot.
   Future<void> _pickPlaceOnMap(DatabaseService db, List<Place> places) async {
+    try {
     final initialPlace = places.firstWhere(
       (p) => p.id == _placeId,
       // Central Europe: same fallback as the map's own default view (see
@@ -700,5 +859,15 @@ class _AddEventScreenState extends State<AddEventScreen> {
     );
     await db.savePlace(place);
     if (mounted) setState(() => _placeId = place.id);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLocalizations.of(context).storySaveFailed),
+        action: SnackBarAction(label: AppLocalizations.of(context).commonRetry,
+          onPressed: () => _pickPlaceOnMap(db, places))));
+      }
+    }
   }
+
+
 }

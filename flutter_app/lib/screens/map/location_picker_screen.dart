@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
 
 import '../../l10n/gen/app_localizations.dart';
 import '../../services/address_service.dart';
+import '../../services/interaction_feedback.dart';
 import 'map_tile_layer.dart';
 
 /// One reusable full-screen map for picking (or adjusting) a single
@@ -98,6 +100,21 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                   ),
                   children: const [StoryMapTileLayer()],
                 ),
+                Positioned(left: 12, bottom: 12, child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  IconButton.filledTonal(
+                    tooltip: l10n.locationPickerZoomIn,
+                    onPressed: () => _mapController.move(_position,
+                        (_mapController.camera.zoom + 1).clamp(0, 19)),
+                    icon: const Icon(Icons.add),
+                  ),
+                  const SizedBox(height: 8),
+                  IconButton.filledTonal(
+                    tooltip: l10n.locationPickerZoomOut,
+                    onPressed: () => _mapController.move(_position,
+                        (_mapController.camera.zoom - 1).clamp(0, 19)),
+                    icon: const Icon(Icons.remove),
+                  ),
+                ])),
                 const IgnorePointer(
                   child: Padding(
                     // Optically centre the pin's tip, not its icon centre.
@@ -111,7 +128,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.pop(context, _position),
+        onPressed: () {
+          context.read<InteractionFeedback?>()?.play(FeedbackCue.selection);
+          Navigator.pop(context, _position);
+        },
         icon: const Icon(Icons.check),
         label: Text(l10n.locationPickerUse),
       ),

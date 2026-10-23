@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
@@ -31,6 +32,7 @@ class _DelayedStopCapture extends FakeAudioCapture {
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   for (final quickAdd in [true, false]) {
     testWidgets(
         '${quickAdd ? 'Quick add' : 'Add event'} waits for audio before saving',
@@ -41,6 +43,7 @@ void main() {
       await tester.runAsync(db.initialize);
       final capture = _DelayedStopCapture();
       final recorder = RecorderController(
+        createSpeechDetector: () async => null,
         audioCapture: capture,
         fileStore: NativeRecordingFileStore(baseDirectory: directory),
         database: db,
@@ -64,6 +67,11 @@ void main() {
                   : AddEventScreen(recorderController: recorder)),
         ),
       ));
+      for (var frame = 0; frame < 2; frame++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
       await tester.enterText(
           quickAdd
               ? find.widgetWithText(TextField, 'What happened here?')

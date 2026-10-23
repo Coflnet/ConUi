@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 // German-locale rendering tests for the quick add sheet and the recorder
 // state/failure messages it (and the add/edit story form) shares - see the
 // l10n work package's requirement to add German rendering tests for these
@@ -20,6 +21,7 @@ import 'package:relationship_manager/services/recording_file_store_native.dart';
 import 'package:relationship_manager/services/transcription_client.dart';
 
 import '../../support/fake_audio_capture.dart';
+import '../../support/fake_speech_detector.dart';
 import '../../support/test_database.dart';
 
 Widget _wrapDe(DatabaseService db, Widget child) {
@@ -45,6 +47,7 @@ void main() {
   late Directory tempDir;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     tempDir = Directory.systemTemp.createTempSync('quick_add_sheet_german_test');
   });
 
@@ -54,6 +57,7 @@ void main() {
 
   RecorderController buildRecorder(DatabaseService db, FakeAudioCapture capture) {
     return RecorderController(
+      createSpeechDetector: () async => EndingDetector(minSpeechFrames: 1),
       audioCapture: capture,
       fileStore: NativeRecordingFileStore(baseDirectory: tempDir),
       database: db,

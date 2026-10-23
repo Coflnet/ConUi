@@ -543,5 +543,70 @@
   "accountRequiredTitle": "Konto erforderlich",
   "accountRequiredBody": "Melde dich an oder erstelle ein Konto, um diese Funktion zu nutzen. Deine Geschichten und Aufnahmen bleiben auf diesem Gerät.",
   "accountCreateButton": "Konto erstellen",
-  "accountStorySavedBeforeSignIn": "Deine aktuelle Geschichte wird auf diesem Gerät gespeichert, bevor du dich anmeldest oder ein Konto erstellst."
+  "accountStorySavedBeforeSignIn": "Deine aktuelle Geschichte wird auf diesem Gerät gespeichert, bevor du dich anmeldest oder ein Konto erstellst.",
+  "storyDraftTitle": "Änderungen behalten?",
+  "storyDraftBody": "Speichere einen Entwurf auf diesem Gerät, verwirf die Änderungen oder bearbeite sie weiter.",
+  "storyDraftSave": "Entwurf speichern",
+  "storyDraftDiscard": "Verwerfen",
+  "storyDraftKeepEditing": "Weiter bearbeiten",
+  "storyDraftSaveFailed": "Der Entwurf konnte nicht gespeichert werden. Deine Änderungen sind noch da. Versuche es erneut.",
+  "storyDraftRestored": "Gespeicherter Entwurf wiederhergestellt",
+  "storyDatePrecision": "Datumsgenauigkeit",
+  "storyExactTime": "Datum und Uhrzeit",
+  "storyTitleSuggestion": "Aus deiner Geschichte vorgeschlagen. Du kannst den Titel ändern.",
+  "storyYearRange": "Gib ein Jahr zwischen 1 und 2100 ein.",
+  "quickAddChangePosition": "Position ändern",
+  "placesOptionalNameLabel": "Name (optional)",
+  "placesLocationRequired": "Wähle einen Ort auf der Karte, bevor du ihn hinzufügst.",
+  "placesSaveFailed": "Der Ort konnte nicht gespeichert werden. Deine Änderungen sind noch da. Versuche es erneut.",
+  "savedDataLoadFailed": "Deine gespeicherten Daten konnten nicht geladen werden. Versuche es erneut.",
+  "mapLocationUnavailable": "Dein aktueller Standort ist nicht verfügbar",
+  "mapLocationFallbackExplanation": "Der Standortzugriff ist möglicherweise ausgeschaltet oder nicht verfügbar. Wähle einen Ort für deine Geschichte oder verwende die Kartenmitte.",
+  "mapUseMapCentre": "Kartenmitte verwenden",
+  "mapGettingLocation": "Standort wird ermittelt…",
+  "objectNotFound": "Dieses Objekt ist nicht mehr verfügbar.",
+  "locationPickerZoomIn": "Vergrößern",
+  "locationPickerZoomOut": "Verkleinern",
+  "syncUnlockTitle": "Verschlüsselte Synchronisierung entsperren",
+  "syncUnlockBody": "Verwende auf allen Geräten dasselbe Verschlüsselungspasswort. Wähle bei der ersten Synchronisierung ein Passwort und bewahre es sicher auf. Es ist unabhängig vom Kontopasswort und wird nie an den Server gesendet.",
+  "syncPasswordRequired": "Gib dein Verschlüsselungspasswort ein.",
+  "syncUnlockFailed": "Entsperren und Synchronisieren fehlgeschlagen. Prüfe dein Verschlüsselungspasswort und die Verbindung und versuche es erneut. Deine lokalen Änderungen sind weiterhin gespeichert.",
+  "syncUnlockAction": "Entsperren und synchronisieren",
+  "settingsFeedbackSection": "Rückmeldung",
+  "settingsHaptics": "Haptische Rückmeldung",
+  "settingsHapticsDescription": "Dezente Vibration auf unterstützten Geräten. Während der Aufnahme ausgeschaltet.",
+  "settingsSounds": "Akustische Rückmeldung",
+  "settingsSoundsDescription": "Leise Töne bei Aktionen und beim Speichern. Während der Aufnahme ausgeschaltet.",
+  "settingsFeedbackPreview": "Rückmeldung ausprobieren",
+  "peopleSaveFailed": "Deine Änderungen konnten nicht gespeichert werden. Sie sind noch da. Versuche es erneut.",
+  "peopleDatesInvalid": "Das Sterbedatum darf nicht vor dem Geburtstag liegen.",
+  "contactsImportTitle": "Kontakte importieren",
+  "contactsImportHelp": "Wähle Kontakte für deine Personen auf diesem Gerät aus. Bereits vorhandene Kontakte werden übersprungen. Dein Adressbuch bleibt unverändert.",
+  "contactsFromDevice": "Aus Adressbuch auswählen",
+  "contactsFromFile": "vCard-Datei auswählen (.vcf)",
+  "contactsPermissionDenied": "Der Zugriff auf Kontakte wurde nicht erlaubt. Aktiviere ihn in den Geräteeinstellungen oder wähle eine vCard-Datei.",
+  "contactsOpenSettings": "Geräteeinstellungen öffnen",
+  "contactsReadFailed": "Kontakte konnten nicht gelesen werden. Versuche es erneut oder wähle eine andere vCard-Datei.",
+  "contactsSaveFailed": "Einige Kontakte konnten nicht hinzugefügt werden. Deine Auswahl bleibt erhalten. Versuche es erneut; bereits hinzugefügte Kontakte werden übersprungen.",
+  "contactsEmpty": "Es wurden keine Kontakte mit Namen, E-Mail-Adresse oder Telefonnummer gefunden.",
+  "contactsAlreadyAdded": "Bereits unter Personen",
+  "contactsImported": "{count} Kontakte hinzugefügt",
+  "contactsImportSelected": "Auswahl importieren ({count})",
+  "@contactsImported": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@contactsImportSelected": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "relationshipDatesInvalid": "Das Enddatum darf nicht vor dem Startdatum liegen.",
+  "storyRetryFinish": "Aufnahme erneut abschließen",
+  "storyRecordingStopFailed": "Die Aufnahme konnte nicht abgeschlossen werden. Deine Originalaufnahme ist noch auf diesem Gerät. Versuche es erneut."
 }
