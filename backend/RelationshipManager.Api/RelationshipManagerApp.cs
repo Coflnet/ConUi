@@ -214,16 +214,13 @@ public static class RelationshipManagerApp
             });
         });
 
+        // Validated here (not lazily inside the options callback) so a bad entry fails startup.
+        var (knownProxies, knownNetworks) = ReverseProxyTrust.Parse(builder.Configuration);
         builder.Services.Configure<ForwardedHeadersOptions>(options =>
         {
             options.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
             options.ForwardLimit = 1;
-            options.KnownNetworks.Clear();
-            options.KnownProxies.Clear();
-            foreach (var proxy in builder.Configuration.GetSection("ReverseProxy:KnownProxies").Get<string[]>() ?? Array.Empty<string>())
-                options.KnownProxies.Add(IPAddress.Parse(proxy));
-            // An empty allowlist must trust nobody; ASP.NET otherwise treats it as trust-all.
-            if (options.KnownProxies.Count == 0) options.KnownProxies.Add(IPAddress.None);
+            ReverseProxyTrust.Apply(options, knownProxies, knownNetworks);
         });
 
         var app = builder.Build();
