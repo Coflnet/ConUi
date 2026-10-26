@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:record/record.dart';
 
 import 'audio_capture.dart';
@@ -46,6 +47,8 @@ class RecordPackageAudioCapture implements AudioCapture {
         encoder: AudioEncoder.pcm16bits,
         sampleRate: format.sampleRate,
         numChannels: format.numChannels,
+        // Keep Chrome's speech gain control instead of forcing quiet raw input.
+        autoGain: kIsWeb,
       ));
     } catch (e) {
       throw AudioCaptureException(
