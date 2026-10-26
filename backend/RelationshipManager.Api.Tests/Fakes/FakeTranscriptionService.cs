@@ -11,16 +11,18 @@ public class FakeTranscriptionService : ITranscriptionService
     public Exception? ThrowOnTranscribe { get; set; }
     public string? LastContentType { get; private set; }
     public string? LastLanguage { get; private set; }
+    public string? LastInitialPrompt { get; private set; }
     public long LastAudioByteCount { get; private set; }
 
     /// <summary>When set, TranscribeAsync awaits this before returning - lets a test hold a call "in flight" to exercise concurrency limiting.</summary>
     public TaskCompletionSource<bool>? Gate { get; set; }
 
-    public async Task<string> TranscribeAsync(Stream audio, string contentType, string? language, CancellationToken cancellationToken)
+    public async Task<string> TranscribeAsync(Stream audio, string contentType, string? language, CancellationToken cancellationToken, string? initialPrompt = null)
     {
         CallCount++;
         LastContentType = contentType;
         LastLanguage = language;
+        LastInitialPrompt = initialPrompt;
 
         // Drain the stream like a real implementation would (also exercises LimitedStream).
         using var buffer = new MemoryStream();

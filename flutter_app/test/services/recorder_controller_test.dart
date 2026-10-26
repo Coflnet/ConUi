@@ -3,6 +3,7 @@
 // limit, segment cutting, and that audio is stored completely even when
 // every transcription request fails.
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -11,11 +12,13 @@ import 'package:relationship_manager/services/interaction_feedback.dart';
 import 'package:relationship_manager/services/app_settings_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/services/audio_capture.dart';
 import 'package:relationship_manager/services/recorder_controller.dart';
 import 'package:relationship_manager/services/sentence_segmenter.dart';
 import 'package:relationship_manager/services/recording_file_store_native.dart';
+import 'package:relationship_manager/services/recording_recovery_service.dart';
 import 'package:relationship_manager/services/transcription_client.dart';
 import 'package:relationship_manager/services/wav.dart';
 
@@ -50,6 +53,20 @@ class _PcmSpeechDetector extends EndingDetector {
   }
   @override
   void reset({bool continuing = false}) => _detected = false;
+}
+
+class _TransientTextFailureDatabase extends DatabaseService {
+  bool failNextTextSave = true;
+  _TransientTextFailureDatabase(String path) : super(factory: databaseFactoryFfi, path: path);
+
+  @override
+  Future<void> saveRecordingSegmentText(String id, int sequence, int length, String text) async {
+    if (failNextTextSave) {
+      failNextTextSave = false;
+      throw StateError('Transient text write failure');
+    }
+    await super.saveRecordingSegmentText(id, sequence, length, text);
+  }
 }
 
 void main() {
@@ -105,6 +122,145 @@ void main() {
               '{"text": "seg-${request.bodyBytes.length}"}', 200)),
     );
   }
+
+  test('successful original text is durable before stop and survives recovery without ASR', () async {
+    var requests = 0;
+    final controller = buildController(client: echoClient(handler: (_) async {
+      requests++;
+      return http.Response('{"text":"Original sentence."}', 200);
+    }));
+    final recognized = Completer<void>();
+    controller.addListener(() {
+      if (controller.liveTranscript == 'Original sentence.' && !recognized.isCompleted) recognized.complete();
+    });
+    await controller.start();
+    capture.emitChunk(_pcmChunk(7, _bytesPerSegment));
+    await recognized.future.timeout(const Duration(seconds: 5));
+    final id = controller.recordingId!;
+    expect(controller.state, RecorderState.recording);
+    expect((await db.getRecordingTranscriptSlices(id))!.single.text, 'Original sentence.');
+    controller.dispose();
+    await RecordingRecoveryService(store, db).recoverIncompleteRecordings();
+    var modelLoads = 0;
+    final restarted = buildController(client: echoClient(handler: (_) async {
+      fail('Recovered successful audio must never be recognized again');
+    }), createSpeechDetector: () async { modelLoads++; return null; });
+    final restored = await restarted.transcribeStoredRecording(id);
+    expect(requests, 1);
+    expect(modelLoads, 0);
+    expect(restored.transcript, 'Original sentence.');
+    expect(restored.transcriptSlices.single.startByte, 0);
+    expect(restored.transcriptSlices.single.endByte, _bytesPerSegment);
+  });
+
+  test('retrying local persistence never recognizes the successful audio twice', () async {
+    await (await db.database).close();
+    db = _TransientTextFailureDatabase('${tempDir.path}/text-save.db');
+    await db.initialize();
+    var requests = 0;
+    final controller = buildController(client: echoClient(handler: (_) async {
+      requests++;
+      return http.Response('{"text":"Paid original words."}', 200);
+    }));
+    await controller.start();
+    capture.emitChunk(_pcmChunk(7, _bytesPerSegment));
+    await Future<void>.delayed(Duration.zero);
+    final result = await controller.stop();
+    expect(requests, 1);
+    expect(result.failedSegments, isEmpty);
+    expect((await db.getRecordingTranscriptSlices(result.attachedFile.id))!.single.text, 'Paid original words.');
+    await (await db.database).close();
+  });
+
+  test('stored retry recognizes only failed audio and preserves original successful words', () async {
+    final controller = buildController(maxSegmentRetries: 0, client: echoClient(handler: (request) async {
+      final sequence = request.url.queryParameters['segment'];
+      return sequence == '1' ? http.Response('{}', 502)
+          : http.Response('{"text":"original-$sequence"}', 200);
+    }));
+    await controller.start();
+    for (var i = 0; i < 3; i++) {
+      capture.emitChunk(_pcmChunk(7 + i, _bytesPerSegment));
+    }
+    await Future<void>.delayed(Duration.zero);
+    final stopped = await controller.stop();
+    expect(stopped.failedSegments.single.sequence, 1);
+    final retries = <int>[];
+    final restarted = buildController(client: echoClient(handler: (request) async {
+      retries.add(int.parse(request.url.queryParameters['segment']!));
+      expect(utf8.decode(base64Decode(request.headers['X-Transcription-Prompt']!)), 'original-0');
+      return http.Response('{"text":"recovered-1"}', 200);
+    }));
+    final restored = await restarted.transcribeStoredRecording(stopped.attachedFile.id);
+    expect(retries, [1]);
+    expect(restored.transcript, 'original-0 recovered-1 original-2');
+    expect(restored.transcriptSlices.map((slice) => slice.startByte), [0, 3200, 6400]);
+    expect(restored.transcriptSlices.map((slice) => slice.text), ['original-0', 'recovered-1', 'original-2']);
+  });
+
+  test('prompt snapshots use completed contiguous preceding words without delaying concurrent jobs', () async {
+    final first = Completer<http.Response>();
+    final third = Completer<void>();
+    final prefixReady = Completer<void>();
+    final prompts = <String?>[];
+    final controller = buildController(client: echoClient(handler: (request) async {
+      final encoded = request.headers['X-Transcription-Prompt'];
+      prompts.add(encoded == null ? null : utf8.decode(base64Decode(encoded)));
+      final index = prompts.length - 1;
+      if (index == 0) return first.future;
+      if (index == 2) third.complete();
+      return http.Response('{"text":"word$index"}', 200);
+    }));
+    controller.addListener(() {
+      if (controller.liveTranscript == 'word0 word1 word2' && !prefixReady.isCompleted) prefixReady.complete();
+    });
+    await controller.start();
+    for (var i = 0; i < 3; i++) {
+      capture.emitChunk(_pcmChunk(7 + i, _bytesPerSegment));
+    }
+    await third.future.timeout(const Duration(seconds: 5));
+    expect(prompts, [null, null, null], reason: 'future/out-of-order answers are not preceding context');
+    first.complete(http.Response('{"text":"word0"}', 200));
+    await prefixReady.future.timeout(const Duration(seconds: 5));
+    capture.emitChunk(_pcmChunk(10, _bytesPerSegment));
+    await Future<void>.delayed(Duration.zero);
+    await controller.stop();
+    expect(prompts.last, 'word0 word1 word2');
+    await controller.start();
+    capture.emitChunk(_pcmChunk(11, _bytesPerSegment));
+    await Future<void>.delayed(Duration.zero);
+    await controller.stop();
+    expect(prompts.last, isNull, reason: 'another recording must not leak into the new prompt');
+  });
+
+  test('a retry keeps its prompt snapshot when preceding text completes later', () async {
+    final first = Completer<http.Response>();
+    final secondFailure = Completer<http.Response>();
+    final secondStarted = Completer<void>();
+    final prefixReady = Completer<void>();
+    final prompts = <String?>[];
+    final controller = buildController(client: echoClient(handler: (request) async {
+      if (request.url.queryParameters['segment'] == '0') return first.future;
+      prompts.add(request.headers['X-Transcription-Prompt']);
+      if (prompts.length == 1) {
+        secondStarted.complete();
+        return secondFailure.future;
+      }
+      return http.Response('{"text":"second"}', 200);
+    }));
+    controller.addListener(() {
+      if (controller.liveTranscript == 'first' && !prefixReady.isCompleted) prefixReady.complete();
+    });
+    await controller.start();
+    capture.emitChunk(_pcmChunk(7, _bytesPerSegment));
+    capture.emitChunk(_pcmChunk(8, _bytesPerSegment));
+    await secondStarted.future.timeout(const Duration(seconds: 5));
+    first.complete(http.Response('{"text":"first"}', 200));
+    await prefixReady.future.timeout(const Duration(seconds: 5));
+    secondFailure.complete(http.Response('{}', 502));
+    expect((await controller.stop()).transcript, 'first second');
+    expect(prompts, [null, null], reason: 'retry identity must preserve its original prompt');
+  });
 
   test('feedback finishes before microphone capture and resumes only after stop', () async {
     final cues = <FeedbackCue>[];
@@ -165,6 +321,11 @@ void main() {
     expect(requests, 0);
     expect(result.transcript, isEmpty);
     expect(result.failedSegments, isEmpty);
+    final silentMarkers = AttachedFile.fromJson(result.attachedFile.toJson()).transcriptSlices;
+    expect(silentMarkers, isNotEmpty, reason: 'synced/imported silence must remain known without ASR');
+    expect(silentMarkers.every((slice) => slice.text.isEmpty), isTrue);
+    expect(silentMarkers.first.startByte, 0);
+    expect(silentMarkers.last.endByte, pcm.length);
     expect((await store.readBytes(result.attachedFile.id)).sublist(wavHeaderLength), pcm);
     final boundaries = await db.getRecordingSegments(result.attachedFile.id);
     expect(boundaries, isNotEmpty);
@@ -196,20 +357,18 @@ void main() {
     expect(uploads, hasLength(1));
     expect(uploads.single.sequence, '1');
     expect(result.transcript, 'spoken words');
-    final slice = result.attachedFile.transcriptSlices.single;
+    final slice = result.attachedFile.transcriptSlices.singleWhere((slice) => slice.text.isNotEmpty);
     expect(slice.startByte, 5 * 32000); // Quiet-cut fallback retains one second.
     expect(slice.endByte, slice.startByte + uploads.single.bytes.length - wavHeaderLength);
     expect(slice.text, 'spoken words');
     expect((await store.readBytes(result.attachedFile.id)).sublist(wavHeaderLength), pcm);
-    final original = uploads.single;
     final restarted = buildController(client: client, createSpeechDetector: () async => null);
     final retried = await restarted.transcribeStoredRecording(result.attachedFile.id);
-    expect(retried.transcriptSlices.single.startByte, slice.startByte);
-    expect(retried.transcriptSlices.single.endByte, slice.endByte);
-    expect(retried.transcriptSlices.single.text, slice.text);
-    expect(uploads, hasLength(2));
-    expect(uploads.last.sequence, original.sequence);
-    expect(uploads.last.bytes, original.bytes);
+    final retriedSpeech = retried.transcriptSlices.singleWhere((slice) => slice.text.isNotEmpty);
+    expect(retriedSpeech.startByte, slice.startByte);
+    expect(retriedSpeech.endByte, slice.endByte);
+    expect(retriedSpeech.text, slice.text);
+    expect(uploads, hasLength(1), reason: 'successful original audio must not be recognized again');
   });
 
   test('unavailable VAD keeps audio retryable without sending unclassified bytes', () async {
@@ -343,7 +502,7 @@ void main() {
       return http.Response('{"text":"retried"}', 200);
     })); // VAD unavailable and a different configured fallback after restart.
     await restarted.transcribeStoredRecording(result.attachedFile.id);
-    expect(retryBodies, liveBodies);
+    expect(retryBodies, isEmpty);
     await db.deleteRecordingPermanently(result.attachedFile.id, store);
     expect(await db.getRecordingSegments(result.attachedFile.id), isEmpty);
   });
@@ -765,8 +924,8 @@ void main() {
     var retry = false;
     final controller = buildController(client: echoClient(handler: (request) async {
       (retry ? retryBodies : liveBodies).add(Uint8List.fromList(request.bodyBytes));
-      return http.Response('{"text":"ok"}', 200);
-    }));
+      return retry ? http.Response('{"text":"ok"}', 200) : http.Response('{}', 502);
+    }), maxSegmentRetries: 0);
     await controller.start();
     capture.emitChunk(_pcmChunk(7, 3600));
     await Future<void>.delayed(Duration.zero);
@@ -782,8 +941,8 @@ void main() {
     var retry = false;
     final controller = buildController(client: echoClient(handler: (request) async {
       (retry ? retryBodies : liveBodies).add(Uint8List.fromList(request.bodyBytes));
-      return http.Response('{"text":"ok"}', 200);
-    }), segmentDuration: const Duration(seconds: 6));
+      return retry ? http.Response('{"text":"ok"}', 200) : http.Response('{}', 502);
+    }), segmentDuration: const Duration(seconds: 6), maxSegmentRetries: 0);
     await controller.start();
     capture.emitChunk(_pcmChunk(7, 192000));
     await Future<void>.delayed(Duration.zero);

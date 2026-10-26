@@ -91,6 +91,7 @@ void main() {
       }
       expect(result.map((s) => (s.startByte, s.endByte, s.text)), [
         (0, unit, 'text 1'),
+        (unit, unit * 2, ''),
         (unit * 2, pcm.length, 'text 3'),
       ]);
       expect(wav, WavHeader.wrap(pcm));

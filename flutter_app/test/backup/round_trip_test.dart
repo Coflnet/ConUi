@@ -32,7 +32,15 @@ void main() {
         'events': [
           makeRecord('events', 'e1', data: {
             'title': 'A story with two recordings',
-            'files': [recordingFileJson('rec1'), recordingFileJson('rec2')],
+            'files': [
+              {...recordingFileJson('rec1'), 'transcriptSlices': [
+                {'startByte': 0, 'endByte': 2000, 'text': 'Original first sentence.'},
+                {'startByte': 4000, 'endByte': 5000, 'text': 'Original after unknown audio.'},
+              ]},
+              {...recordingFileJson('rec2'), 'transcriptSlices': [
+                {'startByte': 0, 'endByte': 8000, 'text': ''},
+              ]},
+            ],
           }),
         ],
         'objects': [

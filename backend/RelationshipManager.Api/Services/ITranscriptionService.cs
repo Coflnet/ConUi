@@ -28,7 +28,8 @@ public interface ITranscriptionService
     /// <summary>
     /// Transcribes <paramref name="audio"/> (streamed, not buffered by this method) using
     /// <paramref name="contentType"/> and an optional two-letter <paramref name="language"/>.
+    /// Optional <paramref name="initialPrompt"/> contains preceding recognized text, never instructions or persisted data.
     /// Throws <see cref="TranscriptionNotConfiguredException"/> or <see cref="TranscriptionFailedException"/>.
     /// </summary>
-    Task<string> TranscribeAsync(Stream audio, string contentType, string? language, CancellationToken cancellationToken);
+    Task<string> TranscribeAsync(Stream audio, string contentType, string? language, CancellationToken cancellationToken, string? initialPrompt = null);
 }

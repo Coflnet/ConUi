@@ -201,7 +201,7 @@ void main() {
 
     final service = DatabaseService(factory: databaseFactoryFfi, path: dbPath);
     expect(await service.getRecordingSegments('saved'),
-        [(length: 192000, hasSpeech: null)]);
+        [(length: 192000, hasSpeech: null, text: null)]);
     // A changed boundary must not overwrite the recorded identity or classify it.
     await service.saveRecordingSegment('saved', 0, 96000, hasSpeech: true);
     expect((await service.getRecordingSegments('saved')).single.hasSpeech, isNull);
@@ -209,9 +209,52 @@ void main() {
     await service.saveRecordingSegment('saved', 0, 192000, hasSpeech: true);
     await service.saveRecordingSegment('saved', 1, 32000, hasSpeech: true);
     expect(await service.getRecordingSegments('saved'), [
-      (length: 192000, hasSpeech: false), (length: 32000, hasSpeech: true),
+      (length: 192000, hasSpeech: false, text: null), (length: 32000, hasSpeech: true, text: null),
     ]);
     await (await service.database).close();
+  });
+
+  test('version 5 preserves boundaries and stores original text exactly once', () async {
+    final oldDb = await databaseFactoryFfi.openDatabase(dbPath,
+        options: OpenDatabaseOptions(version: 5, onCreate: (db, _) async {
+          for (final migration in dbMigrations.where((m) => m.version <= 5)) {
+            await migration.up(db);
+          }
+        }));
+    for (var sequence = 0; sequence < 2; sequence++) {
+      await oldDb.insert('recording_segments', {
+        'recording_id': 'original', 'sequence': sequence,
+        'byte_length': 32000, 'has_speech': sequence,
+      });
+    }
+    await oldDb.insert('recording_segments', {
+      'recording_id': 'known-silence', 'sequence': 0,
+      'byte_length': 32000, 'has_speech': 0,
+    });
+    await oldDb.close();
+    final service = DatabaseService(factory: databaseFactoryFfi, path: dbPath);
+    final silence = (await service.getRecordingTranscriptSlices('known-silence'))!.single;
+    expect(silence.text, '');
+    expect(silence.startByte, 0);
+    expect(silence.endByte, 32000);
+    expect(await service.getRecordingTranscriptSlices('missing'), isNull);
+    expect((await service.getRecordingSegments('original')).map((s) => s.text), [null, null]);
+    expect((await service.getRecordingTranscriptSlices('original'))!.single.text, '');
+    await service.saveRecordingSegmentText('original', 0, 32000, '');
+    expect((await service.getRecordingTranscriptSlices('original'))!.single.text, '');
+    await service.saveRecordingSegmentText('original', 1, 16000, 'Wrong boundary');
+    expect((await service.getRecordingSegments('original')).last.text, isNull);
+    await service.saveRecordingSegmentText('original', 1, 32000, 'Original sentence.');
+    await service.saveRecordingSegmentText('original', 1, 32000, 'Replacement must not overwrite.');
+    final restored = (await service.getRecordingTranscriptSlices('original'))!.last;
+    expect(restored.startByte, 32000);
+    expect(restored.endByte, 64000);
+    expect(restored.text, 'Original sentence.');
+    expect((await service.getRecordingSegments('original')).first.text, '');
+    await (await service.database).close();
+    final reopened = DatabaseService(factory: databaseFactoryFfi, path: dbPath);
+    expect((await reopened.getRecordingTranscriptSlices('original'))!.last.text, 'Original sentence.');
+    await (await reopened.database).close();
   });
 
   test('a fresh install ends up on the latest schema version', () async {

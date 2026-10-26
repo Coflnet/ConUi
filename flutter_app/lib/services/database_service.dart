@@ -527,7 +527,15 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
-  Future<List<({int length, bool? hasSpeech})>> getRecordingSegments(String id) async {
+  /// Preserve the first successful recognition of this exact original slice.
+  Future<void> saveRecordingSegmentText(String id, int sequence, int length, String text) async {
+    final db = await database;
+    await db.update('recording_segments', {'text': text},
+        where: 'recording_id = ? AND sequence = ? AND byte_length = ? AND text IS NULL',
+        whereArgs: [id, sequence, length]);
+  }
+
+  Future<List<({int length, bool? hasSpeech, String? text})>> getRecordingSegments(String id) async {
     final db = await database;
     final rows = await db.query('recording_segments',
         where: 'recording_id = ?', whereArgs: [id], orderBy: 'sequence');
@@ -539,7 +547,25 @@ class DatabaseService extends ChangeNotifier {
     return rows.map((row) => (
       length: row['byte_length'] as int,
       hasSpeech: row['has_speech'] == null ? null : row['has_speech'] == 1,
+      text: row['text'] as String?,
     )).toList();
+  }
+
+  /// Null means no original result is known. Empty-text slices retain silence.
+  Future<List<RecordingTranscriptSlice>?> getRecordingTranscriptSlices(String id) async {
+    final segments = await getRecordingSegments(id);
+    if (!segments.any((segment) => segment.text != null || segment.hasSpeech == false)) return null;
+    final slices = <RecordingTranscriptSlice>[];
+    var offset = 0;
+    for (final segment in segments) {
+      final start = offset;
+      offset += segment.length;
+      final text = segment.text?.trim() ?? '';
+      if (segment.text != null || segment.hasSpeech == false) {
+        slices.add(RecordingTranscriptSlice(startByte: start, endByte: offset, text: text));
+      }
+    }
+    return slices;
   }
 
   Future<void> saveLocalRecording(LocalRecordingState recording) async {

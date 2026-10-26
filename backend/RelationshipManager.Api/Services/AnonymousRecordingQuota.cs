@@ -94,15 +94,16 @@ public sealed class AnonymousRecordingQuota(IAnonymousQuotaStore store, TimeProv
         throw new InvalidOperationException("The recording quota is temporarily busy.");
     }
 
-    private string ResultKey(string ip, Guid recordingId, int segment, byte[] audio, string? language) =>
-        Key(ip) + ":" + recordingId + ":" + segment + ":" + Convert.ToHexString(SHA256.HashData(audio)) + ":" + language;
+    private string ResultKey(string ip, Guid recordingId, int segment, byte[] audio, string? language, string? initialPrompt) =>
+        Key(ip) + ":" + recordingId + ":" + segment + ":" + Convert.ToHexString(SHA256.HashData(audio)) + ":" + language + ":" +
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(initialPrompt ?? "")));
 
     // Results are kept only in bounded volatile memory; transcripts are never written to Cassandra.
-    public string? CachedText(string ip, Guid recordingId, int segment, byte[] audio, string? language) =>
-        _results.Get<string>(ResultKey(ip, recordingId, segment, audio, language));
+    public string? CachedText(string ip, Guid recordingId, int segment, byte[] audio, string? language, string? initialPrompt = null) =>
+        _results.Get<string>(ResultKey(ip, recordingId, segment, audio, language, initialPrompt));
 
-    public void CacheText(string ip, Guid recordingId, int segment, byte[] audio, string? language, string text) =>
-        _results.Set(ResultKey(ip, recordingId, segment, audio, language), text,
+    public void CacheText(string ip, Guid recordingId, int segment, byte[] audio, string? language, string text, string? initialPrompt = null) =>
+        _results.Set(ResultKey(ip, recordingId, segment, audio, language, initialPrompt), text,
             new MemoryCacheEntryOptions { Size = Math.Max(1, text.Length), AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(15) });
 
     // Anonymous audio must carry a verifiable PCM WAV duration; claimed client durations are never trusted.

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -92,6 +93,21 @@ public class TranscriptionController : ControllerBase
             return BadRequest(new ApiError("invalid_language", "Choose a recording language in Settings and try again (for example, en for English or de for German)."));
         }
 
+        string? initialPrompt = null;
+        if (Request.Headers.TryGetValue("X-Transcription-Prompt", out var encodedPrompt))
+        {
+            try
+            {
+                initialPrompt = new UTF8Encoding(false, true).GetString(Convert.FromBase64String(encodedPrompt.ToString())).Trim();
+                if (initialPrompt.EnumerateRunes().Take(1025).Count() > 1024) throw new FormatException();
+                if (initialPrompt.Length == 0) initialPrompt = null;
+            }
+            catch (Exception ex) when (ex is FormatException or DecoderFallbackException)
+            {
+                return BadRequest(new ApiError("invalid_transcription_prompt", "Previous transcription context must be valid UTF-8 text of at most 1024 characters."));
+            }
+        }
+
         // Anonymous requests from one IP share concurrency slots, including retries.
         var concurrencyId = userId ?? new Guid(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(ClientIp()))[..16]);
         if (!_limiter.TryEnter(concurrencyId))
@@ -119,7 +135,7 @@ public class TranscriptionController : ControllerBase
                 string? rejected;
                 try
                 {
-                    var cached = _anonymousQuota.CachedText(ClientIp(), recordingId.Value, segment.Value, bytes, language);
+                    var cached = _anonymousQuota.CachedText(ClientIp(), recordingId.Value, segment.Value, bytes, language, initialPrompt);
                     if (cached != null) return Ok(new TranscriptionResult { Text = cached });
                     rejected = await _anonymousQuota.ReserveAsync(ClientIp(), recordingId.Value, segment.Value, bytes, seconds.Value);
                 }
@@ -142,10 +158,10 @@ public class TranscriptionController : ControllerBase
                 anonymousAudio.Position = 0;
                 audio = anonymousAudio;
             }
-            var text = await _transcriptionService.TranscribeAsync(audio, contentType, language, HttpContext.RequestAborted);
+            var text = await _transcriptionService.TranscribeAsync(audio, contentType, language, HttpContext.RequestAborted, initialPrompt);
 
             if (anonymousAudio != null)
-                _anonymousQuota.CacheText(ClientIp(), recordingId!.Value, segment!.Value, anonymousAudio.ToArray(), language, text);
+                _anonymousQuota.CacheText(ClientIp(), recordingId!.Value, segment!.Value, anonymousAudio.ToArray(), language, text, initialPrompt);
             sw.Stop();
             _logger.LogInformation(
                 "Transcribed segment: content-type {ContentType}, {ElapsedMs}ms, status 200",

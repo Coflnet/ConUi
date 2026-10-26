@@ -45,6 +45,40 @@ void main() {
       expect(capturedUri!.queryParameters['language'], 'de');
     });
 
+    test(
+        'sends bounded Unicode context in a header without changing audio or URL',
+        () async {
+      http.Request? captured;
+      final client = TranscriptionClient(
+          baseUrl: 'https://con.example',
+          getToken: () => null,
+          httpClient: MockClient((request) async {
+            captured = request;
+            return http.Response('{"text":"next"}', 200);
+          }));
+      final tail = List.filled(1024, '🙂').join();
+      await client.transcribeSegment(Uint8List.fromList([1, 2, 3]),
+          initialPrompt: 'Old context $tail  ');
+      expect(
+          utf8.decode(
+              base64Decode(captured!.headers['X-Transcription-Prompt']!)),
+          tail);
+      expect(captured!.url.query, isEmpty);
+      expect(captured!.bodyBytes, [1, 2, 3]);
+    });
+
+    test('omits blank context', () async {
+      final client = TranscriptionClient(
+          baseUrl: 'https://con.example',
+          getToken: () => null,
+          httpClient: MockClient((request) async {
+            expect(
+                request.headers.containsKey('X-Transcription-Prompt'), false);
+            return http.Response('{"text":"next"}', 200);
+          }));
+      await client.transcribeSegment(Uint8List(0), initialPrompt: ' \n ');
+    });
+
     test('sends anonymous recording identity without a bearer token', () async {
       http.Request? captured;
       final client = TranscriptionClient(
@@ -55,11 +89,15 @@ void main() {
           return http.Response('{"text":"anonymous"}', 200);
         }),
       );
-      expect(await client.transcribeSegment(Uint8List(0),
-          recordingId: 'test-recording', segment: 2, language: 'de'), 'anonymous');
+      expect(
+          await client.transcribeSegment(Uint8List(0),
+              recordingId: 'test-recording', segment: 2, language: 'de'),
+          'anonymous');
       expect(captured!.headers.containsKey('Authorization'), isFalse);
       expect(captured!.url.queryParameters, {
-        'recordingId': 'test-recording', 'segment': '2', 'language': 'de',
+        'recordingId': 'test-recording',
+        'segment': '2',
+        'language': 'de',
       });
     });
 
@@ -100,15 +138,21 @@ void main() {
         );
       }
 
-      await expectKind(401, 'unauthorized', TranscriptionErrorKind.unauthorized);
-      await expectKind(413, 'too_large', TranscriptionErrorKind.payloadTooLarge);
-      await expectKind(415, 'bad_media', TranscriptionErrorKind.unsupportedMedia);
-      await expectKind(429, 'rate_limited', TranscriptionErrorKind.rateLimited);
       await expectKind(
-          502, 'transcription_failed', TranscriptionErrorKind.transcriptionFailed);
-      await expectKind(429, 'anonymous_daily_limit', TranscriptionErrorKind.anonymousLimit);
-      await expectKind(413, 'anonymous_recording_too_long', TranscriptionErrorKind.anonymousLimit);
-      await expectKind(503, 'recording_quota_unavailable', TranscriptionErrorKind.other);
+          401, 'unauthorized', TranscriptionErrorKind.unauthorized);
+      await expectKind(
+          413, 'too_large', TranscriptionErrorKind.payloadTooLarge);
+      await expectKind(
+          415, 'bad_media', TranscriptionErrorKind.unsupportedMedia);
+      await expectKind(429, 'rate_limited', TranscriptionErrorKind.rateLimited);
+      await expectKind(502, 'transcription_failed',
+          TranscriptionErrorKind.transcriptionFailed);
+      await expectKind(
+          429, 'anonymous_daily_limit', TranscriptionErrorKind.anonymousLimit);
+      await expectKind(413, 'anonymous_recording_too_long',
+          TranscriptionErrorKind.anonymousLimit);
+      await expectKind(
+          503, 'recording_quota_unavailable', TranscriptionErrorKind.other);
       await expectKind(503, 'transcription_not_configured',
           TranscriptionErrorKind.notConfigured);
     });
@@ -133,11 +177,13 @@ void main() {
   group('remainingAnonymousRecordings', () {
     test('reads server remaining recordings without authentication', () async {
       final client = TranscriptionClient(
-        baseUrl: 'https://api.example.com', getToken: () => null,
+        baseUrl: 'https://api.example.com',
+        getToken: () => null,
         httpClient: MockClient((request) async {
           expect(request.url.path, '/api/transcription/status');
           expect(request.headers.containsKey('Authorization'), isFalse);
-          return http.Response('{"available":true,"remainingRecordings":0}', 200);
+          return http.Response(
+              '{"available":true,"remainingRecordings":0}', 200);
         }),
       );
       expect(await client.remainingAnonymousRecordings(), 0);
@@ -145,8 +191,11 @@ void main() {
 
     test('network failure leaves anonymous allowance unknown', () async {
       final client = TranscriptionClient(
-        baseUrl: 'https://api.example.com', getToken: () => null,
-        httpClient: MockClient((request) async { throw const SocketExceptionStub(); }),
+        baseUrl: 'https://api.example.com',
+        getToken: () => null,
+        httpClient: MockClient((request) async {
+          throw const SocketExceptionStub();
+        }),
       );
       expect(await client.remainingAnonymousRecordings(), isNull);
     });

@@ -6,7 +6,7 @@ class DiaSentence {
   final String contextText;
   final int textStart, textEnd, startByte, endByte;
 
-  /// Offsets into all original slice texts joined with one space, across gaps.
+  /// Offsets into nonempty original slice texts joined with one space, across gaps.
   final int recordingTextStart, recordingTextEnd;
 
   const DiaSentence._(
@@ -55,7 +55,7 @@ List<DiaSentence> detectDiaSentences(List<RecordingTranscriptSlice> slices) {
   var group = <RecordingTranscriptSlice>[];
   var groupOffset = 0;
   var offset = 0;
-  for (final slice in slices) {
+  for (final slice in slices.where((slice) => slice.text.trim().isNotEmpty)) {
     if (group.isNotEmpty && group.last.endByte != slice.startByte) {
       sentences.addAll(_sentencesInGroup(group, groupOffset));
       group = [];

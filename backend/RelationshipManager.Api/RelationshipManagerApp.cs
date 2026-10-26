@@ -122,7 +122,8 @@ public static class RelationshipManagerApp
         builder.Services.TryAddSingleton<IS3Service, S3Service>();
 
         // Transcription - optional (Transcription:BaseUrl), via IHttpClientFactory.
-        builder.Services.AddHttpClient("transcription");
+        // ASR requires initial_prompt in its upstream URL; never log that URI.
+        builder.Services.AddHttpClient("transcription").RemoveAllLoggers();
         builder.Services.TryAddSingleton<ITranscriptionService, TranscriptionService>();
         builder.Services.TryAddSingleton<PerUserConcurrencyLimiter>();
         builder.Services.TryAddSingleton<IAnonymousQuotaStore, CassandraAnonymousQuotaStore>();

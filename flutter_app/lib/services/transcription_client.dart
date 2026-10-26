@@ -62,6 +62,8 @@ class TranscriptionException implements Exception {
 ///   `{"text": "..."}`; failure is `{"slug": "...", "message": "..."}`.
 /// - `GET {baseUrl}/api/transcription/status` -> `{"available": bool}`.
 class TranscriptionClient {
+  static const maxPromptCharacters = 1024;
+
   /// Empty means no backend is configured (see AuthService.baseUrl).
   final String baseUrl;
 
@@ -83,17 +85,27 @@ class TranscriptionClient {
   /// Sends one WAV-wrapped audio segment and returns its transcribed text.
   /// Anonymous recordings carry stable recording/segment identities so
   /// concurrent chunks and retries consume one recording allowance.
+  /// Prior recognized text is bounded and sent in a header, outside URL logs.
   /// Throws [TranscriptionException] on offline or backend-reported errors.
-  Future<String> transcribeSegment(Uint8List wavBytes, {
+  Future<String> transcribeSegment(
+    Uint8List wavBytes, {
     String? language,
     String? recordingId,
     int? segment,
+    String? initialPrompt,
   }) async {
     if (!isConfigured) {
       throw const TranscriptionException(
           TranscriptionErrorKind.offline, 'No backend address is configured.');
     }
     final token = getToken();
+    final runes = initialPrompt?.trim().runes.toList();
+    final prompt = runes == null
+        ? null
+        : String.fromCharCodes(runes.length > maxPromptCharacters
+                ? runes.sublist(runes.length - maxPromptCharacters)
+                : runes)
+            .trim();
     final uri = Uri.parse('$baseUrl/api/transcription/segment').replace(
       queryParameters: {
         if (language != null && language.isNotEmpty) 'language': language,
@@ -109,6 +121,8 @@ class TranscriptionClient {
         headers: {
           if (token != null) 'Authorization': 'Bearer $token',
           'Content-Type': 'audio/wav',
+          if (prompt != null && prompt.isNotEmpty)
+            'X-Transcription-Prompt': base64Encode(utf8.encode(prompt)),
         },
         body: wavBytes,
       );
@@ -153,9 +167,11 @@ class TranscriptionClient {
   Future<int?> remainingAnonymousRecordings() async {
     if (!isConfigured) return null;
     try {
-      final response = await _http.get(
-        Uri.parse('$baseUrl/api/transcription/status'),
-      ).timeout(const Duration(seconds: 3));
+      final response = await _http
+          .get(
+            Uri.parse('$baseUrl/api/transcription/status'),
+          )
+          .timeout(const Duration(seconds: 3));
       if (response.statusCode != 200) return null;
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       return data['remainingRecordings'] as int?;
@@ -175,8 +191,10 @@ class TranscriptionClient {
       // Non-JSON error body; keep the generic message.
     }
 
-    if (slug == 'anonymous_daily_limit' || slug == 'anonymous_recording_too_long') {
-      return TranscriptionException(TranscriptionErrorKind.anonymousLimit, message,
+    if (slug == 'anonymous_daily_limit' ||
+        slug == 'anonymous_recording_too_long') {
+      return TranscriptionException(
+          TranscriptionErrorKind.anonymousLimit, message,
           statusCode: response.statusCode, slug: slug);
     }
     final TranscriptionErrorKind kind;

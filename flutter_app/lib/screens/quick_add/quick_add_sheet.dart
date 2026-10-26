@@ -9,6 +9,7 @@ import '../../services/app_settings_service.dart';
 import '../../services/audio_capture.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
+import '../../services/dia_region_service.dart';
 import '../../widgets/account_required_dialog.dart';
 import '../../services/person_mentions.dart';
 import '../../widgets/transcript_people_picker.dart';
@@ -837,6 +838,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
               Duration(milliseconds: _pendingRecording!.durationMs ?? 0)))),
         if (_pendingRecording != null && _recorder.state == RecorderState.idle && !_isTranscribingNow)
           DiaCorrectionButton(file: _pendingRecording!, store: _recorder.fileStore,
+              regionSuggestion: _suggestDiaRegion,
               transcriptController: _textController),
         if (_recorder.lastStopResult?.stopReason == StopReason.anonymousLimit)
           Text(l10n.recordingAnonymousStopped, textAlign: TextAlign.center),
@@ -864,13 +866,18 @@ class QuickAddSheetState extends State<QuickAddSheet> {
         : '${two(minutes)}:${two(seconds)}';
   }
 
+  Future<DiaRegion?> _suggestDiaRegion() => suggestDiaRegion(
+      selectedPosition: _useExistingPlace == null ? widget.position.value
+          : LatLng(_useExistingPlace!.latitude, _useExistingPlace!.longitude));
+
   Widget _buildTextField(AppLocalizations l10n) {
     return TextField(
       controller: _textController,
       contextMenuBuilder: (context, editable) => diaCorrectionTextMenu(context, editable,
           recordings: _recorder.state == RecorderState.idle && !_isTranscribingNow
               ? [if (_pendingRecording != null) _pendingRecording!] : [],
-          store: _recorder.fileStore),
+          store: _recorder.fileStore,
+          regionSuggestion: _suggestDiaRegion),
       minLines: 3,
       maxLines: 8,
       decoration: InputDecoration(

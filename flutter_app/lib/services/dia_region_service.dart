@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'location_service.dart';
@@ -10,24 +11,31 @@ class DiaRegion {
   const DiaRegion({required this.zip, required this.country});
 }
 
-/// Nonempty saved choices win over the current region. Callers keep fields
-/// editable and must not replace edits made while this suggestion is loading.
+/// The selected story position wins over saved choices and device location.
+/// Suggestions must not replace edits made while they are loading.
 Future<DiaRegion?> suggestDiaRegion({
+  LatLng? selectedPosition,
   LocationService? locationService,
   http.Client? httpClient,
 }) async {
   http.Client? client;
   try {
-    final prefs = await SharedPreferences.getInstance();
-    final zip = prefs.getString('dia-region-zip')?.trim() ?? '';
-    final country = prefs.getString('dia-region-country')?.trim() ?? '';
-    if (zip.isNotEmpty || country.isNotEmpty) {
-      return DiaRegion(zip: zip, country: country.toUpperCase());
+    if (selectedPosition == null) {
+      final prefs = await SharedPreferences.getInstance();
+      final zip = prefs.getString('dia-region-zip')?.trim() ?? '';
+      final country = prefs.getString('dia-region-country')?.trim() ?? '';
+      if (zip.isNotEmpty || country.isNotEmpty) {
+        return DiaRegion(zip: zip, country: country.toUpperCase());
+      }
     }
-    final location =
-        locationService ?? GeolocatorLocationService(requestPermission: false);
-    if (!await location.hasPermission()) return null;
-    final point = await location.getCurrentLocation();
+    var point = selectedPosition;
+    if (point == null) {
+      final location = locationService ??
+          GeolocatorLocationService(requestPermission: false);
+      if (!await location.hasPermission()) return null;
+      final device = await location.getCurrentLocation();
+      if (device != null) point = LatLng(device.latitude, device.longitude);
+    }
     if (point == null) return null;
     client = httpClient ?? http.Client();
     final response = await client

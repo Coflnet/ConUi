@@ -26,6 +26,36 @@ public class TranscriptionControllerTests
     }
 
     [Test]
+    public async Task Segment_ForwardsUnicodeContextFromHeader_WithoutChangingAudio()
+    {
+        var (factory, client, _) = await StartAuthedAsync();
+        await using var f = factory;
+        using var c = client;
+        var prompt = string.Concat(Enumerable.Repeat("🙂", 1024));
+        c.DefaultRequestHeaders.Add("X-Transcription-Prompt", Convert.ToBase64String(Encoding.UTF8.GetBytes(prompt)));
+        var response = await c.PostAsync("/api/transcription/segment?language=de", WavContent());
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(factory.TranscriptionService.LastInitialPrompt, Is.EqualTo(prompt));
+        Assert.That(factory.TranscriptionService.LastAudioByteCount, Is.EqualTo(100));
+    }
+
+    [TestCase("not-base64!")]
+    [TestCase("/w==")]
+    [TestCase("oversized")]
+    public async Task Segment_RejectsInvalidContextBeforeUpstream(string encoded)
+    {
+        var (factory, client, _) = await StartAuthedAsync();
+        await using var f = factory;
+        using var c = client;
+        if (encoded == "oversized") encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(new string('a', 1025)));
+        c.DefaultRequestHeaders.Add("X-Transcription-Prompt", encoded);
+        var response = await c.PostAsync("/api/transcription/segment", WavContent());
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        Assert.That(await response.Content.ReadAsStringAsync(), Does.Contain("invalid_transcription_prompt"));
+        Assert.That(factory.TranscriptionService.CallCount, Is.Zero);
+    }
+
+    [Test]
     public async Task Status_ReportsWhetherConfigured()
     {
         var (factory, client, _) = await StartAuthedAsync();

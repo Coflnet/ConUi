@@ -9,6 +9,7 @@ import '../../models/models.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
+import '../../services/dia_region_service.dart';
 import '../../widgets/account_required_dialog.dart';
 import '../../widgets/transcript_people_picker.dart';
 import '../../services/story_photo_service.dart';
@@ -543,7 +544,8 @@ class _AddEventScreenState extends State<AddEventScreen> {
                       ? [..._draftEvent.files, if (_pendingRecording != null) _pendingRecording!]
                           .where((file) => file.isRecording).toList()
                       : [],
-                  store: _recorder.fileStore),
+                  store: _recorder.fileStore,
+                  regionSuggestion: _suggestDiaRegion),
               decoration: InputDecoration(
                   labelText: l10n.addEventDescriptionLabel, prefixIcon: const Icon(Icons.note)),
               maxLines: 3,
@@ -655,6 +657,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
               Text(l10n.recordingAnonymousStopped),
             if (_pendingRecording != null && _recorder.state == RecorderState.idle && !_isTranscribingNow)
               DiaCorrectionButton(file: _pendingRecording!, store: _recorder.fileStore,
+                  regionSuggestion: _suggestDiaRegion,
                   transcriptController: _descriptionController),
             if (_pendingRecording != null && !isRecording &&
                 (_hasFailedTranscription || _descriptionController.text.trim().isEmpty))
@@ -760,6 +763,13 @@ class _AddEventScreenState extends State<AddEventScreen> {
           onPressed: _selectParticipants)));
       }
     }
+  }
+
+  Future<DiaRegion?> _suggestDiaRegion() async {
+    final place = _placeId == null ? null
+        : await context.read<DatabaseService>().getPlace(_placeId!);
+    return suggestDiaRegion(selectedPosition: place == null ? null
+        : LatLng(place.latitude, place.longitude));
   }
 
   Future<void> _selectPlace() async {

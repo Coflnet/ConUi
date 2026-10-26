@@ -5,6 +5,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
@@ -17,6 +19,7 @@ import 'package:relationship_manager/services/recording_file_store_native.dart';
 import 'package:relationship_manager/services/transcription_client.dart';
 
 import '../support/fake_audio_capture.dart';
+import '../support/fake_speech_detector.dart';
 import '../support/test_database.dart';
 
 class _DelayedStopCapture extends FakeAudioCapture {
@@ -43,13 +46,15 @@ void main() {
       await tester.runAsync(db.initialize);
       final capture = _DelayedStopCapture();
       final recorder = RecorderController(
-        createSpeechDetector: () async => null,
+        createSpeechDetector: () async => EndingDetector(frames: 1000, minSpeechFrames: 1),
         audioCapture: capture,
         fileStore: NativeRecordingFileStore(baseDirectory: directory),
         database: db,
         transcriptionClient: TranscriptionClient(
           baseUrl: 'https://api.example.com',
           getToken: () => null,
+          httpClient: MockClient((request) async => http.Response(
+              request.method == 'GET' ? '{"remainingRecordings":10}' : '{"text":"Original words."}', 200)),
         ),
       );
       addTearDown(recorder.dispose);
@@ -128,6 +133,10 @@ void main() {
         final event = (await db.getEvents()).single;
         expect(event.files, hasLength(1));
         expect(event.files.single.id, recorder.lastStopResult!.attachedFile.id);
+        final reloaded = (await db.getEvent(event.id))!.files.single;
+        expect(reloaded.transcriptSlices.single.text, 'Original words.');
+        expect(reloaded.transcriptSlices.single.startByte, 0);
+        expect(reloaded.transcriptSlices.single.endByte, 3200);
         final recording = await db.getLocalRecording(event.files.single.id);
         expect(recording!.eventId, event.id);
       });

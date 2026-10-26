@@ -125,6 +125,7 @@ class _OrphanedRecordingsSheet extends StatelessWidget {
     if (result != null && context.mounted) {
       final db = context.read<DatabaseService>();
       final file = _asAttachedFile(recording);
+      file.transcriptSlices = await db.getRecordingTranscriptSlices(recording.id) ?? [];
       final updatedEvent = result.event.copyWith(files: [...result.event.files, file]);
       await db.saveEvent(updatedEvent);
       await db.saveLocalRecording(recording.copyWith(eventId: updatedEvent.id));

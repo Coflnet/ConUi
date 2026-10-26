@@ -6,6 +6,19 @@ RecordingTranscriptSlice slice(int start, int end, String text) =>
     RecordingTranscriptSlice(startByte: start, endByte: end, text: text);
 
 void main() {
+  test('silent markers do not shift repeated-sentence text selection', () {
+    final sentences = detectDiaSentences([
+      slice(0, 32000, 'Gleicher Satz.'),
+      slice(32000, 64000, ''),
+      slice(64000, 96000, 'Gleicher Satz.'),
+    ]);
+    expect(sentences.map((s) => s.recordingTextStart), [0, 15]);
+    expect(sentences.map((s) => s.recordingTextEnd), [14, 29]);
+    expect(sentences.last.contextText, 'Gleicher Satz.');
+    expect(sentences.last.startByte, 64000);
+    expect(sentences.last.endByte, 96000);
+  });
+
   test(
       'identical sentences retain distinct global offsets across slices and gaps',
       () {

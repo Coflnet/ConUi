@@ -16,6 +16,7 @@ import '../services/dia_recording_detector.dart';
 import '../services/transcription_client.dart';
 import '../services/auth_service.dart';
 import '../services/app_settings_service.dart';
+import '../services/database_service.dart';
 import '../services/recording_clip.dart';
 import '../services/recording_file_store.dart';
 
@@ -24,6 +25,7 @@ Future<void> showDiaCorrection(
   required AttachedFile file,
   required RecordingFileStore store,
   TextEditingValue? source,
+  Future<DiaRegion?> Function()? regionSuggestion,
   Future<void> Function(List<RecordingTranscriptSlice>)? onTranscriptDetected,
 }) async {
   final auth = context.read<AuthService?>();
@@ -32,6 +34,7 @@ Future<void> showDiaCorrection(
       : TranscriptionClient(baseUrl: auth.baseUrl, getToken: () => auth.token);
   final language =
       context.read<AppSettingsService?>()?.effectiveRecordingLanguage;
+  final db = context.read<DatabaseService?>();
   try {
     await showDialog<void>(
         context: context,
@@ -40,6 +43,10 @@ Future<void> showDiaCorrection(
             file: file,
             store: store,
             source: source,
+            regionSuggestion: regionSuggestion,
+            loadOriginalTranscript: db == null
+                ? null
+                : () => db.getRecordingTranscriptSlices(file.id),
             onTranscriptDetected: onTranscriptDetected,
             transcriptionClient: transcription,
             language: language));
@@ -54,6 +61,7 @@ Widget diaCorrectionTextMenu(
   EditableTextState editable, {
   required List<AttachedFile> recordings,
   required RecordingFileStore store,
+  Future<DiaRegion?> Function()? regionSuggestion,
   Future<void> Function(AttachedFile, List<RecordingTranscriptSlice>)?
       onTranscriptDetected,
 }) {
@@ -84,6 +92,7 @@ Widget diaCorrectionTextMenu(
                     file: file,
                     store: store,
                     source: source,
+                    regionSuggestion: regionSuggestion,
                     onTranscriptDetected: onTranscriptDetected == null
                         ? null
                         : (slices) => onTranscriptDetected(file, slices));
@@ -93,7 +102,8 @@ Widget diaCorrectionTextMenu(
 
 int? _recordingSourceStart(
     List<RecordingTranscriptSlice> slices, String source) {
-  final recordingText = slices.map((slice) => slice.text).join(' ');
+  final recordingText = slices.where((slice) => slice.text.trim().isNotEmpty)
+      .map((slice) => slice.text).join(' ');
   if (recordingText.isEmpty) return null;
   final start = source.indexOf(recordingText);
   return start >= 0 && source.indexOf(recordingText, start + 1) < 0
@@ -137,6 +147,7 @@ class DiaCorrectionButton extends StatelessWidget {
   final RecordingFileStore store;
   final TextEditingController? transcriptController;
   final String? transcript;
+  final Future<DiaRegion?> Function()? regionSuggestion;
   final Future<void> Function(List<RecordingTranscriptSlice>)?
       onTranscriptDetected;
   const DiaCorrectionButton(
@@ -145,6 +156,7 @@ class DiaCorrectionButton extends StatelessWidget {
       required this.store,
       this.transcriptController,
       this.transcript,
+      this.regionSuggestion,
       this.onTranscriptDetected});
 
   @override
@@ -155,6 +167,7 @@ class DiaCorrectionButton extends StatelessWidget {
       onPressed: () => showDiaCorrection(context,
           file: file,
           store: store,
+          regionSuggestion: regionSuggestion,
           source: transcriptController?.value ??
               (transcript == null ? null : TextEditingValue(text: transcript!)),
           onTranscriptDetected: onTranscriptDetected));
@@ -170,6 +183,8 @@ class DiaCorrectionDialog extends StatefulWidget {
   final Future<void> Function(List<RecordingTranscriptSlice>)?
       onTranscriptDetected;
   final Future<DiaRegion?> Function()? regionSuggestion;
+  final Future<List<RecordingTranscriptSlice>?> Function()?
+      loadOriginalTranscript;
   const DiaCorrectionDialog(
       {super.key,
       required this.file,
@@ -179,7 +194,8 @@ class DiaCorrectionDialog extends StatefulWidget {
       this.language,
       this.source,
       this.onTranscriptDetected,
-      this.regionSuggestion});
+      this.regionSuggestion,
+      this.loadOriginalTranscript});
 
   @override
   State<DiaCorrectionDialog> createState() => _DiaCorrectionDialogState();
@@ -231,7 +247,9 @@ class _DiaCorrectionDialogState extends State<DiaCorrectionDialog> {
     }
     _load();
     _regionReady = _suggestRegion();
-    if (_sentences.isEmpty && widget.transcriptionClient != null) {
+    if (widget.file.transcriptSlices.isEmpty &&
+        (widget.transcriptionClient != null ||
+            widget.loadOriginalTranscript != null)) {
       unawaited(_detect());
     }
   }
@@ -266,35 +284,46 @@ class _DiaCorrectionDialogState extends State<DiaCorrectionDialog> {
   }
 
   Future<void> _suggestRegion() async {
-    final region =
-        await (widget.regionSuggestion?.call() ?? suggestDiaRegion());
-    if (!mounted || region == null) return;
-    setState(() {
-      if (!_zipEdited) _zip.text = region.zip;
-      if (!_countryEdited) _country.text = region.country;
-    });
+    try {
+      final region =
+          await (widget.regionSuggestion?.call() ?? suggestDiaRegion());
+      if (!mounted || region == null) return;
+      setState(() {
+        if (!_zipEdited) _zip.text = region.zip;
+        if (!_countryEdited) _country.text = region.country;
+      });
+    } catch (_) {
+      return; // Optional defaults must not block editing or submission.
+    }
   }
 
   Future<void> _detect() async {
-    if (_detecting || widget.transcriptionClient == null) return;
+    if (_detecting) return;
     setState(() {
       _detecting = true;
       _error = null;
     });
     try {
-      final slices = await detectRecordingTranscript(
-          file: widget.file,
-          store: widget.store,
-          client: widget.transcriptionClient!,
-          language: widget.language,
-          isCancelled: () => !mounted);
+      final original = await widget.loadOriginalTranscript?.call();
+      if (!mounted) return;
+      if (original == null && widget.transcriptionClient == null) return;
+      final slices = original ??
+          await detectRecordingTranscript(
+              file: widget.file,
+              store: widget.store,
+              client: widget.transcriptionClient!,
+              language: widget.language,
+              isCancelled: () => !mounted);
       if (!mounted) return;
       final sentences = detectDiaSentences(slices);
-      if (sentences.isEmpty) throw StateError('No speech detected');
       setState(() {
         widget.file.transcriptSlices = slices;
         _sentences = sentences;
-        _select(_sentenceAtSelection(sentences, widget.source, slices) ?? 0);
+        if (sentences.isNotEmpty) {
+          _select(_sentenceAtSelection(sentences, widget.source, slices) ?? 0);
+        } else {
+          _error = !_loading && _policy == null ? 'policy' : null;
+        }
       });
       await _saveDetectedBoundaries();
     } on TranscriptionException catch (error) {

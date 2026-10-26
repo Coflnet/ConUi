@@ -113,7 +113,7 @@ List<RecordingTranscriptSlice> _transcriptSlices(List<TranscriptSegment> segment
     final start = offset;
     offset += segment.pcmBytes.length;
     final text = segment.text?.trim() ?? '';
-    if (text.isNotEmpty) {
+    if (segment.text != null) {
       slices.add(RecordingTranscriptSlice(startByte: start, endByte: offset, text: text));
     }
   }
@@ -420,7 +420,7 @@ class RecorderController extends ChangeNotifier {
     while (_pendingQueue.isNotEmpty && _activeJobs.length < maxConcurrentRequests) {
       final job = _pendingQueue.removeFirst();
       late final Future<void> future;
-      future = _resolveJob(job, recordingId: _recordingId!).whenComplete(() {
+      future = _resolveJob(job, recordingId: _recordingId!, segments: _segments).whenComplete(() {
         _activeJobs.remove(future);
         _pumpQueue();
       });
@@ -433,14 +433,21 @@ class RecorderController extends ChangeNotifier {
   /// failure just marks the segment [TranscriptSegment.failed].
   Future<void> _resolveJob(TranscriptSegment job, {
     required String recordingId,
+    required List<TranscriptSegment> segments,
     String? language,
   }) async {
+    final initialPrompt = segments
+        .takeWhile((segment) => segment.sequence < job.sequence && segment.text != null)
+        .map((segment) => segment.text!)
+        .where((text) => text.isNotEmpty)
+        .join(' ');
     while (true) {
       try {
         await _db.saveRecordingSegment(recordingId, job.sequence, job.pcmBytes.length, hasSpeech: job.hasSpeech);
-        if (job.hasSpeech != true) {
+        if (job.hasSpeech == false || (job.hasSpeech == null && job.text == null)) {
           if (job.hasSpeech == false) {
             job.text = '';
+            await _db.saveRecordingSegmentText(recordingId, job.sequence, job.pcmBytes.length, '');
           } else {
             job.failed = true;
             _liveTranscriptionReason = LiveTranscriptionReason.failing;
@@ -448,14 +455,14 @@ class RecorderController extends ChangeNotifier {
           notifyListeners();
           return;
         }
-        final wav = WavHeader.wrap(job.pcmBytes, format: format);
-        final text = await _transcriptionClient.transcribeSegment(
-          wav,
+        job.text ??= await _transcriptionClient.transcribeSegment(
+          WavHeader.wrap(job.pcmBytes, format: format),
           language: language ?? this.language,
           recordingId: recordingId,
           segment: job.sequence,
+          initialPrompt: initialPrompt,
         );
-        job.text = text;
+        await _db.saveRecordingSegmentText(recordingId, job.sequence, job.pcmBytes.length, job.text!);
         if (_liveTranscriptionReason != LiveTranscriptionReason.anonymousLimit) {
           _liveTranscriptionReason = LiveTranscriptionReason.working;
         }
@@ -589,7 +596,7 @@ class RecorderController extends ChangeNotifier {
       while (queue.isNotEmpty && active.length < maxConcurrentRequests) {
         final job = queue.removeFirst();
         late final Future<void> future;
-        future = _resolveJob(job, recordingId: recordingId, language: language).whenComplete(() => active.remove(future));
+        future = _resolveJob(job, recordingId: recordingId, language: language, segments: segments).whenComplete(() => active.remove(future));
         active.add(future);
       }
     }
@@ -631,7 +638,7 @@ class RecorderController extends ChangeNotifier {
       )),
     );
     try {
-      if (boundaries.any((boundary) => boundary.hasSpeech == null) ||
+      if (boundaries.any((boundary) => boundary.hasSpeech == null && boundary.text == null) ||
           boundaries.fold<int>(0, (sum, boundary) => sum + boundary.length) < pcm.length) {
         // A timed-out initializer still attaches to this disposed segmenter
         // when it eventually completes, which releases the late model.
@@ -640,7 +647,7 @@ class RecorderController extends ChangeNotifier {
       var offset = 0;
       for (final boundary in boundaries) {
         final bytes = Uint8List.sublistView(pcm, offset, offset + boundary.length);
-        if (boundary.hasSpeech == null) {
+        if (boundary.hasSpeech == null && boundary.text == null) {
           await segmenter.add(bytes, allowCuts: false);
           await segmenter.flush();
         } else {
@@ -648,7 +655,7 @@ class RecorderController extends ChangeNotifier {
           // utterance across it into the next unclassified slice.
           await segmenter.resetSpeechContext();
           segments.add(TranscriptSegment(sequence: segments.length,
-              pcmBytes: bytes, hasSpeech: boundary.hasSpeech));
+              pcmBytes: bytes, hasSpeech: boundary.hasSpeech)..text = boundary.text);
         }
         offset += boundary.length;
       }

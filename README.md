@@ -272,8 +272,15 @@ API and allowances; detected byte/time boundaries are saved for future reuse.
 Cancellation or failed detection never saves partial boundaries. Existing audio
 and story text are preserved.
 
-The dialect region defaults to a nonempty saved choice or an already-permitted
-current device location, with editable postcode/country fields. Suggestions
+Original segment text is saved with its byte boundaries as recognition completes,
+including before a crash. Corrections reuse these marks without another speech
+request; retries recognize only missing segments. Available earlier transcript
+text supplies bounded Whisper context without serializing live requests.
+
+The dialect region uses the story's selected map location first, ahead of saved
+choices or device GPS. Without a selected place it defaults to a nonempty saved
+choice or an already-permitted current device location. Postcode/country remain
+editable. A failed map lookup never substitutes an unrelated saved postcode. Suggestions
 never overwrite edits and never request location permission automatically.
 Users explicitly agree to Dia's current training terms before contributing
 anonymously. Clips are capped at 20 seconds so base64 JSON fits Dia's 1MiB public

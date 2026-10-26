@@ -109,6 +109,8 @@ void main() {
       bool settle = true,
       TextEditingValue? source,
       Future<DiaRegion?> Function()? regionSuggestion,
+      Future<List<RecordingTranscriptSlice>?> Function()?
+          loadOriginalTranscript,
       TranscriptionClient? transcriptionClient,
       Future<void> Function(List<RecordingTranscriptSlice>)?
           onTranscriptDetected}) async {
@@ -130,6 +132,7 @@ void main() {
                             store: store,
                             client: client,
                             source: source,
+                            loadOriginalTranscript: loadOriginalTranscript,
                             regionSuggestion:
                                 regionSuggestion ?? () async => null,
                             transcriptionClient: transcriptionClient,
@@ -614,6 +617,69 @@ void main() {
       expect(body['country'], editedCountry ?? 'DE');
       expect(body['transcription'], 'Fixed.');
       expect(find.text('deletion-reference'), findsOneWidget);
+    });
+  }
+
+  testWidgets(
+      'original saved mapping opens immediately without reading audio or ASR',
+      (tester) async {
+    var loads = 0, calls = 0;
+    final asr = TranscriptionClient(
+        baseUrl: 'https://con.example',
+        getToken: () => null,
+        httpClient: MockClient((_) async {
+          calls++;
+          throw StateError('Original mapping must be reused');
+        }));
+    addTearDown(asr.close);
+    await open(tester, transcriptionClient: asr,
+        loadOriginalTranscript: () async {
+      loads++;
+      throw StateError('Mapping already attached');
+    });
+    expect(loads, 0);
+    expect(calls, 0);
+    expect(store.reads, 0);
+    expect(find.text('Detecting sentences in this recording…'), findsNothing);
+  });
+
+  for (final silent in [false, true]) {
+    testWidgets(
+        'local original ${silent ? 'silence' : 'sentence marks'} never invokes ASR',
+        (tester) async {
+      final original =
+          silent ? const [RecordingTranscriptSlice(startByte: 0, endByte: 200, text: '')] : file.transcriptSlices;
+      file.transcriptSlices = [];
+      var calls = 0;
+      final asr = TranscriptionClient(
+          baseUrl: 'https://con.example',
+          getToken: () => null,
+          httpClient: MockClient((_) async {
+            calls++;
+            throw StateError('Original mapping must be reused');
+          }));
+      addTearDown(asr.close);
+      final saved = <List<RecordingTranscriptSlice>>[];
+      await open(tester,
+          transcriptionClient: asr,
+          source: const TextEditingValue(
+              text: 'First sentence. Second sentence.',
+              selection: TextSelection(baseOffset: 16, extentOffset: 22)),
+          loadOriginalTranscript: () async => original,
+          onTranscriptDetected: (slices) async => saved.add(slices));
+      expect(calls, 0);
+      expect(store.reads, 0);
+      expect(requests.where((request) => request.method == 'POST'), isEmpty);
+      if (!silent) {
+        expect(saved.single, original);
+        expect(file.transcriptSlices, original);
+        final correction = tester
+            .widget<TextField>(find.byKey(const Key('dia-correction')))
+            .controller!;
+        expect(correction.text, 'Second sentence.');
+        expect(correction.selection,
+            const TextSelection(baseOffset: 0, extentOffset: 6));
+      }
     });
   }
 

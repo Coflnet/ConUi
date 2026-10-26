@@ -64,15 +64,14 @@ Future<List<RecordingTranscriptSlice>> detectRecordingTranscript({
     final text = (await client.transcribeSegment(
       WavHeader.wrap(Uint8List.sublistView(pcm, 0, filled)),
       language: language,
+      initialPrompt: slices.map((slice) => slice.text).join(' '),
       recordingId: analysisId,
       segment: segment++,
     ))
         .trim();
     checkCancelled();
-    if (text.isNotEmpty) {
-      slices.add(RecordingTranscriptSlice(
-          startByte: offset, endByte: offset + filled, text: text));
-    }
+    slices.add(RecordingTranscriptSlice(
+        startByte: offset, endByte: offset + filled, text: text));
     offset += filled;
     filled = 0;
   }

@@ -9,6 +9,53 @@ namespace RelationshipManager.Api.Tests;
 
 public class TranscriptionServiceTests
 {
+    [TestCase("asr-webservice", false)]
+    [TestCase("asr-webservice", true)]
+    [TestCase("openai", false)]
+    public async Task PreviousContext_UsesUpstreamProtocol_WithoutExtraCallsOrTextLogs(string api, bool dialect)
+    {
+        const string prompt = "Vorheriger Satz: Grüße & Namen.\nNächster Satz";
+        string? sentPrompt = null;
+        var calls = 0;
+        var handler = new RecordingHttpMessageHandler(async request =>
+        {
+            calls++;
+            if (api == "asr-webservice" && !dialect)
+            {
+                Assert.That(Uri.UnescapeDataString(request.RequestUri!.Query), Does.Contain("initial_prompt=" + prompt));
+            }
+            else
+            {
+                var field = dialect ? "initialPrompt" : "prompt";
+                sentPrompt = await ((MultipartFormDataContent)request.Content!).Single(part => part.Headers.ContentDisposition!.Name!.Trim('"') == field).ReadAsStringAsync();
+                Assert.That(request.RequestUri!.Query, Is.Empty);
+            }
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"text\":\"next\"}") };
+        });
+        var logger = new ListLogger<TranscriptionService>();
+        var service = new TranscriptionService(new FakeHttpClientFactory(handler), Config(new()
+        {
+            ["Transcription:BaseUrl"] = "http://whisper.local",
+            ["Transcription:Api"] = api,
+            ["Transcription:DialectBaseUrl"] = dialect ? "http://tab-api.tab" : null
+        }), logger);
+        Assert.That(await service.TranscribeAsync(Audio(), "audio/wav", "de", CancellationToken.None, prompt), Is.EqualTo("next"));
+        Assert.That(calls, Is.EqualTo(1));
+        if (sentPrompt != null) Assert.That(sentPrompt, Is.EqualTo(prompt));
+        Assert.That(string.Join("\n", logger.Messages), Does.Not.Contain(prompt));
+    }
+
+    [Test]
+    public void UpstreamExceptionContext_IsNotLogged()
+    {
+        const string prompt = "PRIVATE RECOGNIZED CONTEXT";
+        var handler = new RecordingHttpMessageHandler((Func<HttpRequestMessage, HttpResponseMessage>)(_ => throw new HttpRequestException(prompt)));
+        var logger = new ListLogger<TranscriptionService>();
+        var service = new TranscriptionService(new FakeHttpClientFactory(handler), Config(new() { ["Transcription:BaseUrl"] = "http://whisper.local" }), logger);
+        Assert.ThrowsAsync<TranscriptionFailedException>(async () => await service.TranscribeAsync(Audio(), "audio/wav", "de", CancellationToken.None, prompt));
+        Assert.That(string.Join("\n", logger.Messages), Does.Not.Contain(prompt));
+    }
+
     private static IConfiguration Config(Dictionary<string, string?> values)
         => new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 

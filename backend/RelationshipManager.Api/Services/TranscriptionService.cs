@@ -26,7 +26,7 @@ public class TranscriptionService : ITranscriptionService
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_config["Transcription:BaseUrl"]);
 
-    public async Task<string> TranscribeAsync(Stream audio, string contentType, string? language, CancellationToken cancellationToken)
+    public async Task<string> TranscribeAsync(Stream audio, string contentType, string? language, CancellationToken cancellationToken, string? initialPrompt = null)
     {
         if (!IsConfigured)
         {
@@ -45,8 +45,8 @@ public class TranscriptionService : ITranscriptionService
         try
         {
             var text = string.Equals(api, "openai", StringComparison.OrdinalIgnoreCase)
-                ? await TranscribeOpenAiAsync(client, baseUrl, audio, contentType, effectiveLanguage, cancellationToken)
-                : await TranscribeAsrWebserviceAsync(client, baseUrl, audio, contentType, effectiveLanguage, cancellationToken);
+                ? await TranscribeOpenAiAsync(client, baseUrl, audio, contentType, effectiveLanguage, initialPrompt, cancellationToken)
+                : await TranscribeAsrWebserviceAsync(client, baseUrl, audio, contentType, effectiveLanguage, initialPrompt, cancellationToken);
 
             sw.Stop();
             _logger.LogInformation("Transcription segment completed in {ElapsedMs}ms, {TextLength} characters returned", sw.ElapsedMilliseconds, text.Length);
@@ -70,12 +70,12 @@ public class TranscriptionService : ITranscriptionService
         catch (Exception ex)
         {
             sw.Stop();
-            _logger.LogWarning(ex, "Transcription upstream call failed after {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            _logger.LogWarning("Transcription upstream call failed after {ElapsedMs}ms ({ExceptionType})", sw.ElapsedMilliseconds, ex.GetType().Name);
             throw new TranscriptionFailedException("The transcription service call failed.", ex);
         }
     }
 
-    private async Task<string> TranscribeAsrWebserviceAsync(HttpClient client, string baseUrl, Stream audio, string contentType, string? language, CancellationToken ct)
+    private async Task<string> TranscribeAsrWebserviceAsync(HttpClient client, string baseUrl, Stream audio, string contentType, string? language, string? initialPrompt, CancellationToken ct)
     {
         // Dia's trained queue prefers GPU workers; its public endpoint currently supports German only.
         // Keep the configured ASR service for other languages and automatic language detection.
@@ -88,11 +88,19 @@ public class TranscriptionService : ITranscriptionService
         {
             url += $"&language={Uri.EscapeDataString(language)}";
         }
+        if (!useDialect && !string.IsNullOrEmpty(initialPrompt))
+        {
+            url += $"&initial_prompt={Uri.EscapeDataString(initialPrompt)}";
+        }
 
         using var content = new MultipartFormDataContent();
         using var streamContent = new StreamContent(audio);
         streamContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
         content.Add(streamContent, useDialect ? "audioFile" : "audio_file", "segment" + ExtensionFor(contentType));
+        if (useDialect && !string.IsNullOrEmpty(initialPrompt))
+        {
+            content.Add(new StringContent(initialPrompt), "initialPrompt");
+        }
 
         using var response = await client.PostAsync(url, content, ct);
         if (!response.IsSuccessStatusCode)
@@ -104,7 +112,7 @@ public class TranscriptionService : ITranscriptionService
         return ParseText(body);
     }
 
-    private async Task<string> TranscribeOpenAiAsync(HttpClient client, string baseUrl, Stream audio, string contentType, string? language, CancellationToken ct)
+    private async Task<string> TranscribeOpenAiAsync(HttpClient client, string baseUrl, Stream audio, string contentType, string? language, string? initialPrompt, CancellationToken ct)
     {
         var url = $"{baseUrl}/audio/transcriptions";
 
@@ -113,6 +121,10 @@ public class TranscriptionService : ITranscriptionService
         streamContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
         content.Add(streamContent, "file", "segment" + ExtensionFor(contentType));
         content.Add(new StringContent(_config["Transcription:Model"] ?? "whisper-1"), "model");
+        if (!string.IsNullOrEmpty(initialPrompt))
+        {
+            content.Add(new StringContent(initialPrompt), "prompt");
+        }
         if (!string.IsNullOrEmpty(language))
         {
             content.Add(new StringContent(language), "language");

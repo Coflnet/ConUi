@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:relationship_manager/services/dia_region_service.dart';
 import 'package:relationship_manager/services/location_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -44,6 +45,45 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     location = _Location();
+  });
+
+  test('selected map pin overrides saved postcode and never reads GPS',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'dia-region-zip': '80331',
+      'dia-region-country': 'DE',
+    });
+    location.permission = false;
+    final region = await suggestDiaRegion(
+        selectedPosition: const LatLng(48.2, 16.37),
+        locationService: location,
+        httpClient: MockClient((request) async {
+          expect(request.url.queryParameters,
+              {'lat': '48.2', 'lon': '16.37', 'limit': '1'});
+          return http.Response(
+              '{"features":[{"properties":{"postcode":"1010","countrycode":"at"}}]}',
+              200);
+        }));
+    expect(region!.zip, '1010');
+    expect(region.country, 'AT');
+    expect(location.permissionChecks, 0);
+    expect(location.locationReads, 0);
+  });
+
+  test('unresolved map pin never falls back to an unrelated saved region',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'dia-region-zip': '80331',
+      'dia-region-country': 'DE',
+    });
+    expect(
+        await suggestDiaRegion(
+            selectedPosition: const LatLng(48.2, 16.37),
+            locationService: location,
+            httpClient: MockClient((_) async => http.Response('offline', 503))),
+        isNull);
+    expect(location.permissionChecks, 0);
+    expect(location.locationReads, 0);
   });
 
   for (final saved in [

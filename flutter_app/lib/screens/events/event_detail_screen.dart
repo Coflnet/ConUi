@@ -6,6 +6,7 @@ import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
 import '../../relationships/relationship_text.dart';
 import '../../services/database_service.dart';
+import '../../services/dia_region_service.dart';
 import '../../services/recording_file_store.dart';
 import '../../widgets/recording_player.dart';
 import '../../widgets/training_sample_dialog.dart';
@@ -166,6 +167,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   context, editable,
                   recordings: event.files.where((file) => file.isRecording).toList(),
                   store: _recordingFileStore,
+                  regionSuggestion: () => _suggestDiaRegion(event),
                   onTranscriptDetected: _saveDetectedTranscript))
         else
           Text(content),
@@ -312,6 +314,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     if (saved == true && mounted) _refresh();
   }
 
+  Future<DiaRegion?> _suggestDiaRegion(Event event) async {
+    final place = event.placeId == null ? null
+        : await context.read<DatabaseService>().getPlace(event.placeId!);
+    return suggestDiaRegion(selectedPosition: place == null ? null
+        : LatLng(place.latitude, place.longitude));
+  }
+
   Future<void> _saveDetectedTranscript(
       AttachedFile file, List<RecordingTranscriptSlice> slices) async {
     final db = context.read<DatabaseService>();
@@ -340,6 +349,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   children: [
                     RecordingPlayer(file: file, store: _recordingFileStore),
                     DiaCorrectionButton(file: file, store: _recordingFileStore,
+                        regionSuggestion: () => _suggestDiaRegion(event),
                         transcript: event.description,
                         onTranscriptDetected: (slices) => _saveDetectedTranscript(file, slices)),
                     TrainingSampleButton(

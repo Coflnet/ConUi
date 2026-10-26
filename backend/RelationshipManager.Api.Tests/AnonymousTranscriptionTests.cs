@@ -34,6 +34,24 @@ public class AnonymousTranscriptionTests
         client.PostAsync($"/api/transcription/segment?recordingId={id}&segment={segment}", Wav(seconds, sample));
 
     [Test]
+    public async Task Anonymous_ResultCacheIncludesContext_AndSameContextRetryUsesCache()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        factory.TranscriptionService.IsConfigured = true;
+        using var client = await factory.StartAsync();
+        var id = Guid.NewGuid();
+        client.DefaultRequestHeaders.Add("X-Transcription-Prompt", Convert.ToBase64String(Encoding.UTF8.GetBytes("First context")));
+        factory.TranscriptionService.ResultText = "first result";
+        Assert.That(await (await Send(client, id)).Content.ReadAsStringAsync(), Does.Contain("first result"));
+        client.DefaultRequestHeaders.Remove("X-Transcription-Prompt");
+        client.DefaultRequestHeaders.Add("X-Transcription-Prompt", Convert.ToBase64String(Encoding.UTF8.GetBytes("Different context")));
+        factory.TranscriptionService.ResultText = "second result";
+        Assert.That(await (await Send(client, id)).Content.ReadAsStringAsync(), Does.Contain("second result"));
+        Assert.That(await (await Send(client, id)).Content.ReadAsStringAsync(), Does.Contain("second result"));
+        Assert.That(factory.TranscriptionService.CallCount, Is.EqualTo(2));
+    }
+
+    [Test]
     public async Task Anonymous_ThreeRecordingsPerDay_WithIdempotentChunksAndHelpfulFourthError()
     {
         var clock = new Clock();
