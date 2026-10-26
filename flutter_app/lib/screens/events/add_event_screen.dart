@@ -17,6 +17,7 @@ import '../../services/interaction_feedback.dart';
 import '../../widgets/unsaved_draft_guard.dart';
 import '../../widgets/story_date_picker.dart';
 import '../../widgets/story_photo.dart';
+import '../../widgets/dia_correction_dialog.dart';
 import '../../services/record_package_audio_capture.dart';
 import '../../services/recorder_controller.dart';
 import '../../services/recording_file_store.dart';
@@ -339,6 +340,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
     setState(() => _isTranscribingNow = true);
     try {
       final result = await _recorder.transcribeStoredRecording(recording.id);
+      recording.transcriptSlices = result.transcriptSlices;
       if (!mounted) return;
       _hasFailedTranscription = result.failedSegments.isNotEmpty;
       if (result.transcript.isNotEmpty) {
@@ -644,6 +646,8 @@ class _AddEventScreenState extends State<AddEventScreen> {
               Text(l10n.liveTranscriptionAnonymousLimit),
             if (_recorder.lastStopResult?.stopReason == StopReason.anonymousLimit)
               Text(l10n.recordingAnonymousStopped),
+            if (_pendingRecording != null && _recorder.state == RecorderState.idle && !_isTranscribingNow)
+              DiaCorrectionButton(file: _pendingRecording!, store: _recorder.fileStore),
             if (_pendingRecording != null && !isRecording &&
                 (_hasFailedTranscription || _descriptionController.text.trim().isEmpty))
               TextButton(onPressed: isBusy ? null : _transcribeNow,

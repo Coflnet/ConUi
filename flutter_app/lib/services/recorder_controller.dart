@@ -97,11 +97,27 @@ class RecorderStopResult {
 class TranscribeLaterResult {
   final String transcript;
   final List<TranscriptSegment> failedSegments;
+  final List<RecordingTranscriptSlice> transcriptSlices;
 
   const TranscribeLaterResult({
     required this.transcript,
     required this.failedSegments,
+    this.transcriptSlices = const [],
   });
+}
+
+List<RecordingTranscriptSlice> _transcriptSlices(List<TranscriptSegment> segments) {
+  final slices = <RecordingTranscriptSlice>[];
+  var offset = 0;
+  for (final segment in segments) {
+    final start = offset;
+    offset += segment.pcmBytes.length;
+    final text = segment.text?.trim() ?? '';
+    if (text.isNotEmpty) {
+      slices.add(RecordingTranscriptSlice(startByte: start, endByte: offset, text: text));
+    }
+  }
+  return slices;
 }
 
 /// Drives one recording end to end: microphone capture, durable local
@@ -117,6 +133,7 @@ class TranscribeLaterResult {
 class RecorderController extends ChangeNotifier {
   final AudioCapture _audioCapture;
   final RecordingFileStore _fileStore;
+  RecordingFileStore get fileStore => _fileStore;
   final DatabaseService _db;
   final TranscriptionClient _transcriptionClient;
   final WavFormat format;
@@ -518,6 +535,7 @@ class RecorderController extends ChangeNotifier {
         durationMs: finalizeResult.durationMs,
         sha256: finalizeResult.sha256Hex,
         kind: AttachedFile.kindRecording,
+        transcriptSlices: _transcriptSlices(_segments),
       );
 
       await _db.saveLocalRecording(LocalRecordingState(
@@ -594,6 +612,7 @@ class RecorderController extends ChangeNotifier {
     return TranscribeLaterResult(
       transcript: transcript,
       failedSegments: segments.where((s) => s.failed).toList(),
+      transcriptSlices: _transcriptSlices(sorted),
     );
   }
 

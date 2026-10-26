@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:relationship_manager/models/models.dart';
 
@@ -56,6 +58,8 @@ void main() {
       expect(file.sha256, isNull);
       expect(file.kind, isNull);
       expect(file.isRecording, isFalse);
+      expect(file.transcriptSlices, isEmpty);
+      expect(file.toJson(), isNot(contains('transcriptSlices')));
     });
 
     test('new JSON with recording fields round-trips', () {
@@ -68,15 +72,27 @@ void main() {
         durationMs: 65000,
         sha256: 'deadbeef',
         kind: AttachedFile.kindRecording,
+        transcriptSlices: const [
+          RecordingTranscriptSlice(startByte: 32000, endByte: 64000, text: 'Erster Satz.'),
+          RecordingTranscriptSlice(startByte: 96000, endByte: 128000, text: 'Zweiter Satz.'),
+        ],
       );
 
       final json = file.toJson();
-      final roundTripped = AttachedFile.fromJson(json);
+      final roundTripped = AttachedFile.fromJson(jsonDecode(jsonEncode(json)) as Map<String, dynamic>);
 
       expect(roundTripped.durationMs, 65000);
       expect(roundTripped.sha256, 'deadbeef');
       expect(roundTripped.kind, AttachedFile.kindRecording);
       expect(roundTripped.isRecording, isTrue);
+      expect(roundTripped.transcriptSlices.map((slice) => slice.toJson()).toList(), [
+        {'startByte': 32000, 'endByte': 64000, 'text': 'Erster Satz.'},
+        {'startByte': 96000, 'endByte': 128000, 'text': 'Zweiter Satz.'},
+      ]);
+      final legacyFile = _legacyAttachedFileFromJson(json);
+      expect(legacyFile.id, file.id);
+      expect(legacyFile.filePath, file.filePath);
+      expect(legacyFile.transcriptSlices, isEmpty);
     });
 
     test('new JSON still only carries the old keys the old app understood',

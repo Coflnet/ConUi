@@ -19,6 +19,7 @@ import '../../widgets/unsaved_draft_guard.dart';
 import '../../widgets/story_date_picker.dart';
 import '../map/location_picker_screen.dart';
 import '../../widgets/story_photo.dart';
+import '../../widgets/dia_correction_dialog.dart';
 import '../../services/record_package_audio_capture.dart';
 import '../../services/recorder_controller.dart';
 import '../../services/recording_file_store.dart';
@@ -418,6 +419,7 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     setState(() => _isTranscribingNow = true);
     try {
       final result = await _recorder.transcribeStoredRecording(recordingId);
+      _pendingRecording!.transcriptSlices = result.transcriptSlices;
       if (!mounted) return;
       _hasFailedTranscription = result.failedSegments.isNotEmpty;
       if (result.transcript.isNotEmpty) {
@@ -833,6 +835,8 @@ class QuickAddSheetState extends State<QuickAddSheet> {
         if (!isRecording && _pendingRecording != null)
           Text(l10n.recordingAttachedWithDuration(_formatElapsed(
               Duration(milliseconds: _pendingRecording!.durationMs ?? 0)))),
+        if (_pendingRecording != null && _recorder.state == RecorderState.idle && !_isTranscribingNow)
+          DiaCorrectionButton(file: _pendingRecording!, store: _recorder.fileStore),
         if (_recorder.lastStopResult?.stopReason == StopReason.anonymousLimit)
           Text(l10n.recordingAnonymousStopped, textAlign: TextAlign.center),
         if (!isRecording &&

@@ -40,6 +40,53 @@ public class TranscriptionServiceTests
         Assert.That(handler.LastMultipartFieldNames, Does.Contain("audio_file"));
     }
 
+    [TestCase("de")]
+    [TestCase(null)]
+    public async Task German_UsesConfiguredDiaTrainedQueue_WithoutCollectionOrCredentials(string? language)
+    {
+        var handler = new RecordingHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"text\":\"hallo\",\"durationMs\":400}")
+        });
+        var service = new TranscriptionService(new FakeHttpClientFactory(handler), Config(new()
+        {
+            ["Transcription:BaseUrl"] = "http://whisper.local",
+            ["Transcription:DialectBaseUrl"] = "http://tab-api.tab/",
+            ["Transcription:DefaultLanguage"] = "de",
+            ["Transcription:ApiKey"] = "must-not-be-forwarded"
+        }), new ListLogger<TranscriptionService>());
+
+        var text = await service.TranscribeAsync(Audio(), "audio/wav", language, CancellationToken.None);
+
+        Assert.That(text, Is.EqualTo("hallo"));
+        Assert.That(handler.LastRequest!.RequestUri!.AbsoluteUri,
+            Is.EqualTo("http://tab-api.tab/api/Dialect/transcribe"));
+        Assert.That(handler.LastMultipartFieldNames, Is.EqualTo(new[] { "audioFile" }));
+        Assert.That(handler.LastRequest.Headers.Authorization, Is.Null);
+    }
+
+    [TestCase("en")]
+    [TestCase(null)]
+    public async Task DiaConfigured_PreservesOtherLanguagesAndAutomaticDetection(string? language)
+    {
+        var handler = new RecordingHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"text\":\"hello\"}")
+        });
+        var service = new TranscriptionService(new FakeHttpClientFactory(handler), Config(new()
+        {
+            ["Transcription:BaseUrl"] = "http://whisper.local",
+            ["Transcription:DialectBaseUrl"] = "http://tab-api.tab"
+        }), new ListLogger<TranscriptionService>());
+
+        await service.TranscribeAsync(Audio(), "audio/wav", language, CancellationToken.None);
+
+        Assert.That(handler.LastRequest!.RequestUri!.AbsoluteUri, Does.StartWith("http://whisper.local/asr?"));
+        Assert.That(handler.LastRequest.RequestUri.Query, language == null
+            ? Does.Not.Contain("language=") : Does.Contain("language=en"));
+        Assert.That(handler.LastMultipartFieldNames, Is.EqualTo(new[] { "audio_file" }));
+    }
+
     [Test]
     public async Task AsrWebservice_OmitsLanguageQueryParam_WhenNoLanguageConfiguredOrPassed()
     {
@@ -115,17 +162,25 @@ public class TranscriptionServiceTests
             await service.TranscribeAsync(Audio(), "audio/wav", null, CancellationToken.None));
     }
 
-    [Test]
-    public void UpstreamErrorStatus_ThrowsTranscriptionFailedException()
+    [TestCase(null)]
+    [TestCase("http://tab-api.tab")]
+    public void UpstreamErrorStatus_ThrowsTranscriptionFailedException_WithoutFallback(string? dialectBaseUrl)
     {
-        var handler = new RecordingHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var requests = 0;
+        var handler = new RecordingHttpMessageHandler(_ =>
+        {
+            requests++;
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
         var service = new TranscriptionService(new FakeHttpClientFactory(handler), Config(new()
         {
-            ["Transcription:BaseUrl"] = "http://whisper.local"
+            ["Transcription:BaseUrl"] = "http://whisper.local",
+            ["Transcription:DialectBaseUrl"] = dialectBaseUrl
         }), new ListLogger<TranscriptionService>());
 
         Assert.ThrowsAsync<TranscriptionFailedException>(async () =>
-            await service.TranscribeAsync(Audio(), "audio/wav", null, CancellationToken.None));
+            await service.TranscribeAsync(Audio(), "audio/wav", "de", CancellationToken.None));
+        Assert.That(requests, Is.EqualTo(1));
     }
 
     [Test]

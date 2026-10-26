@@ -196,10 +196,17 @@ void main() {
     expect(uploads, hasLength(1));
     expect(uploads.single.sequence, '1');
     expect(result.transcript, 'spoken words');
+    final slice = result.attachedFile.transcriptSlices.single;
+    expect(slice.startByte, 5 * 32000); // Quiet-cut fallback retains one second.
+    expect(slice.endByte, slice.startByte + uploads.single.bytes.length - wavHeaderLength);
+    expect(slice.text, 'spoken words');
     expect((await store.readBytes(result.attachedFile.id)).sublist(wavHeaderLength), pcm);
     final original = uploads.single;
     final restarted = buildController(client: client, createSpeechDetector: () async => null);
-    await restarted.transcribeStoredRecording(result.attachedFile.id);
+    final retried = await restarted.transcribeStoredRecording(result.attachedFile.id);
+    expect(retried.transcriptSlices.single.startByte, slice.startByte);
+    expect(retried.transcriptSlices.single.endByte, slice.endByte);
+    expect(retried.transcriptSlices.single.text, slice.text);
     expect(uploads, hasLength(2));
     expect(uploads.last.sequence, original.sequence);
     expect(uploads.last.bytes, original.bytes);
@@ -523,6 +530,9 @@ void main() {
 
     expect(result.failedSegments, hasLength(1));
     expect(result.transcript, 'good42');
+    expect(result.attachedFile.transcriptSlices.single.startByte, _bytesPerSegment);
+    expect(result.attachedFile.transcriptSlices.single.endByte, _bytesPerSegment * 2);
+    expect(result.attachedFile.transcriptSlices.single.text, 'good42');
     // The failing segment's audio is still fully present in the file -
     // both segments' bytes plus the header.
     expect(result.attachedFile.size, wavHeaderLength + _bytesPerSegment * 2);

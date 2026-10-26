@@ -36,6 +36,24 @@ class _PcmDetector implements SpeechDetector {
 }
 
 void main() {
+  test('speech emits after 512ms silence without waiting for duration fallback', () async {
+    final segments = <Uint8List>[];
+    final cutter = SentenceSegmenter(
+        format: WavFormat.standard,
+        maxDuration: const Duration(seconds: 6),
+        onSegment: (bytes, speech) {
+          expect(speech, isTrue);
+          segments.add(bytes);
+        });
+    await cutter.attachDetector(_PcmDetector());
+    await cutter.add(Uint8List.fromList(List.filled(16 * 1024, 1)));
+    await cutter.add(Uint8List(15 * 1024));
+    expect(segments, isEmpty);
+    await cutter.add(Uint8List(1024));
+    expect(segments.single.length, 32 * 1024); // 1.024s total audio.
+    await cutter.dispose();
+  });
+
   test(
       'speech ends cut before six seconds with identical bytes across chunk sizes',
       () async {

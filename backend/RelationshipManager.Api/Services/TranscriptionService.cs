@@ -77,8 +77,14 @@ public class TranscriptionService : ITranscriptionService
 
     private async Task<string> TranscribeAsrWebserviceAsync(HttpClient client, string baseUrl, Stream audio, string contentType, string? language, CancellationToken ct)
     {
-        var url = $"{baseUrl}/asr?task=transcribe&output=json&encode=true&vad_filter=true";
-        if (!string.IsNullOrEmpty(language))
+        // Dia's trained queue prefers GPU workers; its public endpoint currently supports German only.
+        // Keep the configured ASR service for other languages and automatic language detection.
+        var dialectBaseUrl = _config["Transcription:DialectBaseUrl"];
+        var useDialect = language == "de" && !string.IsNullOrWhiteSpace(dialectBaseUrl);
+        var url = useDialect
+            ? $"{dialectBaseUrl!.TrimEnd('/')}/api/Dialect/transcribe"
+            : $"{baseUrl}/asr?task=transcribe&output=json&encode=true&vad_filter=true";
+        if (!useDialect && !string.IsNullOrEmpty(language))
         {
             url += $"&language={Uri.EscapeDataString(language)}";
         }
@@ -86,12 +92,12 @@ public class TranscriptionService : ITranscriptionService
         using var content = new MultipartFormDataContent();
         using var streamContent = new StreamContent(audio);
         streamContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
-        content.Add(streamContent, "audio_file", "segment" + ExtensionFor(contentType));
+        content.Add(streamContent, useDialect ? "audioFile" : "audio_file", "segment" + ExtensionFor(contentType));
 
         using var response = await client.PostAsync(url, content, ct);
         if (!response.IsSuccessStatusCode)
         {
-            throw new HttpRequestException($"asr-webservice returned HTTP {(int)response.StatusCode}");
+            throw new HttpRequestException($"Transcription upstream returned HTTP {(int)response.StatusCode}");
         }
 
         var body = await response.Content.ReadAsStringAsync(ct);

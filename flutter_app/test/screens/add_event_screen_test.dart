@@ -218,7 +218,7 @@ void main() {
     await tester.enterText(titleField, "Grandma's story");
     await tester.pump();
 
-    final saveButton = find.byType(TextButton);
+    final saveButton = find.widgetWithText(TextButton, 'Save');
     await _pressAsync(tester, saveButton);
     await tester.pump();
 
@@ -323,7 +323,7 @@ void main() {
       expect((await db.getEvent(original.id))!.description, original.description);
     });
 
-    await _pressAsync(tester, find.byType(TextButton));
+    await _pressAsync(tester, find.widgetWithText(TextButton, 'Save'));
     await tester.pump();
     await tester.runAsync(() async {
       final people = await db.getPersons();
@@ -417,7 +417,7 @@ void main() {
       expect(await db.getEvents(), isEmpty);
       expect(await db.getConnections(), isEmpty);
     });
-    await _pressAsync(tester, find.byType(TextButton));
+    await _pressAsync(tester, find.widgetWithText(TextButton, 'Save'));
     await tester.pump();
     await tester.runAsync(() async {
       final saved = (await db.getEvents()).single;

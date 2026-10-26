@@ -9,6 +9,7 @@ import '../../services/database_service.dart';
 import '../../services/recording_file_store.dart';
 import '../../widgets/recording_player.dart';
 import '../../widgets/training_sample_dialog.dart';
+import '../../widgets/dia_correction_dialog.dart';
 import '../map/map_tile_layer.dart';
 import '../places/place_sheet.dart';
 import '../persons/person_detail_screen.dart';
@@ -319,6 +320,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     RecordingPlayer(file: file, store: _recordingFileStore),
+                    DiaCorrectionButton(file: file, store: _recordingFileStore),
                     TrainingSampleButton(
                         event: event, file: file, store: _recordingFileStore),
                   ],

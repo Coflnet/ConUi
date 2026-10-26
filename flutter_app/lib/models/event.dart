@@ -41,6 +41,25 @@ String formatDateWithPrecision(DateTime date, DatePrecision precision, [String? 
   }
 }
 
+/// Original transcription boundaries in the recording's PCM payload (no header).
+class RecordingTranscriptSlice {
+  final int startByte;
+  final int endByte;
+  final String text;
+
+  const RecordingTranscriptSlice(
+      {required this.startByte, required this.endByte, required this.text});
+
+  Map<String, dynamic> toJson() =>
+      {'startByte': startByte, 'endByte': endByte, 'text': text};
+
+  factory RecordingTranscriptSlice.fromJson(Map<String, dynamic> json) =>
+      RecordingTranscriptSlice(
+          startByte: json['startByte'] as int,
+          endByte: json['endByte'] as int,
+          text: json['text'] as String);
+}
+
 class AttachedFile {
   /// Marks an [AttachedFile] as an audio recording captured inside this
   /// app (as opposed to e.g. an imported photo or document). See
@@ -72,6 +91,7 @@ class AttachedFile {
   /// audio picked from the file system, ...) leaves this null. Optional
   /// and additive, like [durationMs].
   String? kind;
+  List<RecordingTranscriptSlice> transcriptSlices;
 
   AttachedFile({
     String? id,
@@ -83,6 +103,7 @@ class AttachedFile {
     this.durationMs,
     this.sha256,
     this.kind,
+    this.transcriptSlices = const [],
   })  : id = id ?? const Uuid().v4(),
         addedAt = addedAt ?? DateTime.now();
 
@@ -96,6 +117,8 @@ class AttachedFile {
         if (durationMs != null) 'durationMs': durationMs,
         if (sha256 != null) 'sha256': sha256,
         if (kind != null) 'kind': kind,
+        if (transcriptSlices.isNotEmpty)
+          'transcriptSlices': transcriptSlices.map((s) => s.toJson()).toList(),
       };
 
   factory AttachedFile.fromJson(Map<String, dynamic> json) => AttachedFile(
@@ -108,6 +131,11 @@ class AttachedFile {
         durationMs: json['durationMs'] as int?,
         sha256: json['sha256'] as String?,
         kind: json['kind'] as String?,
+        transcriptSlices: (json['transcriptSlices'] as List<dynamic>?)
+                ?.map((s) => RecordingTranscriptSlice.fromJson(
+                    s as Map<String, dynamic>))
+                .toList() ??
+            [],
       );
 
   bool get isImage => mimeType.startsWith('image/');

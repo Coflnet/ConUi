@@ -252,3 +252,22 @@ PLAYWRIGHT_MODULE=/path/to/playwright/module node flutter_app/test/browser/auth_
 `AUTH_TEST_BASE` selects the loopback build; `AUTH_TEST_OUTPUT` selects the
 report directory. DE/EN desktop/mobile at 200% zoom use mocked auth responses;
 requests outside the local build are blocked.
+
+### Transcription and Dia corrections
+
+Con's recording client sends audio to its own `/api/transcription/segment` API,
+which retains authentication, anonymous allowance and concurrency checks.
+With `Transcription:Api=asr-webservice`, optional `Transcription:DialectBaseUrl`
+selects Dia's `/api/Dialect/transcribe` GPU worker queue for German (`de`).
+Other languages and automatic detection retain `Transcription:BaseUrl`.
+Fleet configures the internal Dia service and exact Con-to-Tab TCP8000 policies;
+ordinary transcription does not submit training contributions.
+
+Recordings offer “Correct a sentence for Dia” both after capture and in saved
+stories. Original transcription boundaries select matching PCM samples; older
+recordings use an editable audio range. Users can listen, correct the text and
+explicitly agree to Dia's current training terms before contributing anonymously.
+Only the selected clip and correction are uploaded, with optional dialect region.
+Clips are capped at 20 seconds so base64 JSON fits Dia's 1MiB public gateway.
+Original recordings and story text are preserved. Dia's recording reference is
+shown for deletion requests; the local device proof and consent receipt persist.
