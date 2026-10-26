@@ -42,8 +42,16 @@ List<PersonMention> extractPersonMentions(String text, List<Person> people) {
       index < 0 ||
       index >= text.length ||
       !word.hasMatch(text.substring(index, index + 1));
-  final possessive = RegExp(r"^['’]s(?:$|[^\p{L}\p{M}\p{N}'’\-])",
-      caseSensitive: false, unicode: true);
+  // Bare German genitive -s needs a relationship cue so plurals such as
+  // "Annas kamen" cannot introduce a partial name match.
+  final possessive = RegExp(
+      r"^(?:['’]s?(?:$|[^\p{L}\p{M}\p{N}'’\-])|s\s+(?:"
+      r'bruder|schwester|vater|mutter|sohn|tochter|halbbruder|halbschwester|'
+      r'großvater|großmutter|opa|oma|enkel|enkelin|stiefvater|stiefmutter|'
+      r'stiefkind|stiefsohn|stieftochter|nachbar|nachbarin|kollege|kollegin|'
+      r'freund|freundin|partner|partnerin|ehemann|ehefrau)\b)',
+      caseSensitive: false,
+      unicode: true);
   final occurrences = <_Occurrence>[];
   for (final entry in names.entries) {
     final pattern = entry.key

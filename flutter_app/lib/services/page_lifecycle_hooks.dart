@@ -18,3 +18,7 @@ typedef PageLifecycleUnsubscribe = void Function();
 /// patch up.
 PageLifecycleUnsubscribe onPageMightBeClosing(void Function() onMightBeClosing) =>
     impl.onPageMightBeClosing(onMightBeClosing);
+
+/// Lets the browser warn before closing or reloading an unfinished form.
+PageLifecycleUnsubscribe onBeforePageUnload(bool Function() shouldWarn) =>
+    impl.onBeforePageUnload(shouldWarn);

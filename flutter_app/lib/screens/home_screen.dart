@@ -209,6 +209,7 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           IconButton(
             icon: const Icon(Icons.settings),
+            tooltip: l10n.settingsTitle,
             onPressed: () {
               Navigator.push(
                 context,

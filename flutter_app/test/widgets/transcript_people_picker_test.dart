@@ -41,6 +41,102 @@ Future<TranscriptPeopleController> _controller(
 }
 
 void main() {
+  for (final existing in [false, true]) {
+    testWidgets('residence facts save with their person (existing=$existing)',
+        (tester) async {
+      final john = Person(
+          id: 'john',
+          name: 'John',
+          address: 'Previous address',
+          company: 'Previous company',
+          storyFacts: {'older': 'Previous fact'});
+      final alex = Person(
+          id: 'alex',
+          name: 'Alex',
+          address: 'Other address',
+          company: 'Other company',
+          storyFacts: {'older': 'Other fact'});
+      final db = await _database(tester, [if (existing) john, alex]);
+      final controller = await _controller(
+          tester, db, 'John wohnt in der Dorfstraße 17. John works at Zeta.');
+      expect(controller.selectedPeople.single.name, 'John');
+      expect(
+          controller.facts.map((fact) => fact.person.name), ['John', 'John']);
+      if (existing) expect(controller.selectedPeople.single.id, john.id);
+      await tester.runAsync(() async {
+        expect((await db.getPerson(alex.id))!.storyFacts, alex.storyFacts);
+        final ids = await saveStoryPeople(db, await controller.peopleForSave());
+        final event = Event(
+            title: 'Residence',
+            dateTime: DateTime(2026, 10, 26),
+            participantIds: ids);
+        await db.saveEvent(event);
+        await controller.saveInformation(event);
+        final people = await db.getPersons();
+        expect(people, hasLength(2));
+        final savedJohn = people.singleWhere((person) => person.name == 'John');
+        expect(event.participantIds, [savedJohn.id]);
+        expect(savedJohn.storyFacts[event.id],
+            'John wohnt in der Dorfstraße 17\nJohn works at Zeta');
+        expect(savedJohn.address, existing ? 'Previous address' : isNull);
+        expect(savedJohn.company, existing ? 'Previous company' : 'Zeta');
+        if (existing) expect(savedJohn.storyFacts['older'], 'Previous fact');
+        final savedAlex = await db.getPerson(alex.id);
+        expect(savedAlex!.address, alex.address);
+        expect(savedAlex.company, alex.company);
+        expect(savedAlex.storyFacts, alex.storyFacts);
+        expect(await db.getPlaces(), isEmpty);
+      });
+    });
+  }
+
+  for (final existing in [false, true]) {
+    testWidgets(
+        'German possessive endpoints survive review and save (existing=$existing)',
+        (tester) async {
+      final ben = Person(id: 'ben', name: 'Ben');
+      final hans = Person(id: 'hans', name: 'Hans');
+      final alex = Person(id: 'alex', name: 'Alex');
+      for (final (text, owner) in [
+        ('Bens Vater ist Alex.', 'Ben'),
+        ('Alex ist Bens Vater.', 'Ben'),
+        ('Hans’ Vater ist Alex.', 'Hans'),
+        ("Alex ist Hans' Vater.", 'Hans'),
+      ]) {
+        final db = await _database(tester, existing ? [ben, hans, alex] : []);
+        final controller = await _controller(tester, db, text);
+        expect(controller.selectedPeople.map((p) => p.name),
+            unorderedEquals([owner, 'Alex']),
+            reason: text);
+        final connection = controller.connections.single;
+        expect((
+          connection.person1.name,
+          connection.type,
+          connection.person2.name
+        ), (
+          'Alex',
+          RelationshipType.parent,
+          owner
+        ), reason: text);
+        expect(connection.sourceText, text.substring(0, text.length - 1));
+        if (existing) {
+          expect(connection.person2.id, owner == 'Ben' ? ben.id : hans.id);
+        }
+        await tester.runAsync(() async {
+          final ids =
+              await saveStoryPeople(db, await controller.peopleForSave());
+          final event = Event(
+              title: text,
+              dateTime: DateTime(2026, 10, 26),
+              participantIds: ids);
+          await db.saveEvent(event);
+          await controller.saveInformation(event);
+          expect(await db.getConnectionsForEvent(event.id), hasLength(1));
+        });
+      }
+    });
+  }
+
   testWidgets('full relative chain previews new people and writes only on Save',
       (tester) async {
     final db = await _database(tester);

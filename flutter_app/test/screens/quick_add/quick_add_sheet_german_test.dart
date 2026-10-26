@@ -86,7 +86,7 @@ void main() {
     expect(find.text('Wann war das?'), findsOneWidget);
     expect(find.widgetWithText(TextField, 'Was ist hier passiert?'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Geschichte speichern'), findsOneWidget);
-    expect(find.bySemanticsLabel('Aufnahme starten'), findsOneWidget);
+    expect(find.byTooltip('Aufnahme starten'), findsOneWidget);
   });
 
   testWidgets('shows the German microphone-permission-denied message', (tester) async {
@@ -128,6 +128,6 @@ void main() {
     await tester.pump();
 
     expect(find.text('Aufnahme läuft…'), findsOneWidget);
-    expect(find.bySemanticsLabel('Aufnahme beenden'), findsOneWidget);
+    expect(find.byTooltip('Aufnahme beenden'), findsOneWidget);
   });
 }

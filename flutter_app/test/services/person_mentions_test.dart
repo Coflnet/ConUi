@@ -58,8 +58,12 @@ void main() {
   });
 
   test('relationship prepositions do not become name particles', () {
-    expect(extractPersonMentions('Alex ist der Bruder von Ben.', []).map((m) => m.name), isEmpty);
-    expect(extractPersonMentions('Herr von Ben kam.', []).single.name, 'von Ben');
+    expect(
+        extractPersonMentions('Alex ist der Bruder von Ben.', [])
+            .map((m) => m.name),
+        isEmpty);
+    expect(
+        extractPersonMentions('Herr von Ben kam.', []).single.name, 'von Ben');
   });
 
   test('English cues support particles, hyphens and apostrophes', () {
@@ -117,6 +121,30 @@ void main() {
         extractPersonMentions(
             "Annabel's story Annabelle’s story Anna-Maria", [anna]),
         isEmpty);
+  });
+
+  test('German possessives retain known endpoints without plural substrings',
+      () {
+    final ben = Person(id: 'ben', name: 'Ben Müller');
+    final hans = Person(id: 'hans', name: 'Hans');
+    for (final text in ['Bens Vater ist Alex.', 'Alex ist Bens Mutter.']) {
+      expect(
+          extractPersonMentions(text, [ben]).single.matches.single.id, 'ben');
+    }
+    for (final text in ["Hans' Vater ist Alex.", 'Alex ist Hans’ Mutter.']) {
+      expect(
+          extractPersonMentions(text, [hans]).single.matches.single.id, 'hans');
+    }
+    for (final text in [
+      'Bens kamen.',
+      'Benson',
+      'Bensons Vater',
+      'Benstown',
+      'Hans’ville',
+      'Hansens Vater',
+    ]) {
+      expect(extractPersonMentions(text, [ben, hans]), isEmpty, reason: text);
+    }
   });
 
   test('academic titles after a human cue are not new person names', () {

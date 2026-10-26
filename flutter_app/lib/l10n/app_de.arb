@@ -196,6 +196,7 @@
   "mapAddStory": "Geschichte hinzufügen",
   "mapDragPinSemanticLabel": "Standort der neuen Geschichte, zum Anpassen ziehen",
   "mapChooseAPlace": "Ort auswählen",
+  "mapTilesUnavailable": "Die Karte konnte nicht geladen werden. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
   "mapPlaceStoryCountSemantics": "{name}, {count, plural, =0{keine Geschichten} =1{1 Geschichte} other{{count} Geschichten}}",
   "mapClusterStoryCountSemantics": "{count, plural, =1{1 Ort} other{{count} Orte}}, {storyCount, plural, =0{keine Geschichten} =1{1 Geschichte} other{{storyCount} Geschichten}}",
 

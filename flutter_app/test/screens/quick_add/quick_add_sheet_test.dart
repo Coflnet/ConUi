@@ -14,6 +14,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -124,6 +125,38 @@ void main() {
 
   tearDown(() {
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+  });
+
+  testWidgets('keyboard can reach the recorder before and during capture', (tester) async {
+    final db = createTestDatabaseService();
+    await tester.runAsync(db.initialize);
+    final recorder = _buildRecorder(capture: FakeAudioCapture(), db: db, tempDir: tempDir);
+    addTearDown(recorder.dispose);
+    final position = ValueNotifier(const LatLng(10, 10));
+    addTearDown(position.dispose);
+    await tester.pumpWidget(_wrap(db,
+        QuickAddSheet(position: position, recorderController: recorder)));
+    await _settle(tester);
+    for (final target in [RecorderState.recording, RecorderState.idle]) {
+      await tester.showKeyboard(find.widgetWithText(TextField, 'What happened here?'));
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump();
+      expect(
+        FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<IconButton>()?.tooltip,
+        target == RecorderState.recording ? 'Start recording' : 'Stop recording',
+        reason: 'Shift+Tab from the transcript must focus the recorder: ${FocusManager.instance.primaryFocus}',
+      );
+      final button = find.widgetWithIcon(IconButton,
+          target == RecorderState.recording ? Icons.mic : Icons.stop);
+      final callback = tester.widget<IconButton>(button).onPressed! as Function;
+      await tester.runAsync(() async => await callback());
+      await tester.pump();
+      expect(recorder.state, target);
+    }
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   group('save rules', () {
@@ -413,7 +446,7 @@ void main() {
       await tester.pump();
 
       // Drive the recorder directly rather than through the button's
-      // onTap: GestureDetector's onTap is void Function(), so tester.tap()
+      // onPressed is void Function(), so tester.tap()
       // never actually awaits _toggleRecording()'s async body - including
       // start()'s own database write, which (like every sqflite call in
       // this suite) needs a real event-loop turn under tester.runAsync to
@@ -455,10 +488,7 @@ void main() {
     await tester.enterText(field, 'My notes.');
     for (var i = 0; i < 2; i++) {
       final start = tester
-          .widget<GestureDetector>(find.descendant(
-              of: find.bySemanticsLabel('Start recording'),
-              matching: find.byType(GestureDetector)))
-          .onTap!;
+          .widget<IconButton>(find.widgetWithIcon(IconButton, Icons.mic)).onPressed!;
       await tester.runAsync(() async => await (start as Function)());
       await tester.pump();
       await tester.runAsync(() async {
@@ -466,10 +496,7 @@ void main() {
         await Future<void>.delayed(Duration.zero);
       });
       final stop = tester
-          .widget<GestureDetector>(find.descendant(
-              of: find.bySemanticsLabel('Stop recording'),
-              matching: find.byType(GestureDetector)))
-          .onTap!;
+          .widget<IconButton>(find.widgetWithIcon(IconButton, Icons.stop)).onPressed!;
       await tester.runAsync(() async => await (stop as Function)());
       await tester.pump();
       expect(tester.widget<TextField>(field).controller!.text,
@@ -491,8 +518,7 @@ void main() {
     await tester.pumpWidget(_wrap(db,
         QuickAddSheet(position: position, recorderController: recorder), auth: auth));
     await _settle(tester);
-    final start = tester.widget<GestureDetector>(find.descendant(
-        of: find.bySemanticsLabel('Start recording'), matching: find.byType(GestureDetector))).onTap!;
+    final start = tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.mic)).onPressed!;
     await tester.runAsync(() async => await (start as Function)());
     await tester.pump();
     expect(find.byType(AlertDialog), findsOneWidget);
@@ -530,10 +556,7 @@ void main() {
     });
     await tester.pump();
     final stop = tester
-        .widget<GestureDetector>(find.descendant(
-            of: find.bySemanticsLabel('Stop recording'),
-            matching: find.byType(GestureDetector)))
-        .onTap!;
+        .widget<IconButton>(find.widgetWithIcon(IconButton, Icons.stop)).onPressed!;
     await tester.runAsync(() async => await (stop as Function)());
     await tester.pump();
     final l10n = AppLocalizations.of(tester.element(field));
@@ -665,11 +688,7 @@ void main() {
       // isn't safe there), which is why this doesn't just wrap
       // confirmDiscardIfNeeded() itself in runAsync.
       final recordButtonTap = tester
-          .widget<GestureDetector>(find.descendant(
-            of: find.bySemanticsLabel('Stop recording'),
-            matching: find.byType(GestureDetector),
-          ))
-          .onTap!;
+          .widget<IconButton>(find.widgetWithIcon(IconButton, Icons.stop)).onPressed!;
       await tester.runAsync(() async => await (recordButtonTap as Function)());
       await tester.pump();
       expect(recorder.state, RecorderState.idle,
@@ -711,16 +730,14 @@ void main() {
         QuickAddSheet(position: position, recorderController: recorder)));
     await _settle(tester);
     await tester.enterText(find.widgetWithText(TextField, 'What happened here?'), 'My notes.');
-    final start = tester.widget<GestureDetector>(find.descendant(
-        of: find.bySemanticsLabel('Start recording'), matching: find.byType(GestureDetector))).onTap!;
+    final start = tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.mic)).onPressed!;
     await tester.runAsync(() async => await (start as Function)());
     await tester.pump();
     await tester.runAsync(() async {
       capture.emitChunk(Uint8List(1600)); // Only the final tail is transcribed.
       await Future<void>.delayed(Duration.zero);
     });
-    final stop = tester.widget<GestureDetector>(find.descendant(
-        of: find.bySemanticsLabel('Stop recording'), matching: find.byType(GestureDetector))).onTap!;
+    final stop = tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.stop)).onPressed!;
     await tester.runAsync(() async => await (stop as Function)());
     await tester.pump();
     expect(find.widgetWithText(Chip, 'Anna Müller'), findsOneWidget);

@@ -19,15 +19,15 @@ void main() async {
   if (kIsWeb) await BrowserContextMenu.disableContextMenu();
 
   final dbService = DatabaseService();
-  await dbService.initialize();
-
   final authService = AuthService();
-  await authService.initialize();
+  final appSettings = AppSettingsService();
+  await Future.wait([
+    dbService.initialize(),
+    authService.initialize(),
+    appSettings.initialize(),
+  ]);
 
   final syncService = SyncService(dbService, authService);
-
-  final appSettings = AppSettingsService();
-  await appSettings.initialize();
 
   runApp(
     MultiProvider(

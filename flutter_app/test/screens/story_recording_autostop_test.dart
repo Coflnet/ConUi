@@ -132,9 +132,7 @@ void main() {
         await tester.enterText(find.widgetWithText(TextFormField, 'Description'), 'My notes.');
       }
       await tester.runAsync(() async {
-        final Function start = quick
-            ? tester.widget<GestureDetector>(find.descendant(of: find.bySemanticsLabel('Start recording'), matching: find.byType(GestureDetector))).onTap! as Function
-            : tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.mic)).onPressed! as Function;
+        final Function start = tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.mic)).onPressed! as Function;
         await start();
         capture.emitChunk(Uint8List(1600));
         await Future<void>.delayed(Duration.zero);

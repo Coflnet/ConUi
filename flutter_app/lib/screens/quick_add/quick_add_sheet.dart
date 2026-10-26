@@ -764,26 +764,19 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     return Column(
       children: [
         Center(
-          child: Semantics(
-            label: isRecording ? l10n.quickAddStopRecording : _recorder.canRetryStop ? l10n.storyRetryFinish : l10n.quickAddStartRecording,
-            button: true,
-            child: GestureDetector(
-              onTap: isBusy ? null : _toggleRecording,
-              child: Container(
-                width: 88,
-                height: 88,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isRecording
-                      ? Colors.red
-                      : Theme.of(context).colorScheme.primary,
-                ),
-                child: Icon(
-                  isRecording ? Icons.stop : _recorder.canRetryStop ? Icons.refresh : Icons.mic,
-                  color: Colors.white,
-                  size: 40,
-                ),
-              ),
+          child: IconButton.filled(
+            tooltip: isRecording ? l10n.quickAddStopRecording : _recorder.canRetryStop ? l10n.storyRetryFinish : l10n.quickAddStartRecording,
+            onPressed: isBusy ? null : _toggleRecording,
+            style: IconButton.styleFrom(
+              fixedSize: const Size(88, 88),
+              backgroundColor: isRecording
+                  ? Colors.red
+                  : Theme.of(context).colorScheme.primary,
+              foregroundColor: Colors.white,
+            ),
+            iconSize: 40,
+            icon: Icon(
+              isRecording ? Icons.stop : _recorder.canRetryStop ? Icons.refresh : Icons.mic,
             ),
           ),
         ),

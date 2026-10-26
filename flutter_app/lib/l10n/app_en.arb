@@ -229,6 +229,7 @@
   "mapAddStory": "Add story",
   "mapDragPinSemanticLabel": "New story location, drag to adjust",
   "mapChooseAPlace": "Choose a place",
+  "mapTilesUnavailable": "Could not load the map. Check your connection and retry.",
   "mapPlaceStoryCountSemantics": "{name}, {count, plural, =0{no stories} =1{1 story} other{{count} stories}}",
   "@mapPlaceStoryCountSemantics": {"placeholders": {"name": {"type": "String"}, "count": {"type": "int"}}},
   "mapClusterStoryCountSemantics": "{count, plural, =1{1 place} other{{count} places}}, {storyCount, plural, =0{no stories} =1{1 story} other{{storyCount} stories}}",

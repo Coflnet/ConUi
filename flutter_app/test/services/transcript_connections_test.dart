@@ -10,6 +10,68 @@ void main() {
           .map((c) => (c.person1Name, c.type, c.person2Name))
           .toList();
 
+  test('explicit residence facts preserve the address and named person', () {
+    for (final text in [
+      'John wohnt in Dorfstraße 17',
+      'John wohnt in der Dorfstraße 17',
+      'John lives at 17 High Street',
+      'John lives in Berlin',
+    ]) {
+      final result = extractTranscriptConnections('$text.', []);
+      expect(result.connections, isEmpty);
+      expect(result.facts.single.personName, 'John');
+      expect(result.facts.single.value, text);
+      expect(result.facts.single.sourceText, text);
+      expect(result.facts.single.isCompany, isFalse);
+    }
+  });
+
+  test('relative residence facts keep their named antecedent', () {
+    for (final (text, head, evidence) in [
+      (
+        'Alex is the brother of John, who lives at 17 High Street.',
+        'John',
+        'who lives at 17 High Street'
+      ),
+      (
+        'Alex ist der Bruder von John der in der Dorfstraße 17 wohnt.',
+        'John',
+        'der in der Dorfstraße 17 wohnt'
+      ),
+      (
+        'Alex is John’s brother, who lives in Berlin.',
+        'Alex',
+        'who lives in Berlin'
+      ),
+    ]) {
+      final result = extractTranscriptConnections(text, []);
+      expect(result.facts.single.personName, head, reason: text);
+      expect(result.facts.single.sourceText, evidence);
+    }
+    final result = extractTranscriptConnections(
+        'John works at Zeta and lives at 17 High Street.', []);
+    expect(result.facts.map((fact) => fact.personName), ['John', 'John']);
+    expect(result.facts.last.sourceText, 'lives at 17 High Street');
+  });
+
+  test('residence facts reject negation, questions, uncertainty and pronouns',
+      () {
+    for (final text in [
+      'John wohnt nicht in Dorfstraße 17.',
+      'John wohnt in Dorfstraße 17?',
+      'Vielleicht wohnt John in Dorfstraße 17.',
+      'John lives at 17 High Street, allegedly.',
+      'John does not live in Berlin.',
+      'John might live in Berlin.',
+      'He lives at 17 High Street.',
+      'Sie wohnt in Dorfstraße 17.',
+      'John lives in.',
+    ]) {
+      expect(extractTranscriptConnections(text, []).facts, isEmpty,
+          reason: text);
+    }
+  });
+
   test('English explicit slots introduce people and keep relative subject', () {
     final result = extractTranscriptConnections(
         'Alex got a new car. Alex is the brother of Ben, who works at Zeta '
@@ -146,6 +208,232 @@ void main() {
           ('Alex', RelationshipType.sibling, 'Ben'),
           ('Dana', RelationshipType.parent, 'Ella'),
         ]);
+  });
+
+  test('reverse possessives preserve role direction and named relative head',
+      () {
+    for (final text in [
+      'Ben’s father is Alex, who works at Zeta.',
+      "Ben's father is Alex, who works at Zeta.",
+      'Bens Vater ist Alex, der bei Zeta arbeitet.',
+      'Hans’ Vater ist Alex, der bei Zeta arbeitet.',
+    ]) {
+      final result = extractTranscriptConnections(text, []);
+      expect(
+          triples(result),
+          [
+            (
+              'Alex',
+              RelationshipType.parent,
+              text.startsWith('Hans') ? 'Hans' : 'Ben'
+            ),
+          ],
+          reason: text);
+      expect(result.facts.single.personName, 'Alex', reason: text);
+      expect(result.connections.single.sourceText, text.split(',').first);
+    }
+    expect(
+        triples(extractTranscriptConnections(
+            "Alex is Hans' father. Hans ist Alex’ Sohn.", [])),
+        [
+          ('Alex', RelationshipType.parent, 'Hans'),
+        ]);
+  });
+
+  test('named appositives preserve evidence and refer back to the role holder',
+      () {
+    for (final description in [
+      'Ben’s sister',
+      'the sister of Ben',
+      'Bens Schwester',
+      'die Schwester von Ben',
+    ]) {
+      final result = extractTranscriptConnections(
+          'Alex, $description, who works at Zeta and is a colleague of Dana.',
+          []);
+      expect(
+          triples(result),
+          [
+            ('Alex', RelationshipType.sibling, 'Ben'),
+            ('Alex', RelationshipType.colleague, 'Dana'),
+          ],
+          reason: description);
+      expect(result.facts.single.personName, 'Alex');
+      expect(result.connections.first.sourceText, 'Alex, $description');
+    }
+    final german = extractTranscriptConnections(
+        'Alex, die Mutter von Ben, arbeitet bei Zeta.', []);
+    expect(triples(german), [('Alex', RelationshipType.parent, 'Ben')]);
+    expect(german.facts.single.personName, 'Alex');
+    expect(
+        extractTranscriptConnections('Alex, Ben’s sister.', [])
+            .connections
+            .single
+            .sourceText,
+        'Alex, Ben’s sister');
+  });
+
+  test('explicit paired statements support symmetric relationships only', () {
+    final cases = <String, RelationshipType>{
+      'siblings': RelationshipType.sibling,
+      'brothers': RelationshipType.sibling,
+      'sisters': RelationshipType.sibling,
+      'friends': RelationshipType.friend,
+      'colleagues': RelationshipType.colleague,
+      'partners': RelationshipType.partner,
+      'spouses': RelationshipType.spouse,
+      'married': RelationshipType.spouse,
+      'Geschwister': RelationshipType.sibling,
+      'Brüder': RelationshipType.sibling,
+      'Schwestern': RelationshipType.sibling,
+      'Freunde': RelationshipType.friend,
+      'Freundinnen': RelationshipType.friend,
+      'Kollegen': RelationshipType.colleague,
+      'Kolleginnen': RelationshipType.colleague,
+      'Partner': RelationshipType.partner,
+      'Partnerinnen': RelationshipType.partner,
+      'verheiratet': RelationshipType.spouse,
+      'neighbors': RelationshipType.neighbour,
+      'neighbours': RelationshipType.neighbour,
+      'Nachbarn': RelationshipType.neighbour,
+      'Nachbarinnen': RelationshipType.neighbour,
+      'half-siblings': RelationshipType.halfSibling,
+      'Halbgeschwister': RelationshipType.halfSibling,
+    };
+    for (final entry in cases.entries) {
+      for (final pair in ['Alex and Ben are', 'Alex und Ben sind']) {
+        final statement = '$pair ${entry.key}';
+        final result = extractTranscriptConnections('$statement.', []);
+        expect(triples(result), [('Alex', entry.value, 'Ben')],
+            reason: statement);
+        expect(result.connections.single.sourceText, statement);
+      }
+    }
+  });
+
+  test('extended explicit roles preserve directions and deduplicate inverses',
+      () {
+    for (final (parent, child, type) in [
+      ('grandparent', 'grandchild', RelationshipType.grandparent),
+      ('grandfather', 'grandson', RelationshipType.grandparent),
+      ('grandmother', 'granddaughter', RelationshipType.grandparent),
+      ('Großvater', 'Enkel', RelationshipType.grandparent),
+      ('Großmutter', 'Enkelin', RelationshipType.grandparent),
+      ('Opa', 'Enkel', RelationshipType.grandparent),
+      ('Oma', 'Enkelin', RelationshipType.grandparent),
+      ('stepparent', 'stepchild', RelationshipType.stepParent),
+      ('step-parent', 'Stiefkind', RelationshipType.stepParent),
+      ('stepfather', 'stepson', RelationshipType.stepParent),
+      ('stepmother', 'stepdaughter', RelationshipType.stepParent),
+      ('Stiefvater', 'Stiefsohn', RelationshipType.stepParent),
+      ('Stiefmutter', 'Stieftochter', RelationshipType.stepParent),
+    ]) {
+      final result = extractTranscriptConnections(
+          'Alex is the $parent of Ben. Ben is Alex’s $child.', []);
+      expect(triples(result), [('Alex', type, 'Ben')], reason: parent);
+    }
+    for (final (role, type) in [
+      ('half-sibling', RelationshipType.halfSibling),
+      ('half-brother', RelationshipType.halfSibling),
+      ('half-sister', RelationshipType.halfSibling),
+      ('Halbbruder', RelationshipType.halfSibling),
+      ('Halbschwester', RelationshipType.halfSibling),
+      ('neighbor', RelationshipType.neighbour),
+      ('neighbour', RelationshipType.neighbour),
+      ('Nachbar', RelationshipType.neighbour),
+      ('Nachbarin', RelationshipType.neighbour),
+    ]) {
+      final result = extractTranscriptConnections(
+          'Alex is the $role of Ben. Ben is the $role of Alex.', []);
+      expect(triples(result), [('Alex', type, 'Ben')], reason: role);
+    }
+  });
+
+  test('explicit named roles identify people without inferring narrator links',
+      () {
+    for (final text in [
+      'Meine Schwester Anna ist Pauls Mutter.',
+      'My sister Anna is Paul’s mother.',
+      'Anna ist der Vater von meinem Bruder Paul.',
+    ]) {
+      final result = extractTranscriptConnections(text, [Person(name: 'Anna')]);
+      expect(result.connections.single.person1Name, 'Anna');
+      expect(result.connections.single.person2Name, 'Paul');
+      expect(result.connections, hasLength(1));
+      expect(result.connections.single.sourceText,
+          text.substring(0, text.length - 1));
+    }
+  });
+
+  test('married wording deduplicates paired and reversed spouse claims', () {
+    final result = extractTranscriptConnections(
+        'Alex is married to Ben. Ben ist mit Alex verheiratet. '
+        'Alex und Ben sind verheiratet.',
+        []);
+    expect(triples(result), [('Alex', RelationshipType.spouse, 'Ben')]);
+    expect(result.connections.single.sourceText, 'Alex is married to Ben');
+  });
+
+  test('marriage relatives refer to the named spouse', () {
+    for (final text in [
+      'Alex is married to Ben, who works at Zeta and is a friend of Dana.',
+      'Alex ist mit Ben verheiratet, der bei Zeta arbeitet und ein Freund von Dana ist.',
+    ]) {
+      final result = extractTranscriptConnections(text, []);
+      expect(
+          triples(result),
+          [
+            ('Alex', RelationshipType.spouse, 'Ben'),
+            ('Ben', RelationshipType.friend, 'Dana'),
+          ],
+          reason: text);
+      expect(result.facts.single.personName, 'Ben', reason: text);
+    }
+  });
+
+  test('new forms reject pronouns, uncertainty, invalid pairs and role nouns',
+      () {
+    for (final text in [
+      'He and Ben are friends.',
+      'Alex und sie sind Geschwister.',
+      'Alex and Ben are parents.',
+      'My sister is Paul’s mother.',
+      'Meine Schwester ist Pauls Mutter.',
+      'Alex is the uncle of Ben.',
+      'Alex ist die Tante von Ben.',
+      'Alex and Ben and Dana are colleagues.',
+      'Alex and Ben And Dana are colleagues.',
+      'Alex UND Ben UND Dana sind Kollegen.',
+      'Alex and Alex are friends.',
+      'Alex and Ben are not friends.',
+      'Alex und Ben sind keine Freunde.',
+      'Alex and Ben are friends?',
+      'If Alex and Ben are married, Alex works at Zeta.',
+      'Someone said Alex and Ben are married.',
+      'Alex and Ben were friends.',
+      'Alex and Ben are former colleagues.',
+      'Alex, supposedly Ben’s sister, works at Zeta.',
+      'Alex, Ben’s sister, works at Zeta, supposedly.',
+      'Alex is the brother of Ben, allegedly.',
+      'Alex ist der Bruder von Ben, anscheinend.',
+      'Alex, nicht Bens Schwester, arbeitet bei Zeta.',
+      'His brother is Alex.',
+      'Alex is His brother.',
+      'Alex, His brother, works at Zeta.',
+      'Sein Vater ist Alex.',
+      'Ben’s father might be Alex.',
+      'The car, Ben’s brother, works at Zeta.',
+      'Alex is married to her.',
+      'Alex is married to Her.',
+      'Alex and Him are friends.',
+      'Alex und Ihr sind Geschwister.',
+      'Alex ist mit ihr verheiratet.',
+      '"Alex and Ben are married."',
+    ]) {
+      final result = extractTranscriptConnections(text, []);
+      expect(result.connections, isEmpty, reason: text);
+      expect(result.facts, isEmpty, reason: text);
+    }
   });
 
   test(

@@ -87,7 +87,7 @@ class _PersonsScreenState extends State<PersonsScreen> {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Search people...',
+                hintText: l10n.quickAddPersonSearchHint,
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(

@@ -73,7 +73,12 @@ def guest(page, origin):
 
 def quick_add(page):
     hosted.click(page, 'Geschichte hinzufügen')
-    expect(page.get_by_text('Neue Geschichte', exact=True)).to_be_visible()
+    form = page.get_by_text('Neue Geschichte', exact=True)
+    centre = page.get_by_role('button', name='Kartenmitte verwenden', exact=True)
+    form.or_(centre).first.wait_for()
+    if centre.is_visible():
+        hosted.click(page, 'Kartenmitte verwenden')
+    expect(form).to_be_visible()
 
 
 def chip(page, name):

@@ -4,6 +4,8 @@
 // somewhere to resolve to. Same pattern as recording_file_store_stub.dart.
 import 'page_lifecycle_hooks.dart';
 
+PageLifecycleUnsubscribe onBeforePageUnload(bool Function() shouldWarn) => () {};
+
 PageLifecycleUnsubscribe onPageMightBeClosing(void Function() onMightBeClosing) {
   return () {};
 }

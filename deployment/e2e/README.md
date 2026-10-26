@@ -281,3 +281,25 @@ with `completed: true`, `cleanup_verified: true`, zero uncaught errors, and no
 remaining Chromium PID file. Partial runs keep `completed: false`; inspect the
 sanitized phase/status and use the reviewer DELETE endpoint for unresolved
 owned IDs before another run.
+
+## Read-only page-load measurements
+
+`load.py` measures fresh-context cold navigation and a same-context warm reload,
+ending when Flutter exposes the usable **Continue without account** button. It
+creates no accounts, recordings or stories and sends no ASR/training requests.
+Each run records public asset paths, resource timing/byte counts and uncaught
+error counts in `result.json`; require `completed: true`. Browser caching and
+service workers remain enabled. The default is three independent browser contexts.
+
+```sh
+/home/ekwav/.cache/uv/archive-v0/eq7TXxf37ojESxDq/bin/python deployment/e2e/load.py \
+  --origin https://con.coflnet.com --output /tmp/con-load-hosted
+```
+
+For source comparisons, serve each release build with the same HTTP server and
+pass its loopback origin. Keep renderer/build flags, browser/network conditions
+and trial counts equal. Local transfer sizes/timings reflect that server's
+compression and cache headers; they do not establish deployed performance.
+`transfer_bytes` counts resource transfers and excludes the HTML document. A cold
+SQLite preload should appear once in the resource list, early alongside Flutter,
+and be reused by database initialization without an extra download.

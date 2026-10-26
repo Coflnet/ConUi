@@ -99,10 +99,7 @@ void main() {
       // Invoke the actual screen stop handler while microphone shutdown is held.
       final Function stop = quickAdd
           ? tester
-              .widget<GestureDetector>(find.descendant(
-                  of: find.bySemanticsLabel('Stop recording'),
-                  matching: find.byType(GestureDetector)))
-              .onTap! as Function
+              .widget<IconButton>(find.widgetWithIcon(IconButton, Icons.stop)).onPressed! as Function
           : tester
               .widget<IconButton>(
                   find.widgetWithIcon(IconButton, Icons.stop_circle))

@@ -4,6 +4,8 @@
 // comment on crash safety).
 import 'page_lifecycle_hooks.dart';
 
+PageLifecycleUnsubscribe onBeforePageUnload(bool Function() shouldWarn) => () {};
+
 PageLifecycleUnsubscribe onPageMightBeClosing(void Function() onMightBeClosing) {
   return () {};
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/gen/app_localizations.dart';
+import '../services/page_lifecycle_hooks.dart';
 
 class UnsavedDraftGuard extends StatefulWidget {
   final Widget child;
@@ -24,6 +25,20 @@ class UnsavedDraftGuard extends StatefulWidget {
 class UnsavedDraftGuardState extends State<UnsavedDraftGuard> {
   bool _asking = false;
   bool _allowPop = false;
+  late final PageLifecycleUnsubscribe _removeUnloadWarning;
+
+  @override
+  void initState() {
+    super.initState();
+    _removeUnloadWarning = onBeforePageUnload(
+        () => !_allowPop && (widget.isDirty() || (widget.isBusy?.call() ?? false)));
+  }
+
+  @override
+  void dispose() {
+    _removeUnloadWarning();
+    super.dispose();
+  }
 
   Future<bool> confirm() async {
     if (_asking || (widget.isBusy?.call() ?? false)) return false;
@@ -51,9 +66,14 @@ class UnsavedDraftGuardState extends State<UnsavedDraftGuard> {
           ],
         ),
       );
-      if (choice == 2) return await widget.onSaveDraft();
+      if (choice == 2) {
+        final saved = await widget.onSaveDraft();
+        if (saved) _allowPop = true;
+        return saved;
+      }
       if (choice == 1) {
         await widget.onDiscard();
+        _allowPop = true;
         return true;
       }
       return false;
