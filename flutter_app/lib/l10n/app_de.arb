@@ -611,10 +611,10 @@
   "storyRecordingStopFailed": "Die Aufnahme konnte nicht abgeschlossen werden. Deine Originalaufnahme ist noch auf diesem Gerät. Versuche es erneut.",
   "diaCorrectSentence": "Satz für Dia korrigieren",
   "diaSelectSentence": "Wähle den fehlerhaften Satz",
-  "diaSelectionHelp": "Die passende Aufnahme wird automatisch ausgewählt. Korrigiere, was du gesagt hast, höre nach und sende es zum Training an Dia.",
+  "diaSelectionHelp": "Satz und passende Aufnahme sind vorbereitet. Markiere das falsche Wort und ersetze es.",
   "diaClipTooLong": "Dieser Satz ist länger als 20 Sekunden. Wähle einen kürzeren Satz; die Originalaufnahme wird nicht gekürzt.",
   "diaLegacyHelp": "Diese Aufnahme hat noch keine Satzmarkierungen. Wähle unten den passenden Audioausschnitt (bis zu 20 Sekunden) und schreibe genau auf, was du hörst.",
-  "diaCorrection": "Was hast du tatsächlich gesagt?",
+  "diaCorrection": "Diesen Satz korrigieren",
   "diaListen": "Ausgewählten Ausschnitt anhören",
   "diaStopListening": "Wiedergabe stoppen",
   "diaRegion": "Dialektregion (optional)",
@@ -632,5 +632,12 @@
   "diaDiscard": "Diese ungesendete Korrektur verwerfen?",
   "diaKeepEditing": "Weiter bearbeiten",
   "diaDiscardAction": "Verwerfen",
-  "diaAnother": "Weiteren Satz korrigieren"
+  "diaAnother": "Weiteren Satz korrigieren",
+  "diaCorrectWord": "Wort für Dia korrigieren",
+  "diaChangeSentence": "Anderen Satz auswählen",
+  "diaDetectingSentences": "Sätze in dieser Aufnahme werden erkannt…",
+  "diaDetectError": "Sätze konnten nicht erkannt werden. Deine Aufnahme bleibt unverändert. Versuche es erneut, sobald die Spracherkennung verfügbar ist.",
+  "diaMarksError": "Satzmarkierungen konnten nicht gespeichert werden. Sie sind in dieser Korrektur verfügbar; versuche es erneut, um sie dauerhaft zu speichern.",
+  "diaAudioContextHelp": "Der passende Audioausschnitt enthält auch angrenzende Wörter. Diese bleiben unverändert; nur dieser Satz wird korrigiert.",
+  "diaDetectTooLong": "Melde dich in den Einstellungen an, um Sätze in Aufnahmen über einer Minute zu erkennen. Deine Originalaufnahme bleibt unverändert."
 }

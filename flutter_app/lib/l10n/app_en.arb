@@ -750,10 +750,10 @@
   "storyRecordingStopFailed": "The recording could not be finished. Your original audio is still on this device. Try again.",
   "diaCorrectSentence": "Correct a sentence for Dia",
   "diaSelectSentence": "Select the sentence with the error",
-  "diaSelectionHelp": "The matching audio is selected automatically. Correct what you said, listen, then send it to help train Dia.",
+  "diaSelectionHelp": "The sentence and matching audio are ready. Select the incorrect word and replace it.",
   "diaClipTooLong": "This sentence is longer than 20 seconds. Choose a shorter sentence; the original audio will not be cut.",
   "diaLegacyHelp": "This recording has no sentence timings. Select the matching audio below (up to 20 seconds) and enter exactly what you hear.",
-  "diaCorrection": "What did you actually say?",
+  "diaCorrection": "Correct this sentence",
   "diaListen": "Listen to selected audio",
   "diaStopListening": "Stop playback",
   "diaRegion": "Dialect region (optional)",
@@ -771,5 +771,12 @@
   "diaDiscard": "Discard this unsent correction?",
   "diaKeepEditing": "Keep editing",
   "diaDiscardAction": "Discard",
-  "diaAnother": "Correct another sentence"
+  "diaAnother": "Correct another sentence",
+  "diaCorrectWord": "Correct word for Dia",
+  "diaChangeSentence": "Change sentence",
+  "diaDetectingSentences": "Detecting sentences in this recording…",
+  "diaDetectError": "Could not detect sentences. Your audio is unchanged. Retry when the transcription service is available.",
+  "diaMarksError": "Sentence marks could not be saved. They are available in this correction; retry to save them for next time.",
+  "diaAudioContextHelp": "The matching audio includes surrounding words. They stay unchanged; only this sentence is corrected.",
+  "diaDetectTooLong": "Sign in in Settings to detect sentences in recordings longer than one minute. Your original audio is unchanged."
 }

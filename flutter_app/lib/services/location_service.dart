@@ -31,6 +31,9 @@ abstract class LocationService {
 }
 
 class GeolocatorLocationService implements LocationService {
+  final bool requestPermission;
+  GeolocatorLocationService({this.requestPermission = true});
+
   @override
   Future<bool> hasPermission() async {
     try {
@@ -49,7 +52,7 @@ class GeolocatorLocationService implements LocationService {
       if (!await Geolocator.isLocationServiceEnabled()) return null;
 
       var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
+      if (permission == LocationPermission.denied && requestPermission) {
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied ||

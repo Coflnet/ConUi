@@ -836,7 +836,8 @@ class QuickAddSheetState extends State<QuickAddSheet> {
           Text(l10n.recordingAttachedWithDuration(_formatElapsed(
               Duration(milliseconds: _pendingRecording!.durationMs ?? 0)))),
         if (_pendingRecording != null && _recorder.state == RecorderState.idle && !_isTranscribingNow)
-          DiaCorrectionButton(file: _pendingRecording!, store: _recorder.fileStore),
+          DiaCorrectionButton(file: _pendingRecording!, store: _recorder.fileStore,
+              transcriptController: _textController),
         if (_recorder.lastStopResult?.stopReason == StopReason.anonymousLimit)
           Text(l10n.recordingAnonymousStopped, textAlign: TextAlign.center),
         if (!isRecording &&
@@ -866,6 +867,10 @@ class QuickAddSheetState extends State<QuickAddSheet> {
   Widget _buildTextField(AppLocalizations l10n) {
     return TextField(
       controller: _textController,
+      contextMenuBuilder: (context, editable) => diaCorrectionTextMenu(context, editable,
+          recordings: _recorder.state == RecorderState.idle && !_isTranscribingNow
+              ? [if (_pendingRecording != null) _pendingRecording!] : [],
+          store: _recorder.fileStore),
       minLines: 3,
       maxLines: 8,
       decoration: InputDecoration(

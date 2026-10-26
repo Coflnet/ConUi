@@ -537,6 +537,13 @@ class _AddEventScreenState extends State<AddEventScreen> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _descriptionController,
+              contextMenuBuilder: (context, editable) => diaCorrectionTextMenu(
+                  context, editable,
+                  recordings: _recorder.state == RecorderState.idle && !_isTranscribingNow
+                      ? [..._draftEvent.files, if (_pendingRecording != null) _pendingRecording!]
+                          .where((file) => file.isRecording).toList()
+                      : [],
+                  store: _recorder.fileStore),
               decoration: InputDecoration(
                   labelText: l10n.addEventDescriptionLabel, prefixIcon: const Icon(Icons.note)),
               maxLines: 3,
@@ -647,7 +654,8 @@ class _AddEventScreenState extends State<AddEventScreen> {
             if (_recorder.lastStopResult?.stopReason == StopReason.anonymousLimit)
               Text(l10n.recordingAnonymousStopped),
             if (_pendingRecording != null && _recorder.state == RecorderState.idle && !_isTranscribingNow)
-              DiaCorrectionButton(file: _pendingRecording!, store: _recorder.fileStore),
+              DiaCorrectionButton(file: _pendingRecording!, store: _recorder.fileStore,
+                  transcriptController: _descriptionController),
             if (_pendingRecording != null && !isRecording &&
                 (_hasFailedTranscription || _descriptionController.text.trim().isEmpty))
               TextButton(onPressed: isBusy ? null : _transcribeNow,

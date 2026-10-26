@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'l10n/gen/app_localizations.dart';
@@ -13,6 +15,8 @@ import 'widgets/app_page_transitions.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Use Flutter's selection toolbar so the Dia correction action works on web.
+  if (kIsWeb) await BrowserContextMenu.disableContextMenu();
 
   final dbService = DatabaseService();
   await dbService.initialize();

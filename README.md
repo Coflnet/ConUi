@@ -264,10 +264,18 @@ Fleet configures the internal Dia service and exact Con-to-Tab TCP8000 policies;
 ordinary transcription does not submit training contributions.
 
 Recordings offer “Correct a sentence for Dia” both after capture and in saved
-stories. Original transcription boundaries select matching PCM samples; older
-recordings use an editable audio range. Users can listen, correct the text and
-explicitly agree to Dia's current training terms before contributing anonymously.
-Only the selected clip and correction are uploaded, with optional dialect region.
-Clips are capped at 20 seconds so base64 JSON fits Dia's 1MiB public gateway.
-Original recordings and story text are preserved. Dia's recording reference is
-shown for deletion requests; the local device proof and consent receipt persist.
+stories. Selecting a wrong word in the story also opens its sentence with that
+exact word selected. The editor changes only this sentence; matching original
+audio and unchanged neighboring transcript context stay together for training.
+Older recordings are automatically re-transcribed through Con's normal speech
+API and allowances; detected byte/time boundaries are saved for future reuse.
+Cancellation or failed detection never saves partial boundaries. Existing audio
+and story text are preserved.
+
+The dialect region defaults to a nonempty saved choice or an already-permitted
+current device location, with editable postcode/country fields. Suggestions
+never overwrite edits and never request location permission automatically.
+Users explicitly agree to Dia's current training terms before contributing
+anonymously. Clips are capped at 20 seconds so base64 JSON fits Dia's 1MiB public
+gateway. Dia's recording reference is shown for deletion requests; the local
+device proof and consent receipt persist.

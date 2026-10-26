@@ -90,7 +90,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     _buildInfoCard(l10n, event),
                     const SizedBox(height: 16),
                     if (event.description != null) ...[
-                      _buildSection(l10n.eventDetailDescriptionHeading, event.description!),
+                      _buildSection(l10n.eventDetailDescriptionHeading, event.description!,
+                          event: event),
                       const SizedBox(height: 16),
                     ],
                     if (event.participantIds.isNotEmpty)
@@ -152,14 +153,22 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
-  Widget _buildSection(String title, String content) {
+  Widget _buildSection(String title, String content, {Event? event}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(title,
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         const SizedBox(height: 8),
-        Text(content),
+        if (event != null && event.files.any((file) => file.isRecording))
+          SelectableText(content,
+              contextMenuBuilder: (context, editable) => diaCorrectionTextMenu(
+                  context, editable,
+                  recordings: event.files.where((file) => file.isRecording).toList(),
+                  store: _recordingFileStore,
+                  onTranscriptDetected: _saveDetectedTranscript))
+        else
+          Text(content),
       ],
     );
   }
@@ -303,6 +312,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     if (saved == true && mounted) _refresh();
   }
 
+  Future<void> _saveDetectedTranscript(
+      AttachedFile file, List<RecordingTranscriptSlice> slices) async {
+    final db = context.read<DatabaseService>();
+    final current = await db.getEvent(widget.eventId);
+    if (current == null) throw StateError('Story is no longer available');
+    current.files.firstWhere((candidate) => candidate.id == file.id)
+        .transcriptSlices = slices;
+    await db.saveEvent(current.copyWith(files: current.files));
+  }
+
   Widget _buildFilesSection(AppLocalizations l10n, Event event) {
     final recordings = event.files.where((f) => f.isRecording).toList();
     final otherFiles = event.files.where((f) => !f.isRecording).toList();
@@ -320,7 +339,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     RecordingPlayer(file: file, store: _recordingFileStore),
-                    DiaCorrectionButton(file: file, store: _recordingFileStore),
+                    DiaCorrectionButton(file: file, store: _recordingFileStore,
+                        transcript: event.description,
+                        onTranscriptDetected: (slices) => _saveDetectedTranscript(file, slices)),
                     TrainingSampleButton(
                         event: event, file: file, store: _recordingFileStore),
                   ],

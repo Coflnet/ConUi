@@ -78,6 +78,8 @@ class TranscriptionClient {
 
   bool get isConfigured => baseUrl.isNotEmpty;
 
+  void close() => _http.close();
+
   /// Sends one WAV-wrapped audio segment and returns its transcribed text.
   /// Anonymous recordings carry stable recording/segment identities so
   /// concurrent chunks and retries consume one recording allowance.
