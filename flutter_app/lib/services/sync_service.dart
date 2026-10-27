@@ -13,6 +13,8 @@ import 'wav.dart';
 import '../backup/database_backup_adapter.dart';
 import '../backup/backup_format.dart';
 
+enum SyncPhase { preparing, downloading, uploading, finishing }
+
 class SyncService extends ChangeNotifier {
   final DatabaseService _db;
   final AuthService _auth;
@@ -32,6 +34,60 @@ class SyncService extends ChangeNotifier {
   final http.Client _http;
 
   bool _isSyncing = false;
+  SyncPhase _phase = SyncPhase.preparing;
+  int _completedItems = 0;
+  int _totalItems = 0;
+  int _completedRecordingChunks = 0;
+  int _totalRecordingChunks = 0;
+  final Stopwatch _phaseWatch = Stopwatch();
+  final Stopwatch _recordingWatch = Stopwatch();
+
+  SyncPhase get phase => _phase;
+  int get completedItems => _completedItems;
+  int get totalItems => _totalItems;
+  int get completedRecordingChunks => _completedRecordingChunks;
+  int get totalRecordingChunks => _totalRecordingChunks;
+
+  /// Estimate for the active recording, or otherwise the current phase only.
+  Duration? get estimatedRemaining {
+    final recording = _totalRecordingChunks > 0;
+    final completed = recording ? _completedRecordingChunks : _completedItems;
+    final total = recording ? _totalRecordingChunks : _totalItems;
+    if (!_isSyncing || completed == 0 || completed >= total) return null;
+    final elapsed =
+        (recording ? _recordingWatch : _phaseWatch).elapsedMicroseconds;
+    return Duration(
+        microseconds: (elapsed * (total - completed) / completed).round());
+  }
+
+  void _setPhase(SyncPhase phase, [int total = 0]) {
+    _phase = phase;
+    _completedItems = 0;
+    _totalItems = total;
+    _completedRecordingChunks = _totalRecordingChunks = 0;
+    _phaseWatch
+      ..reset()
+      ..start();
+    _safeNotifyListeners();
+  }
+
+  void _completeItem() {
+    _completedItems++;
+    _safeNotifyListeners();
+  }
+
+  void _setRecordingProgress(int completed, int total) {
+    if (total == 0) _recordingWatch.stop();
+    if (completed == 0 && total > 0) {
+      _recordingWatch
+        ..reset()
+        ..start();
+    }
+    _completedRecordingChunks = completed;
+    _totalRecordingChunks = total;
+    _safeNotifyListeners();
+  }
+
   int _encryptionRevision = 0;
   int _syncRevision = 0;
   String? _lastError;
@@ -68,6 +124,7 @@ class SyncService extends ChangeNotifier {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       notifyListeners();
     });
+    SchedulerBinding.instance.ensureVisualUpdate();
   }
 
   String get _currentEncryptionSalt =>
@@ -174,7 +231,7 @@ class SyncService extends ChangeNotifier {
     _isSyncing = true;
     _syncRevision = _encryptionRevision;
     _lastError = null;
-    _safeNotifyListeners();
+    _setPhase(SyncPhase.preparing);
 
     try {
       // Get local sync index
@@ -189,13 +246,20 @@ class SyncService extends ChangeNotifier {
 
       _checkResponse(response, 'updates');
       final data = jsonDecode(response.body);
-      final entries =
-          (data['entries'] as List).map((e) => _SyncEntry.fromJson(e)).toList();
+      final entries = (data['entries'] as List)
+          .map((e) => _SyncEntry.fromJson(e))
+          .where((entry) => entry.blobType != _recordingBlobType)
+          .toList();
+      _setPhase(SyncPhase.downloading, entries.length);
 
       // Download and apply each updated blob
       for (final entry in entries) {
         await _downloadAndApplyBlob(entry);
+        _checkSyncSession();
+        _completeItem();
       }
+
+      _setPhase(SyncPhase.finishing);
 
       // Update local sync index
       localIndex.lastSyncTimestamp = data['latestVersion'];
@@ -209,6 +273,7 @@ class SyncService extends ChangeNotifier {
       _lastError = e.toString();
       debugPrint('Sync on open error: $e');
     } finally {
+      _phaseWatch.stop();
       _isSyncing = false;
       _safeNotifyListeners();
     }
@@ -222,7 +287,7 @@ class SyncService extends ChangeNotifier {
     _isSyncing = true;
     _syncRevision = _encryptionRevision;
     _lastError = null;
-    _safeNotifyListeners();
+    _setPhase(SyncPhase.preparing);
 
     try {
       final pendingChanges = await _db.getPendingChanges();
@@ -240,12 +305,28 @@ class SyncService extends ChangeNotifier {
       final connectionChanges =
           pendingChanges.where((c) => c.entityType == 'connection').toList();
 
+      // Group events by month and upload month blobs
+      final eventMonths = eventChanges.map((c) {
+        final event = Event.fromJson(c.data);
+        return event.monthKey;
+      }).toSet();
+
+      _setPhase(
+          SyncPhase.uploading,
+          personChanges.length +
+              placeChanges.length +
+              objectChanges.length +
+              connectionChanges.length +
+              eventMonths.length +
+              1);
+
       final syncedIds = <String>[];
 
       // Upload person blobs
       for (final change in personChanges) {
         if (await _uploadPersonBlob(change.entityId)) {
           syncedIds.add(change.id);
+          _completeItem();
         }
       }
 
@@ -253,6 +334,7 @@ class SyncService extends ChangeNotifier {
       for (final change in placeChanges) {
         if (await _uploadPlaceBlob(change.entityId)) {
           syncedIds.add(change.id);
+          _completeItem();
         }
       }
 
@@ -260,6 +342,7 @@ class SyncService extends ChangeNotifier {
       for (final change in objectChanges) {
         if (await _uploadObjectBlob(change.entityId)) {
           syncedIds.add(change.id);
+          _completeItem();
         }
       }
 
@@ -267,14 +350,9 @@ class SyncService extends ChangeNotifier {
       for (final change in connectionChanges) {
         if (await _uploadConnectionBlob(change.entityId)) {
           syncedIds.add(change.id);
+          _completeItem();
         }
       }
-
-      // Group events by month and upload month blobs
-      final eventMonths = eventChanges.map((c) {
-        final event = Event.fromJson(c.data);
-        return event.monthKey;
-      }).toSet();
 
       for (final monthKey in eventMonths) {
         if (await _uploadEventMonthBlob(monthKey)) {
@@ -282,11 +360,14 @@ class SyncService extends ChangeNotifier {
             final event = Event.fromJson(c.data);
             return event.monthKey == monthKey;
           }).map((c) => c.id));
+          _completeItem();
         }
       }
 
       // Upload sync index
       if (!await _uploadSyncIndex()) return;
+      _completeItem();
+      _setPhase(SyncPhase.finishing);
 
       // Mark changes as synced
       _checkSyncSession();
@@ -300,6 +381,7 @@ class SyncService extends ChangeNotifier {
       _lastError = e.toString();
       debugPrint('Sync on close error: $e');
     } finally {
+      _phaseWatch.stop();
       _isSyncing = false;
       _safeNotifyListeners();
     }
@@ -689,39 +771,46 @@ class SyncService extends ChangeNotifier {
   Future<void> _uploadRecording(AttachedFile file,
       Map<String, Map<String, dynamic>> committedChunks) async {
     await _verifyLocalRecording(file);
-    var index = 0;
-    await for (final chunk in _recordingChunks(file.id)) {
-      final blobId = _recordingChunkId(file, index++);
-      final committed = committedChunks[blobId];
-      // IDs authenticate the full WAV SHA; committed size checks the exact
-      // v1 envelope length. Reuse current-user chunks when only story text changes.
-      if (committed != null &&
-          committed['isDeleted'] != true &&
-          committed['size'] == chunk.length + 35) {
-        continue;
+    _setRecordingProgress(0, (file.size / _recordingChunkBytes).ceil());
+    try {
+      var index = 0;
+      await for (final chunk in _recordingChunks(file.id)) {
+        final blobId = _recordingChunkId(file, index++);
+        final committed = committedChunks[blobId];
+        // IDs authenticate the full WAV SHA; committed size checks the exact
+        // v1 envelope length. Reuse current-user chunks when only story text changes.
+        if (committed != null &&
+            committed['isDeleted'] != true &&
+            committed['size'] == chunk.length + 35) {
+          _setRecordingProgress(index, _totalRecordingChunks);
+          continue;
+        }
+        final encrypted = await _encryption.encryptBytes(chunk);
+        final upload = await _syncPost('/api/sync/upload', {
+          'blobType': _recordingBlobType,
+          'blobId': blobId,
+          'checksum': file.sha256,
+          'expectedVersion': 0,
+        });
+        _checkResponse(upload, 'recording upload URL');
+        final data = jsonDecode(upload.body);
+        final put = await _http.put(Uri.parse(data['uploadUrl']),
+            headers: {'Content-Type': 'application/octet-stream'},
+            body: encrypted);
+        _checkResponse(put, 'recording upload');
+        final commit = await _syncPost('/api/sync/commit', {
+          'blobType': _recordingBlobType,
+          'blobId': blobId,
+          's3Key': data['s3Key'],
+          'checksum': file.sha256,
+          'size': encrypted.length,
+          'isDeleted': false,
+        });
+        _checkResponse(commit, 'recording commit');
+        _setRecordingProgress(index, _totalRecordingChunks);
       }
-      final encrypted = await _encryption.encryptBytes(chunk);
-      final upload = await _syncPost('/api/sync/upload', {
-        'blobType': _recordingBlobType,
-        'blobId': blobId,
-        'checksum': file.sha256,
-        'expectedVersion': 0,
-      });
-      _checkResponse(upload, 'recording upload URL');
-      final data = jsonDecode(upload.body);
-      final put = await _http.put(Uri.parse(data['uploadUrl']),
-          headers: {'Content-Type': 'application/octet-stream'},
-          body: encrypted);
-      _checkResponse(put, 'recording upload');
-      final commit = await _syncPost('/api/sync/commit', {
-        'blobType': _recordingBlobType,
-        'blobId': blobId,
-        's3Key': data['s3Key'],
-        'checksum': file.sha256,
-        'size': encrypted.length,
-        'isDeleted': false,
-      });
-      _checkResponse(commit, 'recording commit');
+    } finally {
+      _setRecordingProgress(0, 0);
     }
   }
 
@@ -736,6 +825,7 @@ class SyncService extends ChangeNotifier {
     _checkSyncSession();
     await _recordings.beginRecording(stagingId);
     try {
+      _setRecordingProgress(0, (file.size / _recordingChunkBytes).ceil());
       for (var index = 0; index * _recordingChunkBytes < file.size; index++) {
         final response = await _syncGet(
             '/api/sync/download/$_recordingBlobType/${_recordingChunkId(file, index)}');
@@ -772,6 +862,7 @@ class SyncService extends ChangeNotifier {
         if (index == 0) _validateWavHeader(file, plain);
         await _recordings.appendChunk(stagingId,
             index == 0 ? Uint8List.sublistView(plain, wavHeaderLength) : plain);
+        _setRecordingProgress(index + 1, _totalRecordingChunks);
       }
       _checkSyncSession();
       final result = await _recordings.finalizeRecording(stagingId);
@@ -797,6 +888,7 @@ class SyncService extends ChangeNotifier {
         rethrow;
       }
     } finally {
+      _setRecordingProgress(0, 0);
       await _recordings.delete(stagingId);
     }
   }

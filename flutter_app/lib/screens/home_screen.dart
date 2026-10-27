@@ -4,6 +4,7 @@ import '../l10n/gen/app_localizations.dart';
 import '../services/database_service.dart';
 import '../services/sync_service.dart';
 import '../widgets/sync_prompt.dart';
+import '../widgets/sync_progress_indicator.dart';
 import 'persons/persons_screen.dart';
 import 'events/events_screen.dart';
 import 'map/map_screen.dart';
@@ -221,6 +222,13 @@ class _HomeScreenState extends State<HomeScreen>
       ),
       body: Column(children: [
         Consumer<SyncService>(builder: (context, sync, _) {
+          if (sync.isSyncing && sync.isUnlocked &&
+              ModalRoute.isCurrentOf(context) == true) {
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: SyncProgressIndicator(sync: sync),
+            );
+          }
           if (!sync.needsEncryptionPassword && sync.lastError == null) return const SizedBox.shrink();
           return MaterialBanner(
             content: Text(sync.needsEncryptionPassword ? l10n.homeSyncPasswordRequired : l10n.settingsSyncRecovery),

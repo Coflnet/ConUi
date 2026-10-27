@@ -781,5 +781,96 @@
   "diaDetectError": "Could not detect sentences. Your audio is unchanged. Retry when the transcription service is available.",
   "diaMarksError": "Sentence marks could not be saved. They are available in this correction; retry to save them for next time.",
   "diaAudioContextHelp": "The matching audio includes surrounding words. They stay unchanged; only this sentence is corrected.",
-  "diaDetectTooLong": "Sign in in Settings to detect sentences in recordings longer than one minute. Your original audio is unchanged."
+  "diaDetectTooLong": "Sign in in Settings to detect sentences in recordings longer than one minute. Your original audio is unchanged.",
+  "syncPreparing": "Preparing encrypted sync…",
+  "syncDownloadStep": "Download step",
+  "syncUploadStep": "Upload step",
+  "syncFinishing": "Finishing encrypted sync…",
+  "syncDownloadProgress": "Downloading {completed} of {total} items ({percent}%)",
+  "@syncDownloadProgress": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "syncUploadProgress": "Uploading {completed} of {total} items ({percent}%)",
+  "@syncUploadProgress": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "syncRecordingProgress": "Recording transfer: {percent}%",
+  "@syncRecordingProgress": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "syncEstimating": "Estimating time remaining in this step…",
+  "syncRemainingSeconds": "About {count, plural, one{1 second} other{{count} seconds}} remaining in this step",
+  "@syncRemainingSeconds": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncRemainingMinutes": "About {count, plural, one{1 minute} other{{count} minutes}} remaining in this step",
+  "@syncRemainingMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncRemainingHours": "About {count, plural, one{1 hour} other{{count} hours}} remaining in this step",
+  "@syncRemainingHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncEstimatingRecording": "Estimating time remaining for this recording…",
+  "syncRecordingRemainingSeconds": "About {count, plural, one{1 second} other{{count} seconds}} remaining for this recording",
+  "@syncRecordingRemainingSeconds": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncRecordingRemainingMinutes": "About {count, plural, one{1 minute} other{{count} minutes}} remaining for this recording",
+  "@syncRecordingRemainingMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncRecordingRemainingHours": "About {count, plural, one{1 hour} other{{count} hours}} remaining for this recording",
+  "@syncRecordingRemainingHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncRecordingFinishing": "Verifying and saving recording…"
 }
