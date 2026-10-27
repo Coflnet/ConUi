@@ -711,6 +711,7 @@
   "syncUnlockBody": "Use the same encryption password on every device. For your first sync, choose a password and keep it safe. It is separate from your account password and is never sent to the server.",
   "syncPasswordRequired": "Enter your encryption password.",
   "syncUnlockFailed": "Could not unlock and sync. Check your encryption password and connection, then try again. Your local changes are still saved.",
+  "syncStorageUnavailable": "Sync storage is temporarily unavailable. Try again later. Your local changes are still saved.",
   "syncUnlockAction": "Unlock and sync",
   "settingsFeedbackSection": "Feedback",
   "settingsHaptics": "Haptic feedback",

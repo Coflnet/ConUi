@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -12,14 +13,31 @@ void main() {
   late EncryptionService wrongPassword;
   late EncryptionService wrongSalt;
 
-  setUpAll(() {
-    service = EncryptionService()..initializeWithPassword('password', 'salt');
-    otherDevice = EncryptionService()
-      ..initializeWithPassword('password', 'salt');
-    wrongPassword = EncryptionService()
-      ..initializeWithPassword('wrong', 'salt');
-    wrongSalt = EncryptionService()
-      ..initializeWithPassword('password', 'other');
+  setUpAll(() async {
+    service = EncryptionService();
+    await service.initializeWithPassword('password', 'salt');
+    otherDevice = EncryptionService();
+    await otherDevice.initializeWithPassword('password', 'salt');
+    wrongPassword = EncryptionService();
+    await wrongPassword.initializeWithPassword('wrong', 'salt');
+    wrongSalt = EncryptionService();
+    await wrongSalt.initializeWithPassword('password', 'other');
+  });
+
+  test('key derivation lets the event loop run before unlocking', () async {
+    final locked = EncryptionService();
+    var eventProcessed = false;
+    final event = Timer(Duration.zero, () => eventProcessed = true);
+    try {
+      final initialization = locked.initializeWithPassword('password', 'salt');
+      expect(locked.isInitialized, isFalse);
+      expect(() => locked.encryptString('text'), throwsStateError);
+      await initialization;
+      expect(eventProcessed, isTrue);
+      expect(locked.isInitialized, isTrue);
+    } finally {
+      event.cancel();
+    }
   });
 
   test('all encryption operations require initialization', () {

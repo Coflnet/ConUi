@@ -5,9 +5,11 @@ import 'package:crypto/crypto.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:pointycastle/export.dart' as pc;
 
+import 'encryption_kdf_native.dart'
+    if (dart.library.js_interop) 'encryption_kdf_web.dart' as kdf;
+
 class EncryptionService {
-  static EncryptionService? _instance;
-  static EncryptionService? get instance => _instance;
+  static EncryptionService? instance;
 
   // v1 fixes the KDF, nonce and tag sizes; changes require a new version.
   static const _prefix = 'con:v1:';
@@ -19,13 +21,8 @@ class EncryptionService {
   late encrypt.Encrypter _legacyEncrypter;
   bool _initialized = false;
 
-  void initializeWithPassword(String password, String salt) {
-    final derivator = pc.PBKDF2KeyDerivator(pc.HMac(pc.SHA256Digest(), 64))
-      ..init(pc.Pbkdf2Parameters(
-          Uint8List.fromList(utf8.encode('con:encryption:v1:$salt')),
-          600000,
-          32));
-    _key = derivator.process(Uint8List.fromList(utf8.encode(password)));
+  Future<void> initializeWithPassword(String password, String salt) async {
+    final key = await kdf.deriveKey(password, salt);
 
     // Read compatibility only: old ciphertext has no authentication. Existing
     // data is upgraded when it is next encrypted; never write this format.
@@ -34,8 +31,8 @@ class EncryptionService {
     _legacyIv = encrypt
         .IV(Uint8List.fromList(md5.convert(utf8.encode('iv:$salt')).bytes));
     _legacyEncrypter = encrypt.Encrypter(encrypt.AES(legacyKey));
+    _key = key;
     _initialized = true;
-    _instance = this;
   }
 
   bool get isInitialized => _initialized;

@@ -572,6 +572,7 @@
   "syncUnlockBody": "Verwende auf allen Geräten dasselbe Verschlüsselungspasswort. Wähle bei der ersten Synchronisierung ein Passwort und bewahre es sicher auf. Es ist unabhängig vom Kontopasswort und wird nie an den Server gesendet.",
   "syncPasswordRequired": "Gib dein Verschlüsselungspasswort ein.",
   "syncUnlockFailed": "Entsperren und Synchronisieren fehlgeschlagen. Prüfe dein Verschlüsselungspasswort und die Verbindung und versuche es erneut. Deine lokalen Änderungen sind weiterhin gespeichert.",
+  "syncStorageUnavailable": "Der Speicher für die Synchronisierung ist vorübergehend nicht verfügbar. Versuche es später erneut. Deine lokalen Änderungen sind weiterhin gespeichert.",
   "syncUnlockAction": "Entsperren und synchronisieren",
   "settingsFeedbackSection": "Rückmeldung",
   "settingsHaptics": "Haptische Rückmeldung",

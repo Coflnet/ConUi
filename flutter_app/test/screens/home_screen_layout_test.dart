@@ -56,7 +56,9 @@ void main() {
         httpClient: MockClient((_) async => http.Response('{}', 503)));
     await tester.runAsync(auth.initialize);
     final sync = SyncService(db, auth);
-    if (password) sync.initializeEncryption('password');
+    if (password) {
+      await tester.runAsync(() => sync.initializeEncryption('password'));
+    }
     final appSettings = AppSettingsService();
 
     await tester.pumpWidget(

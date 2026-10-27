@@ -126,7 +126,7 @@ void main() {
     final person = Person(name: 'Ada Lovelace');
     await db.savePerson(person);
 
-    sync.initializeEncryption('correct horse battery staple');
+    await sync.initializeEncryption('correct horse battery staple');
     expect(sync.needsEncryptionPassword, isFalse);
 
     await sync.syncOnClose();
@@ -143,7 +143,8 @@ void main() {
     // But it genuinely IS that data, encrypted with the session's key -
     // decrypting it with the same password/salt recovers the original
     // JSON exactly.
-    final decryptor = EncryptionService()..initializeWithPassword(
+    final decryptor = EncryptionService();
+    await decryptor.initializeWithPassword(
         'correct horse battery staple', auth.encryptionSalt ?? auth.userId!);
     expect(decryptor.decryptString(uploadedBody), plainJson);
   });
@@ -170,7 +171,7 @@ void main() {
         blobCalls++;
         return http.Response('', 200);
       }));
-      sync.initializeEncryption('first password');
+      await sync.initializeEncryption('first password');
       final person = Person(name: 'Private first-account story');
       await db.savePerson(person);
       final pendingIds =
@@ -222,7 +223,7 @@ void main() {
     }));
     await auth.initialize();
     final sync = SyncService(db, auth);
-    sync.initializeEncryption('password');
+    await sync.initializeEncryption('password');
     SharedPreferences.setMockInitialValues(
         {'auth_token': 'refreshed.token', 'user_id': 'u1'});
     await auth.initialize();
@@ -258,7 +259,7 @@ void main() {
         });
         await auth.initialize();
         if (switchAt == 'reunlock') {
-          sync.initializeEncryption('second password');
+          await sync.initializeEncryption('second password');
         }
       }
 
@@ -283,8 +284,8 @@ void main() {
         blobCalls++;
         if (switchAt == 'blob') await switchAccount();
         return http.Response('', 200);
-      }))
-        ..initializeEncryption('first password');
+      }));
+      await sync.initializeEncryption('first password');
       await sync.syncOnClose();
       expect(apiCalls, switchAt == 'commit' ? 2 : 1);
       expect(blobCalls, ['upload', 'reunlock'].contains(switchAt) ? 0 : 1);
@@ -353,8 +354,8 @@ void main() {
         blobCalls++;
         await changeSalt();
         return http.Response(encrypted, 200);
-      }))
-            ..initializeEncryption('first password');
+      }));
+      await sync.initializeEncryption('first password');
       encrypted = EncryptionService.instance!.encryptJson(remote.toJson());
       await sync.forceFullSync();
       expect(apiCalls, switchAt == 'updates' ? 1 : 2);

@@ -104,9 +104,10 @@ Future<SyncService> _sync(
     DatabaseService db, _StreamingStore store, _Backend backend) async {
   final auth = AuthService(httpClient: backend.api);
   await auth.initialize();
-  return SyncService(db, auth,
-      httpClient: backend.storage, recordingFileStore: store)
-    ..initializeEncryption('password');
+  final sync = SyncService(db, auth,
+      httpClient: backend.storage, recordingFileStore: store);
+  await sync.initializeEncryption('password');
+  return sync;
 }
 
 Future<AttachedFile> _record(_StreamingStore store,
@@ -326,8 +327,8 @@ void main() {
         Event(title: 'Validation', dateTime: DateTime(1952), files: [file]);
     await senderDb.saveEvent(story);
     await senderSync.syncOnClose();
-    final encryptor = EncryptionService()
-      ..initializeWithPassword('password', 'u1');
+    final encryptor = EncryptionService();
+    await encryptor.initializeWithPassword('password', 'u1');
     final key = backend.blobs.keys
         .firstWhere((key) => key.startsWith('recording_chunk_v1/'));
     final validEncrypted = backend.blobs[key]!;

@@ -65,7 +65,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (success) {
       // Initialize encryption with password
-      syncService.initializeEncryption(_passwordController.text);
+      await syncService.initializeEncryption(_passwordController.text);
 
       // Don't sync on login screen - let home screen handle it
       // await syncService.syncOnOpen();

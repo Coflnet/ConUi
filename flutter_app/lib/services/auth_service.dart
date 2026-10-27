@@ -53,12 +53,16 @@ class AuthService extends ChangeNotifier {
 
   String? _token;
   String? _userId;
+  String? _userName;
+  String? _userEmail;
   String? _encryptionSalt;
   bool _initialized = false;
   bool _continuedWithoutAccount = false;
 
   String? get token => _token;
   String? get userId => _userId;
+  String? get userName => _userName;
+  String? get userEmail => _userEmail;
   String? get encryptionSalt => _encryptionSalt;
   bool get isAuthenticated => _token != null;
   bool get isInitialized => _initialized;
@@ -99,6 +103,7 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    _userName = _userEmail = null;
     final prefs = await SharedPreferences.getInstance();
     _token = prefs.getString(_tokenKey);
     _userId = prefs.getString(_userIdKey);
@@ -187,7 +192,9 @@ class AuthService extends ChangeNotifier {
       throw const FormatException('Account mismatch');
     }
     authRemaining(); // Never adopt a late completion after the shared deadline.
-    await _saveToken(token, encryptionSalt: salt);
+    await _saveToken(token, encryptionSalt: salt,
+        userName: _profileText(user['name']),
+        userEmail: _profileText(user['email']));
   }
 
   Future<bool> loginWithFirebase(String firebaseToken) async {
@@ -228,7 +235,7 @@ class AuthService extends ChangeNotifier {
         await _saveToken(data['authToken']);
 
         // Fetch user info to get encryption salt
-        await _fetchUserInfo();
+        await refreshUserInfo();
         return true;
       }
       return false;
@@ -238,22 +245,25 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  Future<void> _fetchUserInfo() async {
-    if (_token == null) return;
+  Future<void> refreshUserInfo() async {
+    final token = _token;
+    if (token == null) return;
 
     try {
       final response = await _http.get(
         Uri.parse('$baseUrl/api/auth/me'),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_token',
+          'Authorization': 'Bearer $token',
         },
-      );
+      ).timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        _userId = data['id'];
+        if (_token != token || data['id'] != _userId) return;
         _encryptionSalt = data['encryptionKeySalt'];
+        _userName = _profileText(data['name']);
+        _userEmail = _profileText(data['email']);
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_userIdKey, _userId!);
@@ -267,7 +277,11 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  Future<void> _saveToken(String token, {String? encryptionSalt}) async {
+  static String? _profileText(Object? value) =>
+      value is String && value.trim().isNotEmpty ? value.trim() : null;
+
+  Future<void> _saveToken(String token,
+      {String? encryptionSalt, String? userName, String? userEmail}) async {
     String? userId;
     try {
       final parts = token.split('.');
@@ -297,6 +311,8 @@ class AuthService extends ChangeNotifier {
     // Publish one coherent identity after all asynchronous work is complete.
     _token = token;
     _userId = userId;
+    _userName = userName;
+    _userEmail = userEmail;
     _encryptionSalt = salt;
     _continuedWithoutAccount = false;
     notifyListeners();
@@ -305,6 +321,7 @@ class AuthService extends ChangeNotifier {
   Future<void> logout() async {
     _token = null;
     _userId = null;
+    _userName = _userEmail = null;
     _encryptionSalt = null;
     _continuedWithoutAccount = false;
 

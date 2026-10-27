@@ -47,6 +47,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         BackupService(databaseService: context.read<DatabaseService>());
     _loadSyncStatus();
     _loadBackupStatus();
+    context.read<AuthService>().refreshUserInfo();
   }
 
   Future<void> _loadSyncStatus() async {
@@ -373,10 +374,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       MaterialPageRoute(builder: (_) => const LoginScreen())),
                 );
               }
+              final profile = [auth.userName, auth.userEmail]
+                  .whereType<String>().join('\n');
               return ListTile(
                 leading: const Icon(Icons.person),
                 title: Text(l10n.settingsLoggedInAs),
-                subtitle: Text(auth.userId ?? l10n.settingsUnknownUser),
+                subtitle: Text(profile.isNotEmpty
+                    ? profile
+                    : auth.userId ?? l10n.settingsUnknownUser),
               );
             },
           ),
