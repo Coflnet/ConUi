@@ -99,7 +99,7 @@ WORKDIR /web
 COPY flutter_app/pubspec.yaml flutter_app/pubspec.lock ./
 RUN flutter pub get
 COPY flutter_app/ .
-RUN flutter test
+RUN flutter gen-l10n && flutter test
 
 FROM scratch AS test
 COPY --from=backend-test /src/RelationshipManager.Api.Tests/RelationshipManager.Api.Tests.csproj /backend-test.ok
