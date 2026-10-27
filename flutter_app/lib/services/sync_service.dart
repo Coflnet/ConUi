@@ -16,7 +16,7 @@ import '../backup/backup_format.dart';
 class SyncService extends ChangeNotifier {
   final DatabaseService _db;
   final AuthService _auth;
-  final EncryptionService _encryption = EncryptionService();
+  EncryptionService _encryption = EncryptionService();
   final RecordingFileStore _recordings;
 
   // v1: immutable SHA-qualified IDs, fixed 1 MiB plaintext chunks, each
@@ -80,18 +80,30 @@ class SyncService extends ChangeNotifier {
       _encryptionSalt == _currentEncryptionSalt;
 
   // Initialize encryption with user's password
-  void initializeEncryption(String password) {
+  Future<void> initializeEncryption(String password) async {
+    final userId = _auth.userId;
     final salt = _currentEncryptionSalt;
-    _encryption.initializeWithPassword(password, salt);
-    _encryptionUserId = _auth.userId;
+    final revision = ++_encryptionRevision;
+    _encryptionUserId = _encryptionSalt = null;
+    _needsEncryptionPassword = true;
+    EncryptionService.instance = null;
+    final encryption = EncryptionService();
+    await encryption.initializeWithPassword(password, salt);
+    if (!_auth.isAuthenticated || _auth.userId != userId ||
+        _currentEncryptionSalt != salt || _encryptionRevision != revision) {
+      throw StateError('Account or encryption changed during unlock');
+    }
+    _encryption = encryption;
+    EncryptionService.instance = encryption;
+    _encryptionUserId = userId;
     _encryptionSalt = salt;
-    _encryptionRevision++;
     _needsEncryptionPassword = false;
     _safeNotifyListeners();
   }
 
   void lockEncryption() {
     _encryptionUserId = _encryptionSalt = null;
+    EncryptionService.instance = null;
     _encryptionRevision++;
     _needsEncryptionPassword = true;
     _safeNotifyListeners();
@@ -114,6 +126,7 @@ class SyncService extends ChangeNotifier {
     }
     // Once a different identity is observed, switching back also needs unlock.
     _encryptionUserId = _encryptionSalt = null;
+    EncryptionService.instance = null;
     _needsEncryptionPassword = true;
     _safeNotifyListeners();
     return false;
@@ -139,6 +152,16 @@ class SyncService extends ChangeNotifier {
   void _checkResponse(http.Response response, String operation) {
     _checkSyncSession();
     if (response.statusCode != 200) {
+      if (response.statusCode == 503) {
+        try {
+          final error = jsonDecode(response.body);
+          if (error is Map && error['slug'] == 'storage_unavailable') {
+            throw StateError('storage_unavailable');
+          }
+        } on FormatException {
+          // Non-JSON storage responses retain the generic status below.
+        }
+      }
       throw StateError('Sync $operation failed (${response.statusCode})');
     }
   }

@@ -152,7 +152,7 @@ void main() {
         auth,
         httpClient: MockClient((request) async => http.Response('', 200)),
       );
-      sync.initializeEncryption('correct horse battery staple');
+      await sync.initializeEncryption('correct horse battery staple');
 
       await sync.syncOnClose();
 
@@ -174,8 +174,8 @@ void main() {
       await db.initialize();
 
       final remotePerson = Person(name: 'Grace Hopper');
-      final encryptor = EncryptionService()
-        ..initializeWithPassword('correct horse battery staple', 'u1');
+      final encryptor = EncryptionService();
+      await encryptor.initializeWithPassword('correct horse battery staple', 'u1');
       final encryptedBlob = encryptor.encryptString(jsonEncode(remotePerson.toJson()));
 
       final auth = AuthService(
@@ -211,7 +211,7 @@ void main() {
         auth,
         httpClient: MockClient((request) async => http.Response(encryptedBlob, 200)),
       );
-      sync.initializeEncryption('correct horse battery staple');
+      await sync.initializeEncryption('correct horse battery staple');
 
       await sync.syncOnOpen();
 

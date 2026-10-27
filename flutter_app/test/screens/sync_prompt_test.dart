@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -23,13 +24,13 @@ Future<void> settle(WidgetTester tester) async {
   }
 }
 
-Widget app(SyncService sync, AuthService auth) => MultiProvider(
+Widget app(SyncService sync, AuthService auth, {String locale = 'en'}) => MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: sync),
         ChangeNotifierProvider.value(value: auth),
       ],
       child: MaterialApp(
-        locale: const Locale('en'),
+        locale: Locale(locale),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: Builder(
@@ -77,8 +78,9 @@ void main() {
       (tester) async {
     final db = createTestDatabaseService();
     final remote = Person(id: 'remote', name: 'Remote person');
-    final cipher = EncryptionService()
-      ..initializeWithPassword('right-password', 'u1');
+    final cipher = EncryptionService();
+    await tester.runAsync(
+        () => cipher.initializeWithPassword('right-password', 'u1'));
     final encrypted = cipher.encryptJson(remote.toJson());
     await tester.runAsync(() async {
       await db.initialize();
@@ -158,4 +160,109 @@ void main() {
     expect((await tester.runAsync(() => db.getPerson('remote')))!.name,
         'Remote person');
   });
+
+  for (final locale in ['en', 'de']) {
+    testWidgets('autofill survives storage outage and retry ($locale)', (
+      tester,
+    ) async {
+      final db = createTestDatabaseService();
+      await tester.runAsync(db.initialize);
+      var unavailable = true;
+      var requests = 0;
+      final auth = AuthService(
+        httpClient: MockClient((request) async {
+          requests++;
+          expect(request.url.path, '/api/sync/updates');
+          return unavailable
+              ? http.Response(
+                  '{"slug":"storage_unavailable","message":"private backend details"}',
+                  503,
+                )
+              : http.Response('{"entries":[],"latestVersion":0}', 200);
+        }),
+      );
+      await tester.runAsync(auth.initialize);
+      final sync = SyncService(db, auth);
+      await tester.pumpWidget(app(sync, auth, locale: locale));
+      await tester.tap(find.text('Sync now'));
+      await tester.pumpAndSettle();
+      final group = tester.state<AutofillGroupState>(
+        find.byType(AutofillGroup),
+      );
+      final field = tester.state<EditableTextState>(find.byType(EditableText));
+      expect(field.widget.autofillHints, [AutofillHints.password]);
+      expect(group.autofillClients.single.autofillId, field.autofillId);
+      await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+        'flutter/textinput',
+        const JSONMethodCodec().encodeMethodCall(
+          MethodCall('TextInputClient.updateEditingStateWithTag', [
+            0,
+            {
+              field.autofillId: const TextEditingValue(
+                text: 'vault-password',
+              ).toJSON(),
+            },
+          ]),
+        ),
+        (_) {},
+      );
+      await tester.pump();
+      expect(field.widget.controller.text, 'vault-password');
+      field.widget.focusNode.unfocus();
+      await tester.pump();
+      field.widget.focusNode.requestFocus();
+      await tester.pump();
+      final actionLabel = locale == 'de'
+          ? 'Entsperren und synchronisieren'
+          : 'Unlock and sync';
+      Future<void> submit() => tester.runAsync(() async {
+        final action =
+            tester
+                    .widget<FilledButton>(
+                      find.widgetWithText(FilledButton, actionLabel),
+                    )
+                    .onPressed
+                as dynamic;
+        await action();
+      });
+      await submit();
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining(
+          locale == 'de'
+              ? 'Der Speicher für die Synchronisierung ist vorübergehend nicht verfügbar.'
+              : 'Sync storage is temporarily unavailable.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('private backend details'), findsNothing);
+      expect(field.widget.controller.text, 'vault-password');
+      expect(
+        tester.state<AutofillGroupState>(find.byType(AutofillGroup)),
+        same(group),
+      );
+      expect(sync.isUnlocked, isFalse);
+      expect(requests, 1);
+      expect(
+        tester.testTextInput.log.where(
+          (call) =>
+              call.method == 'TextInput.finishAutofillContext' &&
+              call.arguments == true,
+        ),
+        isEmpty,
+      );
+      unavailable = false;
+      await submit();
+      await tester.pumpAndSettle();
+      expect(sync.isUnlocked, isTrue);
+      expect(requests, 2);
+      expect(find.byType(AutofillGroup), findsNothing);
+      expect(
+        tester.testTextInput.log,
+        contains(
+          isMethodCall('TextInput.finishAutofillContext', arguments: true),
+        ),
+      );
+    });
+  }
 }

@@ -54,8 +54,8 @@ void main() {
       }));
       await auth.initialize();
       final sync = SyncService(db, auth,
-          httpClient: MockClient((_) async => http.Response('', 200)))
-        ..initializeEncryption('password');
+          httpClient: MockClient((_) async => http.Response('', 200)));
+      await sync.initializeEncryption('password');
       await sync.syncOnClose();
       expect(sync.lastError, contains('503'));
       final remaining = await db.getPendingChanges();
@@ -84,8 +84,8 @@ void main() {
       await db.initialize();
       await db.saveSyncIndex(SyncIndex(lastSyncTimestamp: 8));
       final person = Person(id: 'remote', name: 'Bert');
-      final encryptor = EncryptionService()
-        ..initializeWithPassword('password', 'u1');
+      final encryptor = EncryptionService();
+      await encryptor.initializeWithPassword('password', 'u1');
       var fail = true;
       final requestedVersions = <int>[];
       final auth = AuthService(httpClient: MockClient((request) async {
@@ -117,8 +117,8 @@ void main() {
                     ? 'invalid ciphertext'
                     : encryptor.encryptString(jsonEncode(person.toJson())),
                 fail && failure == 'blob' ? 503 : 200,
-              )))
-        ..initializeEncryption('password');
+              )));
+      await sync.initializeEncryption('password');
       await sync.syncOnOpen();
       expect((await db.getSyncIndex())!.lastSyncTimestamp, 8);
       expect(sync.lastError, isNotNull);
@@ -138,8 +138,8 @@ void main() {
     final db = createTestDatabaseService();
     await db.initialize();
     await db.saveSyncIndex(SyncIndex(lastSyncTimestamp: 8));
-    final encryptor = EncryptionService()
-      ..initializeWithPassword('password', 'u1');
+    final encryptor = EncryptionService();
+    await encryptor.initializeWithPassword('password', 'u1');
     final auth = AuthService(httpClient: MockClient((request) async {
       if (request.url.path == '/api/sync/updates') {
         return http.Response(
@@ -171,8 +171,8 @@ void main() {
         httpClient: MockClient((_) async => http.Response(
             encryptor.encryptString(
                 jsonEncode(SyncIndex(lastSyncTimestamp: 999).toJson())),
-            200)))
-      ..initializeEncryption('password');
+            200)));
+    await sync.initializeEncryption('password');
     await sync.syncOnOpen();
     expect((await db.getSyncIndex())!.lastSyncTimestamp, 8);
     expect(sync.lastError, contains('503'));
@@ -188,7 +188,8 @@ void main() {
       return http.Response('{}', 503);
     }));
     await auth.initialize();
-    final sync = SyncService(db, auth)..initializeEncryption('password');
+    final sync = SyncService(db, auth);
+    await sync.initializeEncryption('password');
     await sync.forceFullSync();
     expect(await db.getPendingChanges(), hasLength(1));
     expect(sync.lastError, contains('503'));
@@ -238,8 +239,8 @@ void main() {
     await auth.initialize();
     final sync = SyncService(db, auth,
         httpClient: MockClient(
-            (_) async => throw StateError('Tombstones need no blob')))
-      ..initializeEncryption('password');
+            (_) async => throw StateError('Tombstones need no blob')));
+    await sync.initializeEncryption('password');
     await sync.syncOnOpen();
     expect(await db.getPersons(), isEmpty);
     expect(await db.getPlaces(), isEmpty);
