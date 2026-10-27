@@ -222,7 +222,8 @@ class _HomeScreenState extends State<HomeScreen>
       ),
       body: Column(children: [
         Consumer<SyncService>(builder: (context, sync, _) {
-          if (sync.isSyncing && sync.isUnlocked) {
+          if (sync.isSyncing && sync.isUnlocked &&
+              ModalRoute.isCurrentOf(context) == true) {
             return Padding(
               padding: const EdgeInsets.all(16),
               child: SyncProgressIndicator(sync: sync),

@@ -250,7 +250,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 : const Icon(Icons.chevron_right),
             onTap: isSyncing ? null : _forceSync,
           ),
-          if (isSyncing && sync.isUnlocked)
+          if (isSyncing && sync.isUnlocked &&
+              ModalRoute.isCurrentOf(context) == true)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: SyncProgressIndicator(sync: sync),
