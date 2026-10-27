@@ -101,6 +101,7 @@ public class SyncRequest
 public class SyncResponse
 {
     public List<SyncEntry> Entries { get; set; } = new();
+    public SyncBatchingCapabilities? Batching { get; set; }
     public long LatestVersion { get; set; }
     public StorageInfoResponse? StorageInfo { get; set; }
 }
@@ -152,4 +153,49 @@ public class CommitEntry
     public string Checksum { get; set; } = string.Empty;
     public long Size { get; set; }
     public bool IsDeleted { get; set; }
+}
+
+// Existing logical object identities and encrypted payloads are preserved inside physical packs.
+public class SyncBatchingCapabilities
+{
+    public int Version { get; set; } = 1;
+    public int MaxEntries { get; set; } = 128;
+    public int MaxPayloadBytes { get; set; } = 4 * 1024 * 1024;
+    public bool CanUploadPacks { get; set; }
+}
+
+public class PackedUploadRequest
+{
+    public List<PackedUploadEntry> Entries { get; set; } = new();
+}
+
+public class PackedUploadEntry : PackedDownloadRequestEntry
+{
+    public string Checksum { get; set; } = string.Empty;
+    public bool IsDeleted { get; set; }
+    public string Data { get; set; } = string.Empty;
+}
+
+public class PackedDownloadRequest
+{
+    public List<PackedDownloadRequestEntry> Entries { get; set; } = new();
+}
+
+public class PackedDownloadRequestEntry
+{
+    public string BlobType { get; set; } = string.Empty;
+    public string BlobId { get; set; } = string.Empty;
+}
+
+public class PackedDownloadResponse
+{
+    public List<PackedDownloadEntry> Entries { get; set; } = new();
+}
+
+public class PackedDownloadEntry : PackedDownloadRequestEntry
+{
+    public long Version { get; set; }
+    public bool IsDeleted { get; set; }
+    public string? Data { get; set; }
+    public string? DownloadUrl { get; set; }
 }

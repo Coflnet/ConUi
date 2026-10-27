@@ -261,6 +261,37 @@ PLAYWRIGHT_MODULE=/path/to/playwright/module node flutter_app/test/browser/auth_
 report directory. DE/EN desktop/mobile at 200% zoom use mocked auth responses;
 requests outside the local build are blocked.
 
+### Packed encrypted synchronization
+
+Sync collapses queued edits to each person, place, object or connection into one
+upload of its latest captured snapshot. With `Sync:PackingEnabled=true`, clients
+discover support in the existing updates response and send up to 128 records or
+4 MiB of ciphertext per request. The server stores these independently encrypted
+records in one immutable S3 object. Downloads group records from the same pack
+into one storage read and return them in bounded batches. Oversized records use
+the existing individual upload/download path. Events remain monthly blobs and
+recordings retain their resumable 1 MiB v1 chunks.
+
+No encryption format or Cassandra schema changes are required. Older clients
+receive short-lived URLs for their exact encrypted slice; these URLs require a
+canonical HTTP(S) origin in `jwt:issuer` and use a separate capability signature
+derived from the existing JWT secret. They cannot authenticate as application
+JWTs. Ordinary commits cannot supply pack references or another user's keys.
+
+Packed writes default to off. First deploy this compatible reader to every
+replica, then enable `Sync__PackingEnabled` through Fleet. Disabling the flag
+stops new packed writes but continues reading existing packs. After activation,
+rollbacks must retain a pack-capable backend; pre-packing releases cannot read
+these objects. Capability-free servers continue using the legacy protocol.
+
+Publication retains the existing per-record commit semantics: a failed batch can
+commit a prefix. The client keeps all affected pending rows for retry, and only
+acknowledges captured rows after the final index commit succeeds. Edits made
+during an upload remain pending. Physical packs reduce S3 writes and client HTTP
+requests; logical records still retain their separate database commits. Existing per-record
+last-writer behavior and storage retention are unchanged; superseded packs are not
+automatically compacted or garbage-collected.
+
 ### Transcription and Dia corrections
 
 Con's recording client sends audio to its own `/api/transcription/segment` API,

@@ -26,6 +26,7 @@ public interface IS3Service
     Task<long> GetObjectSizeAsync(string key);
     Task UploadAsync(string key, Stream data, string contentType = "application/octet-stream");
     Task<Stream?> DownloadAsync(string key);
+    Task<Stream?> DownloadRangeAsync(string key, long offset, long length);
 }
 
 /// <summary>
@@ -195,6 +196,39 @@ public class S3Service : IS3Service
             ContentType = contentType
         };
         await Client.PutObjectAsync(request);
+    }
+
+    public async Task<Stream?> DownloadRangeAsync(string key, long offset, long length)
+    {
+        if (offset < 0 || length <= 0 || length > PackReference.MaxPackSize || offset > PackReference.MaxPackSize - length)
+            throw new ArgumentOutOfRangeException(nameof(length));
+        await EnsureReadyAsync();
+        try
+        {
+            var end = offset + length - 1;
+            using var response = await Client.GetObjectAsync(new GetObjectRequest
+            {
+                BucketName = _bucket, Key = key, ByteRange = new ByteRange(offset, end)
+            });
+            var range = response.ContentRange?.Split('/');
+            if (response.HttpStatusCode != System.Net.HttpStatusCode.PartialContent || response.ContentLength != length ||
+                range?.Length != 2 || range[0] != $"bytes {offset}-{end}" ||
+                !long.TryParse(range[1], out var total) || total <= end || total > PackReference.MaxPackSize)
+                throw new S3UnavailableException("Blob storage returned an invalid packed range.");
+            var bytes = new byte[(int)length];
+            await response.ResponseStream.ReadExactlyAsync(bytes);
+            if (response.ResponseStream.ReadByte() != -1)
+                throw new S3UnavailableException("Blob storage returned an oversized packed range.");
+            return new MemoryStream(bytes, writable: false);
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        catch (EndOfStreamException ex)
+        {
+            throw new S3UnavailableException("Blob storage returned a truncated packed range.", ex);
+        }
     }
 
     public async Task<Stream?> DownloadAsync(string key)
