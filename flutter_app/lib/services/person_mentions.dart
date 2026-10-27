@@ -112,6 +112,23 @@ List<PersonMention> extractPersonMentions(String text, List<Person> people) {
         start, start + match.end, PersonMention(name: name, matches: matches)));
   }
 
+  // Naming a pet does not mention a human with the same name. Filter each
+  // occurrence so an independent human mention elsewhere still survives.
+  final petCue = RegExp(
+      r'\b(?:hund|hündin|welpe|katze|kater|haustier|kaninchen|pferd|vogel|'
+      r'hamster|dog|puppy|cat|kitten|pet|rabbit|horse|bird)\s+'
+      r'(?:(?:ist|is)\s+)?(?:namens|heißt|heisst|named|called)\s+',
+      caseSensitive: false,
+      unicode: true);
+  for (final cue in petCue.allMatches(text)) {
+    if (!boundary(cue.start - 1)) continue;
+    final name = personName.firstMatch(text.substring(cue.end));
+    if (name == null) continue;
+    final end = cue.end + name.end;
+    occurrences.removeWhere(
+        (occurrence) => occurrence.start >= cue.end && occurrence.end <= end);
+  }
+
   // Keep full names ahead of overlapping first names and aliases.
   occurrences.sort((a, b) {
     final length = (b.end - b.start).compareTo(a.end - a.start);

@@ -1,0 +1,820 @@
+[
+  {
+    "id": "01",
+    "category": "Residence: house suffix",
+    "text": "Nora wohnt in der Lindenstraße 17a.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Nora",
+          "value": "Nora wohnt in der Lindenstraße 17a",
+          "company": false,
+          "source": "Nora wohnt in der Lindenstraße 17a"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "02",
+    "category": "Residence: full name and postal code",
+    "text": "Mara König wohnt in der Gartenstraße 8 in 04109 Leipzig.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Mara König",
+          "value": "Mara König wohnt in der Gartenstraße 8 in 04109 Leipzig",
+          "company": false,
+          "source": "Mara König wohnt in der Gartenstraße 8 in 04109 Leipzig"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "03",
+    "category": "Residence: relative clause attribution",
+    "text": "Olivia ist die Schwester von Paul, der in Dresden wohnt.",
+    "expected": {
+      "connections": [
+        {
+          "from": "Olivia",
+          "type": "sibling",
+          "to": "Paul",
+          "source": "Olivia ist die Schwester von Paul"
+        }
+      ],
+      "facts": [
+        {
+          "person": "Paul",
+          "value": "Paul in Dresden wohnt",
+          "company": false,
+          "source": "der in Dresden wohnt"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "04",
+    "category": "Residence: apartment after comma",
+    "text": "David lives at 17 Main Street, Apartment 4B.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "David",
+          "value": "David lives at 17 Main Street, Apartment 4B",
+          "company": false,
+          "source": "David lives at 17 Main Street, Apartment 4B"
+        }
+      ]
+    },
+    "note": "Keep the entire address, including the apartment."
+  },
+  {
+    "id": "05",
+    "category": "Residence: abbreviated street name",
+    "text": "Clara wohnt in Dr.-Müller-Straße 7.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Clara",
+          "value": "Clara wohnt in Dr.-Müller-Straße 7",
+          "company": false,
+          "source": "Clara wohnt in Dr.-Müller-Straße 7"
+        }
+      ]
+    },
+    "note": "A period inside a street name must not end the fact."
+  },
+  {
+    "id": "06",
+    "category": "Residence: separate people",
+    "text": "Sara wohnt in Ulm. Tim wohnt in Kiel.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Sara",
+          "value": "Sara wohnt in Ulm",
+          "company": false,
+          "source": "Sara wohnt in Ulm"
+        },
+        {
+          "person": "Tim",
+          "value": "Tim wohnt in Kiel",
+          "company": false,
+          "source": "Tim wohnt in Kiel"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "07",
+    "category": "Residence: coordinated predicates",
+    "text": "Greta arbeitet bei Bosch und wohnt in Ulm.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Greta",
+          "value": "Bosch",
+          "company": true,
+          "source": "Greta arbeitet bei Bosch"
+        },
+        {
+          "person": "Greta",
+          "value": "Greta wohnt in Ulm",
+          "company": false,
+          "source": "wohnt in Ulm"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "08",
+    "category": "Residence: historical statement",
+    "text": "Hugo wohnte früher in Bonn.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Hugo",
+          "value": "Hugo wohnte früher in Bonn",
+          "company": false,
+          "source": "Hugo wohnte früher in Bonn"
+        }
+      ]
+    },
+    "note": "Preserve the past tense; do not turn this into a current address."
+  },
+  {
+    "id": "09",
+    "category": "Residence: relocation",
+    "text": "Iris ist nach Hamburg gezogen.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Iris",
+          "value": "Iris ist nach Hamburg gezogen",
+          "company": false,
+          "source": "Iris ist nach Hamburg gezogen"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "10",
+    "category": "Residence: future relocation",
+    "text": "Jana zieht nächsten Monat nach Bremen.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Jana",
+          "value": "Jana zieht nächsten Monat nach Bremen",
+          "company": false,
+          "source": "Jana zieht nächsten Monat nach Bremen"
+        }
+      ]
+    },
+    "note": "Preserve the future qualifier; do not overwrite a current address."
+  },
+  {
+    "id": "11",
+    "category": "Employer: English for",
+    "text": "Farid works for Oak & Sons.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Farid",
+          "value": "Oak & Sons",
+          "company": true,
+          "source": "Farid works for Oak & Sons"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "12",
+    "category": "Employer: German legal suffix",
+    "text": "Eva arbeitet bei Nordlicht GmbH.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Eva",
+          "value": "Nordlicht GmbH",
+          "company": true,
+          "source": "Eva arbeitet bei Nordlicht GmbH"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "13",
+    "category": "Employer: relative clause",
+    "text": "Lea is the colleague of Noah, who works at Acme.",
+    "expected": {
+      "connections": [
+        {
+          "from": "Lea",
+          "type": "colleague",
+          "to": "Noah",
+          "source": "Lea is the colleague of Noah"
+        }
+      ],
+      "facts": [
+        {
+          "person": "Noah",
+          "value": "Acme",
+          "company": true,
+          "source": "who works at Acme"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "14",
+    "category": "Possession: new car English",
+    "text": "Quinn bought a new car.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Quinn",
+          "value": "Quinn bought a new car",
+          "company": false,
+          "source": "Quinn bought a new car"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "15",
+    "category": "Possession: new car German",
+    "text": "Rita kaufte ein neues Auto.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Rita",
+          "value": "Rita kaufte ein neues Auto",
+          "company": false,
+          "source": "Rita kaufte ein neues Auto"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "16",
+    "category": "Profession",
+    "text": "Eva ist Zahnärztin.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Eva",
+          "value": "Eva ist Zahnärztin",
+          "company": false,
+          "source": "Eva ist Zahnärztin"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "17",
+    "category": "Hobby",
+    "text": "Greta spielt jeden Donnerstag Volleyball.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Greta",
+          "value": "Greta spielt jeden Donnerstag Volleyball",
+          "company": false,
+          "source": "Greta spielt jeden Donnerstag Volleyball"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "18",
+    "category": "Pet ownership",
+    "text": "Jana hat einen Hund namens Milo.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Jana",
+          "value": "Jana hat einen Hund namens Milo",
+          "company": false,
+          "source": "Jana hat einen Hund namens Milo"
+        }
+      ]
+    },
+    "note": "Milo is a pet, not a newly inferred person."
+  },
+  {
+    "id": "19",
+    "category": "Birthday: German date",
+    "text": "Mara hat am 12. März 1992 Geburtstag.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Mara",
+          "value": "Mara hat am 12. März 1992 Geburtstag",
+          "company": false,
+          "source": "Mara hat am 12. März 1992 Geburtstag"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "20",
+    "category": "Contact detail",
+    "text": "Noah hat die Telefonnummer 030 123456.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Noah",
+          "value": "Noah hat die Telefonnummer 030 123456",
+          "company": false,
+          "source": "Noah hat die Telefonnummer 030 123456"
+        }
+      ]
+    },
+    "note": "Suggest a sourced fact; do not silently replace contact fields."
+  },
+  {
+    "id": "21",
+    "category": "Relationship: parent direction",
+    "text": "Lena ist die Mutter von Emil.",
+    "expected": {
+      "connections": [
+        {
+          "from": "Lena",
+          "type": "parent",
+          "to": "Emil",
+          "source": "Lena ist die Mutter von Emil"
+        }
+      ],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "22",
+    "category": "Relationship: inverse deduplication",
+    "text": "Lena ist die Mutter von Emil. Emil ist der Sohn von Lena.",
+    "expected": {
+      "connections": [
+        {
+          "from": "Lena",
+          "type": "parent",
+          "to": "Emil",
+          "source": "Lena ist die Mutter von Emil"
+        }
+      ],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "23",
+    "category": "Relationship: marriage",
+    "text": "Nora ist mit Emil verheiratet.",
+    "expected": {
+      "connections": [
+        {
+          "from": "Nora",
+          "type": "spouse",
+          "to": "Emil",
+          "source": "Nora ist mit Emil verheiratet"
+        }
+      ],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "24",
+    "category": "Relationship: grandparent",
+    "text": "Karl ist der Großvater von Lena.",
+    "expected": {
+      "connections": [
+        {
+          "from": "Karl",
+          "type": "grandparent",
+          "to": "Lena",
+          "source": "Karl ist der Großvater von Lena"
+        }
+      ],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "25",
+    "category": "Relationship: stepchild direction",
+    "text": "Lena is the stepdaughter of Karl.",
+    "expected": {
+      "connections": [
+        {
+          "from": "Lena",
+          "type": "stepChild",
+          "to": "Karl",
+          "source": "Lena is the stepdaughter of Karl"
+        }
+      ],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "26",
+    "category": "Relationship: half sibling",
+    "text": "Farid ist der Halbbruder von Greta.",
+    "expected": {
+      "connections": [
+        {
+          "from": "Farid",
+          "type": "halfSibling",
+          "to": "Greta",
+          "source": "Farid ist der Halbbruder von Greta"
+        }
+      ],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "27",
+    "category": "Relationship: paired neighbours",
+    "text": "Olivia und Paul sind Nachbarn.",
+    "expected": {
+      "connections": [
+        {
+          "from": "Olivia",
+          "type": "neighbour",
+          "to": "Paul",
+          "source": "Olivia und Paul sind Nachbarn"
+        }
+      ],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "28",
+    "category": "Relationship: reverse genitive",
+    "text": "Hans’ Tochter ist Nora.",
+    "expected": {
+      "connections": [
+        {
+          "from": "Nora",
+          "type": "child",
+          "to": "Hans",
+          "source": "Hans’ Tochter ist Nora"
+        }
+      ],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "29",
+    "category": "Relationship: accented and apostrophe names",
+    "text": "Élodie is a friend of Liam O’Connor.",
+    "expected": {
+      "connections": [
+        {
+          "from": "Élodie",
+          "type": "friend",
+          "to": "Liam O’Connor",
+          "source": "Élodie is a friend of Liam O’Connor"
+        }
+      ],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "30",
+    "category": "Relationship: narrator role prefix",
+    "text": "Meine Schwester Nora ist die Mutter von Emil.",
+    "expected": {
+      "connections": [
+        {
+          "from": "Nora",
+          "type": "parent",
+          "to": "Emil",
+          "source": "Meine Schwester Nora ist die Mutter von Emil"
+        }
+      ],
+      "facts": []
+    },
+    "note": "Resolve named Nora; do not create an unnamed narrator person."
+  },
+  {
+    "id": "31",
+    "category": "Mixed: appositive and employer",
+    "text": "Quinn, Rita’s colleague, works at Acme.",
+    "expected": {
+      "connections": [
+        {
+          "from": "Quinn",
+          "type": "colleague",
+          "to": "Rita",
+          "source": "Quinn, Rita’s colleague"
+        }
+      ],
+      "facts": [
+        {
+          "person": "Quinn",
+          "value": "Acme",
+          "company": true,
+          "source": "works at Acme"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "32",
+    "category": "Mixed: possessive role holder residence",
+    "text": "Olivia is Paul’s sister, who lives in Oxford.",
+    "expected": {
+      "connections": [
+        {
+          "from": "Olivia",
+          "type": "sibling",
+          "to": "Paul",
+          "source": "Olivia is Paul’s sister"
+        }
+      ],
+      "facts": [
+        {
+          "person": "Olivia",
+          "value": "Olivia lives in Oxford",
+          "company": false,
+          "source": "who lives in Oxford"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "33",
+    "category": "Mixed: spouse relative employer",
+    "text": "Nora ist mit Emil verheiratet, der bei Siemens arbeitet.",
+    "expected": {
+      "connections": [
+        {
+          "from": "Nora",
+          "type": "spouse",
+          "to": "Emil",
+          "source": "Nora ist mit Emil verheiratet"
+        }
+      ],
+      "facts": [
+        {
+          "person": "Emil",
+          "value": "Siemens",
+          "company": true,
+          "source": "der bei Siemens arbeitet"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "34",
+    "category": "Mixed: new named subject after and",
+    "text": "Sara works at Bosch and Tim lives in Ulm.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Sara",
+          "value": "Bosch",
+          "company": true,
+          "source": "Sara works at Bosch"
+        },
+        {
+          "person": "Tim",
+          "value": "Tim lives in Ulm",
+          "company": false,
+          "source": "Tim lives in Ulm"
+        }
+      ]
+    },
+    "note": ""
+  },
+  {
+    "id": "35",
+    "category": "Mixed: shared home without inferred romance",
+    "text": "Karl und Lena wohnen zusammen in Berlin.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Karl",
+          "value": "Karl und Lena wohnen zusammen in Berlin",
+          "company": false,
+          "source": "Karl und Lena wohnen zusammen in Berlin"
+        },
+        {
+          "person": "Lena",
+          "value": "Karl und Lena wohnen zusammen in Berlin",
+          "company": false,
+          "source": "Karl und Lena wohnen zusammen in Berlin"
+        }
+      ]
+    },
+    "note": "Attribute the shared residence to both; infer no romantic relationship."
+  },
+  {
+    "id": "36",
+    "category": "Reject: negated residence",
+    "text": "Nora wohnt nicht mehr in Hamburg.",
+    "expected": {
+      "connections": [],
+      "facts": []
+    },
+    "note": "Affirmative-only suggestion policy: do not infer a current Hamburg residence from a negated statement."
+  },
+  {
+    "id": "37",
+    "category": "Reject: question",
+    "text": "Nora wohnt in Berlin?",
+    "expected": {
+      "connections": [],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "38",
+    "category": "Reject: uncertain claim",
+    "text": "Nora wohnt vielleicht in Berlin.",
+    "expected": {
+      "connections": [],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "39",
+    "category": "Reject: trailing German uncertainty",
+    "text": "Nora wohnt in Berlin, möglicherweise.",
+    "expected": {
+      "connections": [],
+      "facts": []
+    },
+    "note": "Do not retain the preceding clause as an affirmative fact."
+  },
+  {
+    "id": "40",
+    "category": "Reject: reported English claim",
+    "text": "Nora lives in Berlin, reportedly.",
+    "expected": {
+      "connections": [],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "41",
+    "category": "Reject: condition",
+    "text": "Wenn Nora in Berlin wohnt, ist Emil ihr Nachbar.",
+    "expected": {
+      "connections": [],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "42",
+    "category": "Reject: unresolved English pronoun",
+    "text": "Eva met Farah. She lives in Leipzig.",
+    "expected": {
+      "connections": [],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "43",
+    "category": "Reject: unresolved German pronoun",
+    "text": "Eva traf Farah. Sie wohnt in Leipzig.",
+    "expected": {
+      "connections": [],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "44",
+    "category": "Reject: alternative residences",
+    "text": "Nora wohnt in Berlin oder Hamburg.",
+    "expected": {
+      "connections": [],
+      "facts": []
+    },
+    "note": "Two alternatives do not establish a definite residence."
+  },
+  {
+    "id": "45",
+    "category": "Reject: alternative employers",
+    "text": "Nora arbeitet bei Acme oder Beta.",
+    "expected": {
+      "connections": [],
+      "facts": []
+    },
+    "note": "Do not propose the combined phrase as a company name."
+  },
+  {
+    "id": "46",
+    "category": "Correction: same sentence",
+    "text": "Nora wohnt in Bonn, nein, in Köln.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Nora",
+          "value": "Nora wohnt in Köln",
+          "company": false,
+          "source": "Nora wohnt in Bonn, nein, in Köln"
+        }
+      ]
+    },
+    "note": "Keep the corrected city; never suggest the retracted Bonn claim."
+  },
+  {
+    "id": "47",
+    "category": "Mixed: independent claim beside negation",
+    "text": "Nora wohnt nicht in Bonn, aber Emil wohnt in Köln.",
+    "expected": {
+      "connections": [],
+      "facts": [
+        {
+          "person": "Emil",
+          "value": "Emil wohnt in Köln",
+          "company": false,
+          "source": "aber Emil wohnt in Köln"
+        }
+      ]
+    },
+    "note": "Suppress only the negated claim, retaining Emil’s explicit fact."
+  },
+  {
+    "id": "48",
+    "category": "Reject: common noun as person",
+    "text": "Das Museum wohnt in Berlin.",
+    "expected": {
+      "connections": [],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "49",
+    "category": "Reject: self relationship",
+    "text": "Nora ist die Schwester von Nora.",
+    "expected": {
+      "connections": [],
+      "facts": []
+    },
+    "note": ""
+  },
+  {
+    "id": "50",
+    "category": "Reject: ambiguous relationship alternative",
+    "text": "Nora ist die Schwester von Emil oder Paul.",
+    "expected": {
+      "connections": [],
+      "facts": []
+    },
+    "note": "Do not select either possible sibling or create a person named Emil oder Paul."
+  }
+]

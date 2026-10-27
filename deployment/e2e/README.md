@@ -228,6 +228,33 @@ Failure diagnostics include semantic-role geometry and, only when the informatio
 form has one of the two fixed synthetic titles, its title and fictional transcript.
 No login field values, callback URLs or tokens are collected.
 
+## Typed personal fact extraction
+
+`extraction.py` uses one fictional typed story in a fresh guest profile, locally
+or on public Con. It checks exactly 13 human participants and their exact saved
+source facts: abbreviated street/unit text, a corrected residence, pet ownership
+without creating Milo as a person, a future move, birthday, hobby, profession,
+phone number, historical moves, shared residence and Paul's employer Bosch.
+Negated Sara and uncertain Quinn are excluded; no relationship or contact address
+is invented. Clara's fact opens its source story. ZIP exports before and after
+reload must preserve every person/story ID, participant and attributed fact.
+Screenshots cover 390px and 1440px. No account, recording or cloud content is used.
+
+Run after building the current release, using the installed Playwright environment:
+
+```sh
+python deployment/e2e/extraction.py \
+  --serve-directory flutter_app/build/web --output /tmp/con-extraction-local-e2e
+python deployment/e2e/extraction.py \
+  --origin https://con.coflnet.com --output /tmp/con-extraction-hosted-e2e
+```
+
+The harness reuses the owned localhost server and isolated Chromium lifecycle.
+Require exit zero, `result.json` with `completed: true` and `uncaught_errors: 0`.
+Failures report only exception type and static phase/control names. A local run
+establishes typed extraction and persistence; the public run verifies the deployed
+release. Neither verifies speech recognition.
+
 ## Consented training reports
 
 `training.py` restores the prior synthetic real-ASR connections backup into a

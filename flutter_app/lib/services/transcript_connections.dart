@@ -100,6 +100,44 @@ const _relationshipWords = {
 RegExp _pattern(String pattern) =>
     RegExp(pattern, caseSensitive: false, unicode: true);
 
+const _monthWords = r'(?:Januar|Februar|März|April|Mai|Juni|Juli|August|'
+    r'September|Oktober|November|Dezember|January|February|March|May|'
+    r'June|July|October|December)';
+
+Iterable<String> _transcriptAssertions(String text) sync* {
+  final abbreviation =
+      _pattern(r'\b(?:Dr|Prof|Mr|Mrs|Ms|St|Str|Apt|Nr|No|OG|EG)\.$');
+  final ordinal = _pattern(r'\b\d{1,2}\.$');
+  final ordinalContinuation =
+      _pattern('^(?:$_monthWords|OG|EG|Etage|Stock)\\b');
+  final context = _pattern(r'\b(?:if|wenn|falls|said|says|heard|sagt\w*|'
+      r'glaub\w*|thinks?|believes?|denkt|behaupt\w*)\b');
+  var start = 0;
+  for (final boundary
+      in RegExp(r'[!?]\s*|\.(?:\s+|(?=\p{Lu})|$)|\n+|$', unicode: true)
+          .allMatches(text)) {
+    if (boundary.start < text.length && text[boundary.start] == '.') {
+      final head = text.substring(start, boundary.start + 1);
+      final tail = text.substring(boundary.end);
+      if (tail.isNotEmpty &&
+          (abbreviation.hasMatch(head) ||
+              (ordinal.hasMatch(head) && ordinalContinuation.hasMatch(tail)))) {
+        continue;
+      }
+    }
+    final sentence = text.substring(start, boundary.end).trim();
+    start = boundary.end;
+    if (sentence.isEmpty) continue;
+    // Contrast can introduce an independent assertion, but cannot release a
+    // question, conditional, or reported claim from its original scope.
+    yield* sentence.endsWith('?') || context.hasMatch(sentence)
+        ? [sentence]
+        : sentence
+            .split(_pattern(r',(?=\s*(?:aber|but)\b)'))
+            .map((s) => s.trim());
+  }
+}
+
 /// Extracts only explicit, affirmative clauses. Relative clauses use the named
 /// clause head (the owner in "brother of Ben", the subject in "Ben’s brother");
 /// named appositives and reverse possessives keep their role holder, while
@@ -210,22 +248,75 @@ TranscriptConnections extractTranscriptConnections(
       r'^(.*?)\s+(?:(?:works?\s+(?:at|for)|arbeitet\s+bei)\s+(.+)|bei\s+(.+)\s+arbeitet)$');
   final car = _pattern(
       r'^(.*?)\s+(?:(?:got|bought|has)\s+a\s+new\s+car|(?:hat|kaufte)\s+ein\s+neues\s+Auto)$');
-  final residence = _pattern(
-      r'^(.*?)\s+(?:(?:lives\s+(?:at|in)|wohnt\s+in)\s+\S.*|in\s+\S.*\s+wohnt)$');
+  final residence =
+      _pattern(r'^(.*?)\s+(?:(?:(?:lives|lived|used\s+to\s+live)\s+(?:at|in)|'
+          r'(?:wohnt|wohnte)(?:\s+früher)?\s+in)\s+\S.*|'
+          r'in\s+\S.*\s+(?:wohnt|wohnte)|'
+          r'(?:ist\s+nach\s+\S.*\s+gezogen|'
+          r'zieht(?:\s+\S+){0,4}\s+nach\s+\S.*|'
+          r'(?:moved|is\s+moving|will\s+move)\s+to\s+\S.*))$');
+  final sharedResidence =
+      _pattern(r'^(.*?)\s+(?:und|and)\s+(.+?)\s+(?:wohnen\s+(?:zusammen\s+)?in|'
+          r'live\s+(?:together\s+)?(?:in|at))\s+\S.*$');
+  const profession = r'(?:Zahnärztin|Zahnarzt|Ärztin|Arzt|Lehrer(?:in)?|'
+      r'Ingenieur(?:in)?|Entwickler(?:in)?|Programmierer(?:in)?|'
+      r'Krankenpfleger(?:in)?|Krankenschwester|Architekt(?:in)?|'
+      r'Anwältin|Anwalt|Koch|Köchin|Erzieher(?:in)?|'
+      r'dentist|doctor|teacher|engineer|developer|programmer|nurse|'
+      r'architect|lawyer|chef)';
+  const date = '(?:\\d{1,2}\\.?\\s+$_monthWords\\s+\\d{4}|'
+      '$_monthWords\\s+\\d{1,2},?\\s+\\d{4}|\\d{1,2}\\.\\d{1,2}\\.\\d{4})';
+  final personalFact = _pattern('^(.*?)\\s+(?:'
+      '(?:is|ist)\\s+(?:(?:a|an|ein|eine)\\s+)?$profession|'
+      '(?:(?:ein|eine)\\s+)?$profession\\s+ist|'
+      r'(?:spielt|plays|enjoys)\s+\S.*|'
+      r'(?:hat\s+(?:einen|eine|ein)|(?:has|owns)\s+a)\s+'
+      r'(?:Hund|Katze|Vogel|Kaninchen|Pferd|dog|cat|bird|rabbit|horse)'
+      r'(?:\s+(?:namens|named|called)\s+\S.*)?|'
+      'hat\\s+am\\s+$date\\s+Geburtstag|'
+      'was\\s+born\\s+on\\s+$date|wurde\\s+am\\s+$date\\s+geboren|'
+      r'(?:hat\s+die\s+Telefonnummer|has\s+(?:the\s+)?phone\s+number)\s+'
+      r'\+?\d[\d ()/-]{4,}\d)$');
   final uncertain = _pattern(
       r'\b(?:not|never|no|nicht|kein\w*|nie|maybe|perhaps|vielleicht|'
-      r'possibly|probably|angeblich|wohl|vermutlich|might|may|could|would|'
+      r'possibly|probably|angeblich|wohl|vermutlich|might|could|would|'
+      r'may(?=\s+(?:be|live|work|have|move|own|play|enjoy)\b)|'
       r'allegedly|supposedly|apparently|reportedly|anscheinend|scheinbar|'
+      r'eventuell|möglicherweise|voraussichtlich|potentially|oder|or|nein|'
       r'should|can|must|könnte|kann|würde|soll\w*|muss|if|wenn|falls|'
       r'said|says|heard|thinks?|believes?|sagt\w*|sagte|glaub\w*|denkt|behaupt\w*)\b');
-  for (final sentenceMatch in RegExp(r'[^.!?\n]+[.!?]?').allMatches(text)) {
-    final sentence = sentenceMatch.group(0)!.trim();
-    if (sentence.endsWith('?') || uncertain.hasMatch(sentence)) continue;
+  const finitePredicate = r'(?:is|ist|works?|arbeitet|lives|lived|wohnt|wohnte|'
+      r'used\s+to\s+live|moved|will\s+move|zieht|hat|has|owns|plays|spielt|enjoys|'
+      r'was|wurde)\b';
+  const predicate = '(?:$finitePredicate|(?:bei|in)\\b)';
+  final explicitStart = _pattern('^(.+?)\\s+$finitePredicate');
+  final implicitStart = _pattern('^(?:$finitePredicate|bei\\s+|'
+      'in\\s+.+\\s+(?:wohnt|wohnte)\\b|'
+      '(?:(?:the|a|an|der|die|ein|eine)\\s+)?(?:$relation)\\s+(?:of|von)\\s+)');
+  final relativeStart = _pattern(r'^(?:who|which|der|die)\s+');
+  final clauseSeparator = _pattern(r',\s*|\s+(?:and|und)\s+|'
+      '\\s+(?=(?:who|which)\\s+|(?:der|die)\\s+'
+      '(?:$predicate|(?:ein|eine)\\b|$profession\\b))');
+  final correction =
+      _pattern(r'^(.*?)\s+(wohnt\s+in|lives\s+(?:in|at))\s+[^,]+,\s*'
+          r'(?:nein|no|sorry|ich\s+meine|I\s+mean),?\s+(?:in|at)\s+([^,]+)$');
+  for (final sentence in _transcriptAssertions(text)) {
+    if (sentence.endsWith('?')) continue;
     var body = sentence.replaceFirst(RegExp(r'[.!]$'), '');
+    final corrected = correction.firstMatch(body);
+    final original = body;
+    if (corrected != null) {
+      body =
+          '${corrected.group(1)} ${corrected.group(2)} ${corrected.group(3)}';
+    }
+    if (uncertain.hasMatch(body)) continue;
     final clauses = <(String, String, bool)>[];
     final pair = paired.firstMatch(body);
     final apposition = appositive.firstMatch(body);
-    if (pair != null &&
+    if (corrected != null) {
+      clauses.add((body, original, false));
+      body = '';
+    } else if (pair != null &&
         !_pattern(r'\b(?:and|und)\b').hasMatch(pair.group(2)!)) {
       clauses.add((
         '${pair.group(1)} is ${pairedWords[pair.group(3)!.toLowerCase()]} of ${pair.group(2)}',
@@ -241,15 +332,25 @@ TranscriptConnections extractTranscriptConnections(
       ));
       body = body.substring(apposition.end);
     }
-    clauses.addAll(body
-        .split(_pattern(r',\s*|\s+(?:and|und)\s+|\s+(?=(?:who|which)\s+|'
-            r'(?:der|die)\s+(?:bei|arbeitet|ein|eine|in|wohnt)\b)'))
-        .map((raw) => (raw.trim(), raw.trim(), false)));
+    var start = 0;
+    for (final separator in clauseSeparator.allMatches(body)) {
+      final tail = body.substring(separator.end);
+      final explicit = explicitStart.firstMatch(tail);
+      if (relativeStart.hasMatch(tail) ||
+          implicitStart.hasMatch(tail) ||
+          (explicit != null && personName(explicit.group(1)!) != null)) {
+        final raw = body.substring(start, separator.start).trim();
+        clauses.add((raw, raw, false));
+        start = separator.end;
+      }
+    }
+    final raw = body.substring(start).trim();
+    clauses.add((raw, raw, false));
     String? subject;
     String? antecedent;
     for (final (raw, source, isAppositive) in clauses) {
       if (source.isEmpty) continue;
-      var clause = raw;
+      var clause = raw.replaceFirst(_pattern(r'^(?:aber|but)\s+'), '');
       final relative =
           _pattern(r'^(?:who|which|der|die)\s+').firstMatch(clause);
       if (relative != null) {
@@ -257,15 +358,14 @@ TranscriptConnections extractTranscriptConnections(
         clause = clause.substring(relative.end);
       }
       if (relative != null ||
-          _pattern(r'^(?:is|ist|works?\s|arbeitet\s|bei\s|lives\s|wohnt\s|in\s|'
-                  r'(?:the|a|an|der|die|ein|eine)\s+)')
+          _pattern('^(?:$predicate|(?:the|a|an|der|die|ein|eine)\\s+)')
               .hasMatch(clause)) {
         if (subject == null) continue;
-        // German relative predicates put "ist" at the end.
+        // A coordinated role can omit its copula; German relatives put it last.
         if (_pattern(
-                '^(?:(?:der|die|ein|eine)\\s+)?($relation)\\s+von\\s+.+\\s+ist\$')
+                '^(?:(?:the|a|an|der|die|ein|eine)\\s+)?($relation)\\s+(?:of|von)\\s+')
             .hasMatch(clause)) {
-          clause = 'ist ${clause.replaceFirst(_pattern(r'\s+ist$'), '')}';
+          clause = 'is ${clause.replaceFirst(_pattern(r'\s+ist$'), '')}';
         }
         clause = '$subject $clause';
       } else {
@@ -339,7 +439,24 @@ TranscriptConnections extractTranscriptConnections(
           continue;
         }
       }
-      match = car.firstMatch(clause) ?? residence.firstMatch(clause);
+      match = sharedResidence.firstMatch(clause);
+      if (match != null) {
+        final names = [
+          personName(match.group(1)!),
+          personName(match.group(2)!)
+        ];
+        if (names.every((name) => name != null)) {
+          for (final name in names) {
+            fact(name!, clause, source);
+          }
+          // A plural subject cannot license a subsequent singular predicate.
+          subject = antecedent = null;
+          continue;
+        }
+      }
+      match = car.firstMatch(clause) ??
+          residence.firstMatch(clause) ??
+          personalFact.firstMatch(clause);
       if (match != null) {
         final name = personName(match.group(1)!);
         if (name != null) {

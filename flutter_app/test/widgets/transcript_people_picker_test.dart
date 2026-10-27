@@ -42,6 +42,54 @@ Future<TranscriptPeopleController> _controller(
 
 void main() {
   for (final existing in [false, true]) {
+    for (final text in [
+      'Jana hat einen Hund namens Milo.',
+      'Jana has a cat named Milo.',
+    ]) {
+      testWidgets(
+          'pet facts keep their owner and never save a human pet '
+          '(existing=$existing, $text)', (tester) async {
+        final milo = Person(
+            id: 'milo',
+            name: 'Milo',
+            storyFacts: {'older': 'Existing human fact'});
+        final db = await _database(tester, [if (existing) milo]);
+        final controller = await _controller(tester, db, text);
+        expect(controller.selectedPeople.single.name, 'Jana');
+        expect(controller.facts.single.person.name, 'Jana');
+        expect(controller.facts.single.sourceText,
+            text.substring(0, text.length - 1));
+        await tester.pumpWidget(wrapLocalized(
+            Scaffold(body: TranscriptPeoplePicker(controller: controller))));
+        expect(find.widgetWithText(Chip, 'Jana'), findsOneWidget);
+        expect(find.widgetWithText(Chip, 'Milo'), findsNothing);
+        await tester.runAsync(() async {
+          final ids =
+              await saveStoryPeople(db, await controller.peopleForSave());
+          final story = Event(
+              title: 'Pet',
+              dateTime: DateTime(2026, 10, 27),
+              participantIds: ids);
+          await db.saveEvent(story);
+          await controller.saveInformation(story);
+          final people = await db.getPersons();
+          final jana = people.singleWhere((p) => p.name == 'Jana');
+          expect(ids, [jana.id]);
+          expect(jana.storyFacts[story.id], text.substring(0, text.length - 1));
+          expect(people, hasLength(existing ? 2 : 1));
+          if (existing) {
+            expect((await db.getPerson(milo.id))!.storyFacts, milo.storyFacts);
+          }
+        });
+        controller.text.text = '$text Herr Milo kam.';
+        expect(controller.selectedPeople.map((p) => p.name), ['Jana', 'Milo']);
+        if (existing) expect(controller.selectedPeople.last.id, milo.id);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+    }
+  }
+
+  for (final existing in [false, true]) {
     testWidgets('residence facts save with their person (existing=$existing)',
         (tester) async {
       final john = Person(

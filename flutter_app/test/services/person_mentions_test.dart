@@ -87,6 +87,44 @@ void main() {
     expect(mentions.map((m) => m.name), ['Anna Müller']);
   });
 
+  test('pet naming cues never propose unfamiliar or known humans', () {
+    for (final text in [
+      'Jana hat einen Hund namens Milo.',
+      'Ihre Katze heißt Milo.',
+      'Ihr Kater heisst Milo.',
+      'She has a dog named Milo.',
+      'Her kitten is called Milo.',
+      'Her rabbit named Milo arrived.',
+    ]) {
+      for (final people in [
+        <Person>[],
+        [Person(name: 'Milo')]
+      ]) {
+        expect(extractPersonMentions(text, people), isEmpty, reason: text);
+      }
+    }
+  });
+
+  test('pet names do not suppress independent human mentions or human cues',
+      () {
+    const pet = 'Jana hat einen Hund namens Milo. ';
+    for (final text in [
+      '${pet}Herr Milo kam.',
+      '${pet}Mein Bruder Milo kam.',
+      '${pet}A person named Milo arrived.',
+    ]) {
+      expect(extractPersonMentions(text, []).single.name, 'Milo');
+      final known = Person(id: 'human-milo', name: 'Milo');
+      expect(extractPersonMentions(text, [known]).single.matches.single.id,
+          known.id);
+    }
+    expect(
+        extractPersonMentions('${pet}Milo kam.', [Person(name: 'Milo')])
+            .single
+            .name,
+        'Milo');
+  });
+
   test('same first name does not merge two unfamiliar full names', () {
     final mentions = extractPersonMentions(
         'Sister Anna Müller met sister Anna Schmidt and aunt Anna.', []);
