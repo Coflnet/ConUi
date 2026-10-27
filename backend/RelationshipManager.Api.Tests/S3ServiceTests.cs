@@ -157,6 +157,53 @@ public class S3ServiceTests
         }
     }
 
+    [Test]
+    public async Task Upload_UsesPayloadSignatureWithoutStreamingChunkFrames()
+    {
+        var http = new UploadHttpClientFactory();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["S3:ENDPOINT"] = "https://synthetic.eu.r2.cloudflarestorage.com", ["S3:ACCESS_KEY"] = "synthetic-key",
+            ["S3:SECRET_KEY"] = "synthetic-secret", ["S3:BUCKET"] = "con-stories"
+        }).Build();
+        var service = new S3Service(config, NullLogger<S3Service>.Instance, http);
+        var payload = Encoding.UTF8.GetBytes("con:v1:synthetic ciphertext, unchanged bytes");
+        await service.UploadAsync("owner/.packs/v1/pack", new MemoryStream(payload));
+        Assert.That(http.Uploads, Has.Count.EqualTo(1));
+        var upload = http.Uploads.Single();
+        Assert.That(upload.Hash, Is.EqualTo(Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant()));
+        Assert.That(upload.Encoding, Is.Empty);
+        Assert.That(upload.Body, Is.EqualTo(payload));
+        Assert.That(upload.Checksum, Is.EqualTo("k6PZYg=="));
+
+    }
+
+    private sealed class UploadHttpClientFactory : Amazon.Runtime.HttpClientFactory
+    {
+        public List<(string Hash, string Encoding, string Checksum, byte[] Body)> Uploads { get; } = new();
+        public override HttpClient CreateHttpClient(Amazon.Runtime.IClientConfig clientConfig) => new(new UploadHandler(this));
+        public override bool UseSDKHttpClientCaching(Amazon.Runtime.IClientConfig clientConfig) => false;
+
+        private sealed class UploadHandler(UploadHttpClientFactory owner) : HttpMessageHandler
+        {
+            protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                if (request.Method == HttpMethod.Get)
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent("""<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>con-stories</Name><KeyCount>0</KeyCount><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated></ListBucketResult>""")
+                    };
+                Assert.That(request.Method, Is.EqualTo(HttpMethod.Put));
+                Assert.That(request.Headers.GetValues("Authorization").Single(), Does.StartWith("AWS4-HMAC-SHA256 "));
+                var hash = request.Headers.GetValues("x-amz-content-sha256").Single();
+                var encoding = string.Join(",", request.Content!.Headers.ContentEncoding);
+                var checksum = request.Headers.TryGetValues("x-amz-checksum-crc32", out var values) ? values.Single() : "";
+                owner.Uploads.Add((hash, encoding, checksum, await request.Content.ReadAsByteArrayAsync(cancellationToken)));
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("") };
+            }
+        }
+    }
+
     private static void AssertPresignedSignature(Uri url, string verb, string? contentType)
     {
         var query = QueryHelpers.ParseQuery(url.Query);
