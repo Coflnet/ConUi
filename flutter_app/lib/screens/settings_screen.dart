@@ -11,6 +11,7 @@ import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import '../services/database_service.dart';
 import '../widgets/sync_prompt.dart';
+import '../widgets/sync_progress_indicator.dart';
 import '../services/interaction_feedback.dart';
 import '../services/local_draft_store.dart';
 import 'contacts/contacts_import_screen.dart';
@@ -227,7 +228,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final appSettings = context.watch<AppSettingsService>();
-    final lastSyncTime = context.watch<SyncService>().lastSyncTime;
+    final sync = context.watch<SyncService>();
+    final lastSyncTime = sync.lastSyncTime;
+    final isSyncing = _isSyncing || sync.isSyncing;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
       body: ListView(
@@ -238,15 +241,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             leading: const Icon(Icons.sync),
             title: Text(l10n.settingsForceSync),
             subtitle: Text(l10n.settingsPendingChanges(_pendingChanges)),
-            trailing: _isSyncing
+            trailing: isSyncing
                 ? const SizedBox(
                     width: 24,
                     height: 24,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.chevron_right),
-            onTap: _isSyncing ? null : _forceSync,
+            onTap: isSyncing ? null : _forceSync,
           ),
+          if (isSyncing && sync.isUnlocked)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: SyncProgressIndicator(sync: sync),
+            ),
           if (lastSyncTime != null)
             ListTile(
               leading: const Icon(Icons.schedule),

@@ -12,12 +12,19 @@ const remotePerson = Buffer.from(JSON.stringify({
 }));
 const key = crypto.pbkdf2Sync('synthetic-generated-password',
   'con:encryption:v1:synthetic-review-salt', 600000, 32, 'sha256');
-const nonce = crypto.randomBytes(12);
-const cipher = crypto.createCipheriv('aes-256-gcm', key, nonce);
-cipher.setAAD(Buffer.from('con:v1:'));
-const encryptedPerson = 'con:v1:' + Buffer.concat([
-  nonce, cipher.update(remotePerson), cipher.final(), cipher.getAuthTag(),
-]).toString('base64');
+function encryptPerson(person) {
+  const nonce = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, nonce);
+  cipher.setAAD(Buffer.from('con:v1:'));
+  return 'con:v1:' + Buffer.concat([
+    nonce, cipher.update(person), cipher.final(), cipher.getAuthTag(),
+  ]).toString('base64');
+}
+const encryptedPerson = encryptPerson(remotePerson);
+const encryptedSecondPerson = encryptPerson(Buffer.from(JSON.stringify({
+  id: 'progress-person', name: 'Synthetic progress person', notes: 'Small second item',
+  createdAt: '2026-10-27T00:00:00.000Z', updatedAt: '2026-10-27T00:00:00.000Z',
+})));
 let browser;
 (async () => {
   browser = await chromium.launch({
@@ -36,6 +43,8 @@ let browser;
   });
   const page = await context.newPage();
   let unavailable = true, requests = 0, blobDownloads = 0, requestAt;
+  let releaseSecondTransfer;
+  let secondTransfer = new Promise(resolve => { releaseSecondTransfer = resolve; });
   await page.route('**/api/**', route => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/sync/updates') {
@@ -44,16 +53,21 @@ let browser;
       return route.fulfill(unavailable ? {
         status: 503, json: {slug: 'storage_unavailable', message: 'private synthetic details'},
       } : {json: {entries: [{blobType: 'person', blobId: 'perf-person',
-        s3Key: 'synthetic/perf-person', version: 1}], latestVersion: 1}});
+        s3Key: 'synthetic/perf-person', version: 1},
+          {blobType: 'person', blobId: 'progress-person', s3Key: 'synthetic/progress-person', version: 2},
+          {blobType: 'recording_chunk_v1', blobId: 'orphan-chunk', s3Key: 'synthetic/orphan', version: 3},
+        ], latestVersion: 3}});
     }
-    if (path === '/api/sync/download/person/perf-person') {
-      return route.fulfill({json: {downloadUrl: new URL('/__synthetic_blob', base).href}});
+    if (path.startsWith('/api/sync/download/person/')) {
+      return route.fulfill({json: {downloadUrl: new URL('/__synthetic_blob/' + path.split('/').pop(), base).href}});
     }
     return route.fulfill({json: []});
   });
-  await page.route('**/__synthetic_blob', route => {
+  await page.route('**/__synthetic_blob/*', async route => {
     blobDownloads++;
-    return route.fulfill({contentType: 'text/plain', body: encryptedPerson});
+    const second = new URL(route.request().url()).pathname.endsWith('/progress-person');
+    if (second) await secondTransfer;
+    return route.fulfill({contentType: 'text/plain', body: second ? encryptedSecondPerson : encryptedPerson});
   });
   await page.goto(base);
   await page.locator('flt-semantics-placeholder').evaluate(el => el.click());
@@ -107,6 +121,14 @@ let browser;
     }, 10);
   });
   await page.getByRole('button', {name: 'Unlock and sync', exact: true}).click();
+  await page.getByText('Downloading 1 of 2 items (50%)', {exact: true}).waitFor();
+  await page.getByText(/About .* remaining in this step/).waitFor();
+  assert.equal(await retainedInput.evaluate(el => el.isConnected && el.value === 'synthetic-generated-password'), true);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  if (process.env.SYNC_TEST_PROGRESS_SCREENSHOT) {
+    await page.screenshot({path: process.env.SYNC_TEST_PROGRESS_SCREENSHOT, fullPage: false});
+  }
+  releaseSecondTransfer();
   await page.getByText('Unlock encrypted sync', {exact: true}).waitFor({state: 'detached'});
   const maxEventLoopGapMs = await page.evaluate(async () => {
     await new Promise(resolve => setTimeout(resolve, 30));
@@ -114,10 +136,20 @@ let browser;
     return window.syncGap.max;
   });
   assert.ok(maxEventLoopGapMs < 500, `Large sync blocked browser for ${maxEventLoopGapMs}ms`);
-  assert.equal(blobDownloads, 1);
+  assert.equal(blobDownloads, 2);
   assert.equal(requests, 2);
   assert.equal(await retainedInput.evaluate(el => el.value === '' && !el.isConnected), true);
-  console.log(JSON.stringify({width, clickToRequestMs, clickToErrorMs, payloadBytes: remotePerson.length, maxEventLoopGapMs, domAutofill: true, focusRoundtrip: true, storageError: true, retainedPassword: true, retrySucceeded: true, passwordDomCleared: true}));
+  // Already-unlocked manual sync also exposes real progress, including retry paths.
+  await page.getByText('Sync complete', {exact: true}).waitFor({state: 'detached'});
+  secondTransfer = new Promise(resolve => { releaseSecondTransfer = resolve; });
+  await page.getByText(/^Force Sync\b/).click();
+  await page.getByText('Downloading 1 of 2 items (50%)', {exact: true}).waitFor();
+  assert.equal(await page.getByText('Unlock encrypted sync', {exact: true}).count(), 0);
+  releaseSecondTransfer();
+  await page.getByText('Sync complete', {exact: true}).waitFor();
+  assert.equal(blobDownloads, 4);
+  assert.equal(requests, 3);
+  console.log(JSON.stringify({width, clickToRequestMs, clickToErrorMs, payloadBytes: remotePerson.length, maxEventLoopGapMs, domAutofill: true, focusRoundtrip: true, storageError: true, retainedPassword: true, retrySucceeded: true, actualPartialProgress: true, stepEstimate: true, orphanChunksExcluded: true, unlockedProgress: true, passwordDomCleared: true}));
   await browser.close();
 })().catch(async error => {
   console.error(error.stack);

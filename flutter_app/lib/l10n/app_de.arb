@@ -642,5 +642,96 @@
   "diaDetectError": "Sätze konnten nicht erkannt werden. Deine Aufnahme bleibt unverändert. Versuche es erneut, sobald die Spracherkennung verfügbar ist.",
   "diaMarksError": "Satzmarkierungen konnten nicht gespeichert werden. Sie sind in dieser Korrektur verfügbar; versuche es erneut, um sie dauerhaft zu speichern.",
   "diaAudioContextHelp": "Der passende Audioausschnitt enthält auch angrenzende Wörter. Diese bleiben unverändert; nur dieser Satz wird korrigiert.",
-  "diaDetectTooLong": "Melde dich in den Einstellungen an, um Sätze in Aufnahmen über einer Minute zu erkennen. Deine Originalaufnahme bleibt unverändert."
+  "diaDetectTooLong": "Melde dich in den Einstellungen an, um Sätze in Aufnahmen über einer Minute zu erkennen. Deine Originalaufnahme bleibt unverändert.",
+  "syncPreparing": "Verschlüsselte Synchronisierung wird vorbereitet…",
+  "syncDownloadStep": "Download-Schritt",
+  "syncUploadStep": "Upload-Schritt",
+  "syncFinishing": "Verschlüsselte Synchronisierung wird abgeschlossen…",
+  "syncDownloadProgress": "{completed} von {total} Einträgen heruntergeladen ({percent} %)",
+  "@syncDownloadProgress": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "syncUploadProgress": "{completed} von {total} Einträgen hochgeladen ({percent} %)",
+  "@syncUploadProgress": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "syncRecordingProgress": "Aufnahmeübertragung: {percent} %",
+  "@syncRecordingProgress": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "syncEstimating": "Verbleibende Zeit für diesen Schritt wird geschätzt…",
+  "syncRemainingSeconds": "Noch ca. {count, plural, one{1 Sekunde} other{{count} Sekunden}} in diesem Schritt",
+  "@syncRemainingSeconds": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncRemainingMinutes": "Noch ca. {count, plural, one{1 Minute} other{{count} Minuten}} in diesem Schritt",
+  "@syncRemainingMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncRemainingHours": "Noch ca. {count, plural, one{1 Stunde} other{{count} Stunden}} in diesem Schritt",
+  "@syncRemainingHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncEstimatingRecording": "Verbleibende Zeit für diese Aufnahme wird geschätzt…",
+  "syncRecordingRemainingSeconds": "Noch ca. {count, plural, one{1 Sekunde} other{{count} Sekunden}} für diese Aufnahme",
+  "@syncRecordingRemainingSeconds": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncRecordingRemainingMinutes": "Noch ca. {count, plural, one{1 Minute} other{{count} Minuten}} für diese Aufnahme",
+  "@syncRecordingRemainingMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncRecordingRemainingHours": "Noch ca. {count, plural, one{1 Stunde} other{{count} Stunden}} für diese Aufnahme",
+  "@syncRecordingRemainingHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncRecordingFinishing": "Aufnahme wird geprüft und gespeichert…"
 }

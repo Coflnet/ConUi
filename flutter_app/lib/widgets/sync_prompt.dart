@@ -6,6 +6,7 @@ import '../l10n/gen/app_localizations.dart';
 import '../services/interaction_feedback.dart';
 import '../services/sync_service.dart';
 import 'account_required_dialog.dart';
+import 'sync_progress_indicator.dart';
 import 'sync_password_field.dart'
     if (dart.library.js_interop) 'sync_password_field_web.dart';
 
@@ -127,8 +128,7 @@ class _UnlockSyncDialogState extends State<_UnlockSyncDialog> {
               if (_busy)
                 Padding(
                     padding: const EdgeInsets.only(top: 16),
-                    child: LinearProgressIndicator(
-                        semanticsLabel: l10n.syncInProgress)),
+                    child: SyncProgressIndicator(sync: widget.sync)),
             ]),
           ),
         ),

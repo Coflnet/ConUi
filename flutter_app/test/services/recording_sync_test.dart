@@ -33,6 +33,7 @@ class _Backend {
   int largestAudioUpload = 0;
   int audioUploads = 0;
   Future<void> Function()? onAudioDownload;
+  Future<void> Function()? onAudioUpload;
 
   late final api = MockClient((request) async {
     if (request.url.path == '/api/sync/all') {
@@ -79,6 +80,7 @@ class _Backend {
     if (request.method == 'PUT') {
       if (audio) {
         audioUploads++;
+        await onAudioUpload?.call();
         largestAudioUpload = largestAudioUpload < request.bodyBytes.length
             ? request.bodyBytes.length
             : largestAudioUpload;
@@ -191,6 +193,41 @@ void main() {
         await File((await receiver.filePathIfAvailable(file.id))!)
             .readAsBytes(),
         orderedEquals(original));
+  });
+
+  test('first recording reports chunk ETA and retry counts committed skips',
+      () async {
+    final file = await _record(sender, pcmSize: 1024 * 1024 + 128);
+    await senderDb.saveEvent(
+        Event(title: 'Progress', dateTime: DateTime(1952), files: [file]));
+    backend.onAudioUpload = () async {
+      expect(senderSync.completedItems, 0);
+      expect(senderSync.totalRecordingChunks, 2);
+      expect(senderSync.completedRecordingChunks, backend.audioUploads - 1);
+      if (backend.audioUploads == 1) {
+        expect(senderSync.estimatedRemaining, isNull);
+      } else {
+        expect(senderSync.estimatedRemaining, greaterThan(Duration.zero));
+        backend.failure = 'upload';
+      }
+    };
+    await senderSync.syncOnClose();
+    expect(senderSync.lastError, contains('503'));
+    expect(senderSync.totalRecordingChunks, 0);
+    expect(senderSync.completedRecordingChunks, 0);
+    backend.failure = null;
+    backend.onAudioUpload = () async {
+      // The first chunk was committed before failure, so retry skips it.
+      expect(senderSync.completedRecordingChunks, 1);
+      expect(senderSync.totalRecordingChunks, 2);
+      expect(senderSync.estimatedRemaining, greaterThan(Duration.zero));
+    };
+    await senderSync.syncOnClose();
+    expect(senderSync.lastError, isNull);
+    expect(backend.audioUploads, 3);
+    expect(senderSync.totalRecordingChunks, 0);
+    expect(senderSync.completedRecordingChunks, 0);
+    expect(senderSync.estimatedRemaining, isNull);
   });
 
   for (final failure in [

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -160,6 +161,83 @@ void main() {
     expect(await tester.runAsync(db.getPendingChanges), isEmpty);
     expect((await tester.runAsync(() => db.getPerson('remote')))!.name,
         'Remote person');
+  });
+
+  testWidgets('download notifications preserve password field before failure',
+      (tester) async {
+    final db = createTestDatabaseService();
+    final cipher = EncryptionService();
+    await tester.runAsync(() async {
+      await db.initialize();
+      await cipher.initializeWithPassword('vault-password', 'u1');
+    });
+    final encrypted = (await tester.runAsync(() =>
+        cipher.encryptJson(Person(id: 'first', name: 'First').toJson())))!;
+    final reached =
+        (await tester.runAsync(() async => Completer<void>()))!;
+    final release =
+        (await tester.runAsync(() async => Completer<void>()))!;
+    final auth = AuthService(httpClient: MockClient((request) async {
+      if (request.url.path == '/api/sync/updates') {
+        return http.Response(
+            jsonEncode({
+              'entries': [
+                for (final id in ['first', 'second'])
+                  {
+                    'blobType': 'person',
+                    'blobId': id,
+                    's3Key': id,
+                    'version': 1
+                  }
+              ],
+              'latestVersion': 1,
+            }),
+            200);
+      }
+      return http.Response(
+          jsonEncode({
+            'downloadUrl':
+                'https://storage.test/${request.url.path.split('/').last}'
+          }),
+          200);
+    }));
+    await tester.runAsync(auth.initialize);
+    final sync = SyncService(db, auth, httpClient: MockClient((request) async {
+      if (request.url.path == '/first') return http.Response(encrypted, 200);
+      reached.complete();
+      await release.future;
+      return http.Response('', 503);
+    }));
+    await tester.pumpWidget(app(sync, auth));
+    await tester.tap(find.text('Sync now'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), 'vault-password');
+    final field = tester.state<EditableTextState>(find.byType(EditableText));
+    Future<void>? pending;
+    await tester.runAsync(() async {
+      final action = tester
+          .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'Unlock and sync'))
+          .onPressed as dynamic;
+      pending = action() as Future<void>;
+      await reached.future.timeout(const Duration(seconds: 20), onTimeout: () {
+        throw StateError('Download gate not reached: ${sync.lastError}');
+      });
+    });
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Downloading 1 of 2 items (50%)'), findsOneWidget);
+    expect(tester.state<EditableTextState>(find.byType(EditableText)),
+        same(field));
+    expect(field.widget.controller.text, 'vault-password');
+    await tester.runAsync(() async {
+      release.complete();
+      await pending;
+    });
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Could not unlock and sync.'), findsOneWidget);
+    expect(field.widget.controller.text, 'vault-password');
+    expect(sync.isUnlocked, isFalse);
   });
 
   for (final locale in ['en', 'de']) {
