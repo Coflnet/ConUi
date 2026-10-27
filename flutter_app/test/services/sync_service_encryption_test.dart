@@ -146,7 +146,7 @@ void main() {
     final decryptor = EncryptionService();
     await decryptor.initializeWithPassword(
         'correct horse battery staple', auth.encryptionSalt ?? auth.userId!);
-    expect(decryptor.decryptString(uploadedBody), plainJson);
+    expect(await decryptor.decryptString(uploadedBody), plainJson);
   });
 
   for (final change in ['account', 'salt']) {
@@ -356,7 +356,7 @@ void main() {
         return http.Response(encrypted, 200);
       }));
       await sync.initializeEncryption('first password');
-      encrypted = EncryptionService.instance!.encryptJson(remote.toJson());
+      encrypted = await EncryptionService.instance!.encryptJson(remote.toJson());
       await sync.forceFullSync();
       expect(apiCalls, switchAt == 'updates' ? 1 : 2);
       expect(blobCalls, switchAt == 'updates' ? 0 : 1);

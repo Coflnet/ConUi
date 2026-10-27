@@ -81,7 +81,8 @@ void main() {
     final cipher = EncryptionService();
     await tester.runAsync(
         () => cipher.initializeWithPassword('right-password', 'u1'));
-    final encrypted = cipher.encryptJson(remote.toJson());
+    final encrypted =
+        (await tester.runAsync(() => cipher.encryptJson(remote.toJson())))!;
     await tester.runAsync(() async {
       await db.initialize();
       await db.savePerson(Person(id: 'local', name: 'Local person'));

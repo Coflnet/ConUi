@@ -314,7 +314,7 @@ class SyncService extends ChangeNotifier {
       // _requireEncryptionOrSkip() guarantees this is always initialized
       // before any of these upload helpers run - see its doc comment for
       // why data must never fall back to being uploaded as plain jsonData.
-      final encryptedData = _encryption.encryptString(jsonData);
+      final encryptedData = await _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
       // Get upload URL
@@ -368,7 +368,7 @@ class SyncService extends ChangeNotifier {
       // _requireEncryptionOrSkip() guarantees this is always initialized
       // before any of these upload helpers run - see its doc comment for
       // why data must never fall back to being uploaded as plain jsonData.
-      final encryptedData = _encryption.encryptString(jsonData);
+      final encryptedData = await _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
       final uploadResponse = await _syncPost('/api/sync/upload', {
@@ -419,7 +419,7 @@ class SyncService extends ChangeNotifier {
       // _requireEncryptionOrSkip() guarantees this is always initialized
       // before any of these upload helpers run - see its doc comment for
       // why data must never fall back to being uploaded as plain jsonData.
-      final encryptedData = _encryption.encryptString(jsonData);
+      final encryptedData = await _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
       final uploadResponse = await _syncPost('/api/sync/upload', {
@@ -470,7 +470,7 @@ class SyncService extends ChangeNotifier {
       // _requireEncryptionOrSkip() guarantees this is always initialized
       // before any of these upload helpers run - see its doc comment for
       // why data must never fall back to being uploaded as plain jsonData.
-      final encryptedData = _encryption.encryptString(jsonData);
+      final encryptedData = await _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
       final uploadResponse = await _syncPost('/api/sync/upload', {
@@ -540,7 +540,7 @@ class SyncService extends ChangeNotifier {
       // _requireEncryptionOrSkip() guarantees this is always initialized
       // before any of these upload helpers run - see its doc comment for
       // why data must never fall back to being uploaded as plain jsonData.
-      final encryptedData = _encryption.encryptString(jsonData);
+      final encryptedData = await _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
       final uploadResponse = await _syncPost('/api/sync/upload', {
@@ -589,7 +589,7 @@ class SyncService extends ChangeNotifier {
       // _requireEncryptionOrSkip() guarantees this is always initialized
       // before any of these upload helpers run - see its doc comment for
       // why data must never fall back to being uploaded as plain jsonData.
-      final encryptedData = _encryption.encryptString(jsonData);
+      final encryptedData = await _encryption.encryptString(jsonData);
       final checksum = _encryption.calculateChecksum(jsonData);
 
       final uploadResponse = await _syncPost('/api/sync/upload', {
@@ -700,7 +700,7 @@ class SyncService extends ChangeNotifier {
           committed['size'] == chunk.length + 35) {
         continue;
       }
-      final encrypted = _encryption.encryptBytes(chunk);
+      final encrypted = await _encryption.encryptBytes(chunk);
       final upload = await _syncPost('/api/sync/upload', {
         'blobType': _recordingBlobType,
         'blobId': blobId,
@@ -764,7 +764,8 @@ class SyncService extends ChangeNotifier {
                 'con:v1:') {
           throw const FormatException('Invalid authenticated recording chunk');
         }
-        final plain = _encryption.decryptBytes(payload);
+        final plain = await _encryption.decryptBytes(payload);
+        _checkSyncSession();
         if (plain.length != expectedSize) {
           throw const FormatException('Invalid recording chunk length');
         }
@@ -866,7 +867,8 @@ class SyncService extends ChangeNotifier {
 
     final encryptedData = blobResponse.body;
     // Same guarantee as above: encryption is always initialized here.
-    final jsonData = _encryption.decryptString(encryptedData);
+    final jsonData = await _encryption.decryptString(encryptedData);
+    _checkSyncSession();
 
     final parsedData = jsonDecode(jsonData);
 

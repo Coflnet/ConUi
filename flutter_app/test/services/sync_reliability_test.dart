@@ -115,7 +115,7 @@ void main() {
           httpClient: MockClient((_) async => http.Response(
                 fail && failure == 'decrypt'
                     ? 'invalid ciphertext'
-                    : encryptor.encryptString(jsonEncode(person.toJson())),
+                    : await encryptor.encryptString(jsonEncode(person.toJson())),
                 fail && failure == 'blob' ? 503 : 200,
               )));
       await sync.initializeEncryption('password');
@@ -169,7 +169,7 @@ void main() {
     await auth.initialize();
     final sync = SyncService(db, auth,
         httpClient: MockClient((_) async => http.Response(
-            encryptor.encryptString(
+            await encryptor.encryptString(
                 jsonEncode(SyncIndex(lastSyncTimestamp: 999).toJson())),
             200)));
     await sync.initializeEncryption('password');

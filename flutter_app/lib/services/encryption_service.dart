@@ -3,10 +3,11 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
-import 'package:pointycastle/export.dart' as pc;
 
 import 'encryption_kdf_native.dart'
     if (dart.library.js_interop) 'encryption_kdf_web.dart' as kdf;
+import 'encryption_cipher_native.dart'
+    if (dart.library.js_interop) 'encryption_cipher_web.dart' as cipher;
 
 class EncryptionService {
   static EncryptionService? instance;
@@ -37,14 +38,14 @@ class EncryptionService {
 
   bool get isInitialized => _initialized;
 
-  String encryptString(String plainText) =>
-      _prefix + base64.encode(_encrypt(utf8.encode(plainText)));
+  Future<String> encryptString(String plainText) async =>
+      _prefix + base64.encode(await _encrypt(utf8.encode(plainText)));
 
-  String decryptString(String encryptedText) {
+  Future<String> decryptString(String encryptedText) async {
     _requireInitialized();
     if (encryptedText.startsWith(_prefix)) {
-      return utf8.decode(
-          _decrypt(base64.decode(encryptedText.substring(_prefix.length))));
+      return utf8.decode(await _decrypt(
+          base64.decode(encryptedText.substring(_prefix.length))));
     }
     if (encryptedText.startsWith('con:')) {
       throw const FormatException('Unsupported encryption version');
@@ -53,9 +54,14 @@ class EncryptionService {
         iv: _legacyIv);
   }
 
-  List<int> encryptBytes(List<int> data) => [..._header, ..._encrypt(data)];
+  Future<List<int>> encryptBytes(List<int> data) async {
+    final payload = await _encrypt(data);
+    return Uint8List(_header.length + payload.length)
+      ..setAll(0, _header)
+      ..setAll(_header.length, payload);
+  }
 
-  Uint8List decryptBytes(List<int> encryptedData) {
+  Future<Uint8List> decryptBytes(List<int> encryptedData) async {
     _requireInitialized();
     final bytes = Uint8List.fromList(encryptedData);
     if (bytes.length >= 4 &&
@@ -72,41 +78,37 @@ class EncryptionService {
     return base64.decode(plainText);
   }
 
-  Uint8List _encrypt(List<int> data) {
+  Future<Uint8List> _encrypt(List<int> data) async {
     _requireInitialized();
     final random = Random.secure();
     final nonce = Uint8List.fromList(
         List.generate(_nonceLength, (_) => random.nextInt(256)));
-    final cipher = pc.GCMBlockCipher(pc.AESEngine())
-      ..init(
-          true, pc.AEADParameters(pc.KeyParameter(_key), 128, nonce, _header));
-    return Uint8List.fromList(
-        [...nonce, ...cipher.process(Uint8List.fromList(data))]);
+    final encrypted = await cipher.process(
+        true, _key, nonce, _header, Uint8List.fromList(data));
+    return Uint8List(nonce.length + encrypted.length)
+      ..setAll(0, nonce)
+      ..setAll(nonce.length, encrypted);
   }
 
-  Uint8List _decrypt(Uint8List payload) {
+  Future<Uint8List> _decrypt(Uint8List payload) {
     if (payload.length < _nonceLength + _tagLength) {
       throw const FormatException('Truncated encrypted data');
     }
-    final cipher = pc.GCMBlockCipher(pc.AESEngine())
-      ..init(
-          false,
-          pc.AEADParameters(pc.KeyParameter(_key), 128,
-              payload.sublist(0, _nonceLength), _header));
-    // GCM verifies the tag before returning plaintext. Authentication failure
-    // must never fall back to the unauthenticated legacy decoder.
-    return cipher.process(payload.sublist(_nonceLength));
+    // Both implementations verify the tag before returning plaintext. Never
+    // fall back to the unauthenticated legacy decoder after a v1 failure.
+    return cipher.process(false, _key, payload.sublist(0, _nonceLength),
+        _header, payload.sublist(_nonceLength));
   }
 
   void _requireInitialized() {
     if (!_initialized) throw StateError('Encryption not initialized');
   }
 
-  String encryptJson(Map<String, dynamic> data) =>
+  Future<String> encryptJson(Map<String, dynamic> data) =>
       encryptString(jsonEncode(data));
 
-  Map<String, dynamic> decryptJson(String encryptedText) =>
-      jsonDecode(decryptString(encryptedText));
+  Future<Map<String, dynamic>> decryptJson(String encryptedText) async =>
+      jsonDecode(await decryptString(encryptedText));
 
   String calculateChecksum(String data) =>
       sha256.convert(utf8.encode(data)).toString();

@@ -332,15 +332,15 @@ void main() {
     final key = backend.blobs.keys
         .firstWhere((key) => key.startsWith('recording_chunk_v1/'));
     final validEncrypted = backend.blobs[key]!;
-    final plain = encryptor.decryptBytes(validEncrypted);
+    final plain = await encryptor.decryptBytes(validEncrypted);
     plain[0] = 0;
-    backend.blobs[key] = encryptor.encryptBytes(plain);
+    backend.blobs[key] = await encryptor.encryptBytes(plain);
     await receiverSync.syncOnOpen();
     expect(receiverSync.lastError, contains('WAV header'));
     expect(await receiver.listIds(), isEmpty);
     plain[0] = 'R'.codeUnitAt(0);
     plain[44] ^= 1;
-    backend.blobs[key] = encryptor.encryptBytes(plain);
+    backend.blobs[key] = await encryptor.encryptBytes(plain);
     await receiverSync.syncOnOpen();
     expect(receiverSync.lastError, contains('checksum mismatch'));
     expect(await receiver.listIds(), isEmpty);
