@@ -42,6 +42,8 @@ void main() {
         client));
     expect(token, 'access');
     expect(calls.map((x) => x.method), ['authorize', 'token']);
+    expect((calls.first.arguments as Map)['additionalParameters'],
+        {'ui_locales': 'de'});
     final request = calls.last.arguments as Map;
     expect(request['authorizationCode'], 'one-use');
     expect(request['codeVerifier'], 'pkce');
@@ -69,4 +71,23 @@ void main() {
         throwsFormatException);
     expect(calls.map((x) => x.method), ['authorize']);
   });
+
+  for (final provider in ['', 'google', 'another-provider']) {
+    test('native provider "$provider" keeps SDK PKCE and nonce', () async {
+      final token = await authCompletion(() => beginOidcLogin(
+          OidcConfig('https://auth.coflnet.com/auth/realms/con', 'con-app',
+              createAccount: true, identityProvider: provider),
+          'en',
+          MockClient((_) async => http.Response('{}', 200))));
+      expect(token, 'access');
+      final request = calls.first.arguments as Map;
+      expect(request['additionalParameters'],
+          {'ui_locales': 'en', 'kc_idp_hint': provider});
+      expect(request['promptValues'], provider.isEmpty ? ['create'] : null);
+      final exchange = calls.last.arguments as Map;
+      expect(exchange['codeVerifier'], 'pkce');
+      expect(exchange['nonce'], 'nonce');
+      expect(exchange['redirectUrl'], 'com.coflnet.con:/oauthredirect');
+    });
+  }
 }

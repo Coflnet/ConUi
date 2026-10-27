@@ -7,7 +7,9 @@ class AccountPromptAuth extends AuthService {
 
   @override
   Future<bool> signIn(
-      {String locale = 'de', bool createAccount = false}) async {
+      {String locale = 'de',
+      bool createAccount = false,
+      String? identityProvider}) async {
     await beforeAttempt?.call();
     choices.add(createAccount);
     signInFailed = true;

@@ -261,7 +261,7 @@ void main() {
     await tester.tap(find.byKey(const Key('training-submit')));
     await tester.pumpAndSettle();
     expect(find.text('Konto erforderlich'), findsOneWidget);
-    expect(find.text('Konto erstellen'), findsOneWidget);
+    expect(find.text('Konto mit E-Mail erstellen'), findsOneWidget);
     expect(httpClient.calls, 1);
     await tester.tap(find.widgetWithText(TextButton, 'Abbrechen').last);
     await tester.pumpAndSettle();

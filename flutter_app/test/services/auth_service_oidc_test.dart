@@ -49,6 +49,7 @@ void main() {
         httpClient: backend(),
         beginSignIn: (config, locale, _) async {
           expect(config.clientId, 'con-app');
+          expect(config.identityProvider, isNull);
           expect(locale, 'de');
           return 'access';
         });
@@ -78,6 +79,26 @@ void main() {
     expect((await db.getEvent(story.id))!.title, 'Guest story');
     expect(await db.getPendingChanges(), hasLength(1));
   });
+  for (final provider in ['', 'google', 'another-provider']) {
+    test('sign-in forwards trusted provider "$provider" and creation intent',
+        () async {
+      final auth = AuthService(
+          httpClient: backend(),
+          beginSignIn: (config, locale, _) async {
+            expect(config.identityProvider, provider);
+            expect(config.createAccount, isTrue);
+            expect(config.clientId, 'con-app');
+            expect(locale, 'en');
+            return 'access';
+          });
+      expect(
+          await auth.signIn(
+              locale: 'en', createAccount: true, identityProvider: provider),
+          isTrue);
+      expect(auth.isAuthenticated, isTrue);
+    });
+  }
+
   test('web callback completes during initialize even in remembered local mode',
       () async {
     SharedPreferences.setMockInitialValues({'continued_without_account': true});

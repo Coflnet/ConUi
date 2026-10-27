@@ -522,7 +522,7 @@ void main() {
     await tester.runAsync(() async => await (start as Function)());
     await tester.pump();
     expect(find.byType(AlertDialog), findsOneWidget);
-    await _pressAsync(tester, find.widgetWithText(FilledButton, 'Sign in with your account'));
+    await _pressAsync(tester, find.widgetWithText(FilledButton, 'Continue with Google'));
     await tester.pump();
     expect(auth.choices, [false]);
     await tester.tap(find.text('Cancel'));
@@ -578,13 +578,13 @@ void main() {
       expect((await db.getPlaces()).single.name, 'My place');
     };
     await tester.runAsync(() async {
-      await (tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Create account')).onPressed! as Function)();
+      await (tester.widget<TextButton>(find.widgetWithText(TextButton, 'Create an account with email')).onPressed! as Function)();
     });
     await tester.pump();
     expect(auth.choices, [true]);
     // A failed account attempt keeps the sheet and draft editable; retry saves
     // the same event and place rather than creating duplicates.
-    await _pressAsync(tester, find.widgetWithText(FilledButton, l10n.loginAccountButton));
+    await _pressAsync(tester, find.widgetWithText(FilledButton, l10n.loginGoogleButton));
     await tester.pump();
     expect(auth.choices, [true, false]);
     await tester.runAsync(() async {

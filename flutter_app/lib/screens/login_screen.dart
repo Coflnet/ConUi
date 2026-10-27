@@ -84,11 +84,15 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _signIn() async {
+  Future<void> _signIn(String identityProvider,
+      {bool createAccount = false}) async {
+    if (_isLoading) return;
     setState(() => _isLoading = true);
-    final success = await context
-        .read<AuthService>()
-        .signIn(locale: Localizations.localeOf(context).languageCode);
+    final success = await context.read<AuthService>().signIn(
+          locale: Localizations.localeOf(context).languageCode,
+          identityProvider: identityProvider,
+          createAccount: createAccount,
+        );
     if (!mounted) return;
     setState(() => _isLoading = false);
     if (success && Navigator.canPop(context)) Navigator.pop(context);
@@ -151,14 +155,32 @@ class _LoginScreenState extends State<LoginScreen> {
                     key: const Key('account-sign-in'),
                     onPressed: _isLoading || auth.signInRetrySeconds > 0
                         ? null
-                        : _signIn,
+                        : () => _signIn('google'),
                     icon: const Icon(Icons.login),
                     label: Text(_isLoading
                         ? l10n.loginButtonBusy
                         : auth.signInRetrySeconds > 0
                             ? l10n.loginAccountRetryCountdown(
                                 auth.signInRetrySeconds)
-                            : l10n.loginAccountButton),
+                            : l10n.loginGoogleButton),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(l10n.loginGoogleHint, textAlign: TextAlign.center),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    key: const Key('email-sign-in'),
+                    onPressed: _isLoading || auth.signInRetrySeconds > 0
+                        ? null
+                        : () => _signIn(''),
+                    icon: const Icon(Icons.email_outlined),
+                    label: Text(l10n.loginEmailButton),
+                  ),
+                  TextButton(
+                    key: const Key('email-create-account'),
+                    onPressed: _isLoading || auth.signInRetrySeconds > 0
+                        ? null
+                        : () => _signIn('', createAccount: true),
+                    child: Text(l10n.loginEmailCreateButton),
                   ),
                   const SizedBox(height: 12),
                   // Development credentials only reach the debug endpoint.
@@ -253,7 +275,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ] else
                     OutlinedButton(
-                      onPressed: _continueWithoutAccount,
+                      onPressed: _isLoading ? null : _continueWithoutAccount,
                       child: Text(l10n.loginContinueWithoutAccount),
                     ),
                   const SizedBox(height: 8),

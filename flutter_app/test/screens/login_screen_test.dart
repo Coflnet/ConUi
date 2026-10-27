@@ -10,6 +10,8 @@
 // runAsync note), so mounting HomeScreen here would deadlock the test.
 // main.dart's routing itself is a one-line condition on
 // continuedWithoutAccount, which this test does verify.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -18,6 +20,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:relationship_manager/models/models.dart';
+import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/screens/login_screen.dart';
 import 'package:relationship_manager/services/auth_service.dart';
 import 'package:relationship_manager/services/database_service.dart';
@@ -183,6 +186,16 @@ void main() {
           ? 'Try again in $seconds ${seconds == 1 ? 'second' : 'seconds'}'
           : 'In $seconds ${seconds == 1 ? 'Sekunde' : 'Sekunden'} erneut versuchen';
       expect(auth.signInUnavailable, isTrue);
+      expect(
+          tester
+              .widget<OutlinedButton>(find.byKey(const Key('email-sign-in')))
+              .onPressed,
+          isNull);
+      expect(
+          tester
+              .widget<TextButton>(find.byKey(const Key('email-create-account')))
+              .onPressed,
+          isNull);
       expect(find.text(countdown(120)), findsOneWidget);
       expect(tester.widget<FilledButton>(button).onPressed, isNull);
       expect(await auth.signIn(), isFalse);
@@ -214,6 +227,77 @@ void main() {
         expect(prefs.getString('user_id'), 'retained-profile');
         expect(prefs.getString('encryption_salt'), 'retained-salt');
       });
+    });
+  }
+  for (final locale in ['en', 'de']) {
+    testWidgets(
+        '$locale Google and email choices pass explicit provider and share busy state',
+        (tester) async {
+      final choices = <(String?, bool, String)>[];
+      var pending = Completer<String?>();
+      final auth = AuthService(
+        httpClient: MockClient((request) async => request.url.path ==
+                '/api/auth/config'
+            ? http.Response(
+                '{"enabled":true,"issuer":"https://identity.example/realm","clientId":"con-app"}',
+                200)
+            : http.Response('{}', 404)),
+        beginSignIn: (config, language, _) {
+          choices
+              .add((config.identityProvider, config.createAccount, language));
+          return pending.future;
+        },
+      );
+      addTearDown(auth.dispose);
+      await tester.pumpWidget(MultiProvider(providers: [
+        ChangeNotifierProvider<AuthService>.value(value: auth),
+        ChangeNotifierProvider.value(
+            value: SyncService(createTestDatabaseService(), auth)),
+      ], child: wrapLocalized(const LoginScreen(), locale: Locale(locale))));
+      await tester.pump(const Duration(milliseconds: 600));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump();
+      }
+      final l10n =
+          AppLocalizations.of(tester.element(find.byType(LoginScreen)));
+      expect(find.text(l10n.loginGoogleHint), findsOneWidget);
+      expect(find.text(l10n.loginGoogleButton), findsOneWidget);
+      expect(find.text(l10n.loginEmailButton), findsOneWidget);
+      expect(find.text(l10n.loginEmailCreateButton), findsOneWidget);
+      for (final key in [
+        'account-sign-in',
+        'email-sign-in',
+        'email-create-account'
+      ]) {
+        final button = find.byKey(Key(key));
+        final callback = tester.widget<ButtonStyleButton>(button).onPressed!;
+        callback();
+        callback();
+        await tester.pump();
+        expect(choices.last, (
+          key == 'account-sign-in' ? 'google' : '',
+          key == 'email-create-account',
+          locale
+        ));
+        for (final other in [
+          'account-sign-in',
+          'email-sign-in',
+          'email-create-account'
+        ]) {
+          expect(
+              tester
+                  .widget<ButtonStyleButton>(find.byKey(Key(other)))
+                  .onPressed,
+              isNull);
+        }
+        pending.complete(null);
+        for (var i = 0; i < 5; i++) {
+          await tester.pump();
+        }
+        pending = Completer<String?>();
+      }
+      expect(choices, hasLength(3),
+          reason: 'duplicate taps must not start another browser flow');
     });
   }
 }

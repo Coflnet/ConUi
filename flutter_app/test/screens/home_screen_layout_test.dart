@@ -187,7 +187,7 @@ void main() {
     await _settle(tester);
     expect(find.byType(AlertDialog), findsOneWidget);
     expect(find.text('Account required'), findsOneWidget);
-    expect(find.text('Create account'), findsOneWidget);
+    expect(find.text('Create an account with email'), findsOneWidget);
     expect(find.text('Sync complete'), findsNothing);
     await tester.tap(find.text('Cancel'));
     await _settle(tester);

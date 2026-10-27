@@ -47,6 +47,7 @@ void main() {
             .replaceAll('=', ''));
     expect(session['verifier'].length, 43);
     expect(authorize.queryParameters['ui_locales'], 'de');
+    expect(authorize.queryParameters.containsKey('kc_idp_hint'), isFalse);
     return 'https://con.coflnet.com/?code=one-use&state=${session['state']}&iss=${Uri.encodeComponent(issuer)}';
   }
 
@@ -61,6 +62,41 @@ void main() {
     url =
         'https://con.coflnet.com/?code=registration&state=${session['state']}';
     expect(await flow.finish(client), 'idp-token');
+  });
+
+  for (final provider in ['', 'google', 'another-provider']) {
+    test('provider "$provider" preserves PKCE and account creation intent',
+        () async {
+      await flow.login(
+          OidcConfig(issuer, 'con-app',
+              createAccount: true, identityProvider: provider),
+          'en');
+      final authorize = Uri.parse(navigated!);
+      final session = jsonDecode(stored!);
+      expect(authorize.queryParameters['kc_idp_hint'], provider);
+      expect(authorize.queryParameters['prompt'],
+          provider.isEmpty ? 'create' : null);
+      expect(authorize.queryParameters['code_challenge_method'], 'S256');
+      expect(authorize.queryParameters['code_challenge'],
+          base64UrlEncode(sha256.convert(utf8.encode(session['verifier'])).bytes)
+              .replaceAll('=', ''));
+      expect(authorize.queryParameters['redirect_uri'],
+          'https://con.coflnet.com/');
+      url =
+          'https://con.coflnet.com/?code=provider-login&state=${session['state']}';
+      expect(await flow.finish(client), 'idp-token');
+      expect(requests, 1);
+    });
+  }
+
+  test('server configuration cannot select an identity provider', () {
+    final config = OidcConfig.fromJson({
+      'enabled': true,
+      'issuer': issuer,
+      'clientId': 'con-app',
+      'identityProvider': 'untrusted-provider',
+    });
+    expect(config.identityProvider, isNull);
   });
 
   test(
