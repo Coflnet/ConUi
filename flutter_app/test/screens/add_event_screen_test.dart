@@ -120,7 +120,7 @@ void main() {
       expect(saved.files.single.id, controller.lastStopResult!.attachedFile.id);
     };
     await tester.runAsync(() async {
-      await (tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Create account')).onPressed! as Function)();
+      await (tester.widget<TextButton>(find.widgetWithText(TextButton, 'Create an account with email')).onPressed! as Function)();
     });
     await tester.pump();
     expect(auth.choices, [true]);

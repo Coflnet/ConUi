@@ -127,7 +127,9 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<bool> signIn(
-      {String locale = 'de', bool createAccount = false}) async {
+      {String locale = 'de',
+      bool createAccount = false,
+      String? identityProvider}) async {
     if (_signInRetrySeconds > 0) return false;
     signInFailed = false;
     signInUnavailable = false;
@@ -150,7 +152,8 @@ class AuthService extends ChangeNotifier {
       return await authCompletion(() async {
         final accessToken = await _beginSignIn(
             OidcConfig(config.issuer, config.clientId,
-                createAccount: createAccount),
+                createAccount: createAccount,
+                identityProvider: identityProvider),
             locale,
             _http);
         if (accessToken == null) return false; // Browser is redirecting.

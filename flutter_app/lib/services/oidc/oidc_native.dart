@@ -13,8 +13,14 @@ Future<String?> beginOidcLogin(
     discoveryUrl: '${config.issuer}/.well-known/openid-configuration',
     allowInsecureConnections: config.allowInsecureConnections,
     scopes: ['openid', 'profile'],
-    additionalParameters: {'ui_locales': locale},
-    promptValues: config.createAccount ? ['create'] : null,
+    additionalParameters: {
+      'ui_locales': locale,
+      if (config.identityProvider != null)
+        'kc_idp_hint': config.identityProvider!,
+    },
+    promptValues: config.createAccount && (config.identityProvider ?? '').isEmpty
+        ? ['create']
+        : null,
   )); // Human authorization has no machine-request deadline.
   if ((authorization.authorizationCode ?? '').isEmpty ||
       (authorization.codeVerifier ?? '').isEmpty ||

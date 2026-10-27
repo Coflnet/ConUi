@@ -32,7 +32,9 @@ class _AccountRequiredDialogState extends State<_AccountRequiredDialog> {
   bool _prepared = false;
   bool _preparationFailed = false;
 
-  Future<void> _signIn(bool createAccount) async {
+  Future<void> _signIn(String identityProvider,
+      {bool createAccount = false}) async {
+    if (_busy) return;
     setState(() {
       _busy = true;
       _preparationFailed = false;
@@ -53,6 +55,7 @@ class _AccountRequiredDialogState extends State<_AccountRequiredDialog> {
     final success = await context.read<AuthService>().signIn(
           locale: Localizations.localeOf(context).languageCode,
           createAccount: createAccount,
+          identityProvider: identityProvider,
         );
     if (!mounted) return;
     if (success) {
@@ -72,7 +75,7 @@ class _AccountRequiredDialogState extends State<_AccountRequiredDialog> {
       title: Text(l10n.accountRequiredTitle),
       content: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(widget.message ?? l10n.accountRequiredBody),
           if (_preparationFailed)
@@ -92,20 +95,28 @@ class _AccountRequiredDialogState extends State<_AccountRequiredDialog> {
                   ? l10n.loginAccountUnavailable
                   : l10n.loginAccountFailed),
             ),
+          const SizedBox(height: 16),
+          FilledButton(
+              onPressed: disabled ? null : () => _signIn('google'),
+              child: Text(auth.signInRetrySeconds > 0
+                  ? l10n.loginAccountRetryCountdown(auth.signInRetrySeconds)
+                  : l10n.loginGoogleButton)),
+          const SizedBox(height: 8),
+          Text(l10n.loginGoogleHint),
+          const SizedBox(height: 12),
+          OutlinedButton(
+              onPressed: disabled ? null : () => _signIn(''),
+              child: Text(l10n.loginEmailButton)),
+          TextButton(
+              onPressed:
+                  disabled ? null : () => _signIn('', createAccount: true),
+              child: Text(l10n.loginEmailCreateButton)),
         ],
       ),
       actions: [
         TextButton(
             onPressed: _busy ? null : () => Navigator.pop(context, false),
             child: Text(l10n.commonCancel)),
-        OutlinedButton(
-            onPressed: disabled ? null : () => _signIn(true),
-            child: Text(l10n.accountCreateButton)),
-        FilledButton(
-            onPressed: disabled ? null : () => _signIn(false),
-            child: Text(auth.signInRetrySeconds > 0
-                ? l10n.loginAccountRetryCountdown(auth.signInRetrySeconds)
-                : l10n.loginAccountButton)),
       ],
     );
   }
