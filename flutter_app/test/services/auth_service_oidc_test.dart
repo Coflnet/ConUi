@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -87,6 +88,68 @@ void main() {
     expect(auth.encryptionSalt, 'server-salt');
     expect(auth.continuedWithoutAccount, isFalse);
   });
+  test('verified account profile is displayed and cleared on logout', () async {
+    final auth = AuthService(
+        httpClient: backend(meBody:
+            '{"id":"u1","encryptionKeySalt":"server-salt","name":" Ada Example ","email":" ada@example.test "}'),
+        beginSignIn: (_, __, ___) async => 'access');
+    expect(await auth.signIn(), isTrue);
+    expect(auth.userName, 'Ada Example');
+    expect(auth.userEmail, 'ada@example.test');
+    await auth.logout();
+    expect(auth.userName, isNull);
+    expect(auth.userEmail, isNull);
+  });
+  test('restored sessions refresh profile without replacing the session', () async {
+    SharedPreferences.setMockInitialValues({
+      'auth_token': _token('u1'), 'user_id': 'u1',
+      'encryption_salt': 'server-salt',
+    });
+    var unavailable = false;
+    final auth = AuthService(httpClient: MockClient((request) async {
+      expect(request.url.path, '/api/auth/me');
+      expect(request.headers['Authorization'], 'Bearer ${_token('u1')}');
+      return http.Response(unavailable ? '{}' :
+          '{"id":"u1","encryptionKeySalt":"server-salt","name":"Ada Example","email":"ada@example.test"}',
+          unavailable ? 503 : 200);
+    }));
+    await auth.initialize();
+    await auth.refreshUserInfo();
+    expect(auth.userName, 'Ada Example');
+    expect(auth.userEmail, 'ada@example.test');
+    unavailable = true;
+    await auth.refreshUserInfo();
+    expect(auth.userEmail, 'ada@example.test');
+    expect(auth.token, _token('u1'));
+    expect(auth.encryptionSalt, 'server-salt');
+  });
+  for (final change in ['logout', 'account']) {
+    test('late profile response cannot cross $change', () async {
+      SharedPreferences.setMockInitialValues({
+        'auth_token': _token('u1'), 'user_id': 'u1',
+        'encryption_salt': 'server-salt',
+      });
+      final response = Completer<http.Response>();
+      final auth = AuthService(httpClient: MockClient((_) => response.future));
+      await auth.initialize();
+      final refresh = auth.refreshUserInfo();
+      if (change == 'logout') {
+        await auth.logout();
+      } else {
+        SharedPreferences.setMockInitialValues({
+          'auth_token': _token('u2'), 'user_id': 'u2',
+          'encryption_salt': 'other-salt',
+        });
+        await auth.initialize();
+      }
+      response.complete(http.Response(
+          '{"id":"u1","encryptionKeySalt":"server-salt","name":"Old user","email":"old@example.test"}', 200));
+      await refresh;
+      expect(auth.userName, isNull);
+      expect(auth.userEmail, isNull);
+      expect(auth.userId, change == 'logout' ? null : 'u2');
+    });
+  }
   test(
       'failed account verification does not adopt token or replace previous identity salt',
       () async {
