@@ -713,6 +713,7 @@
   "syncUnlockFailed": "Could not unlock and sync. Check your encryption password and connection, then try again. Your local changes are still saved.",
   "syncStorageUnavailable": "Sync storage is temporarily unavailable. Try again later. Your local changes are still saved.",
   "syncUnlockAction": "Unlock and sync",
+  "syncInProgress": "Synchronizing…",
   "settingsFeedbackSection": "Feedback",
   "settingsHaptics": "Haptic feedback",
   "settingsHapticsDescription": "Subtle taps on supported devices. Quiet while recording.",

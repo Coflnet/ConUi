@@ -62,7 +62,10 @@ class _EncryptedImageViewerState extends State<EncryptedImageViewer> {
       }
 
       final encryptedBytes = await encryptedFile.readAsBytes();
-      final decryptedBytes = encryptionService.decryptBytes(encryptedBytes);
+      final decryptedBytes = await encryptionService.decryptBytes(encryptedBytes);
+      if (EncryptionService.instance != encryptionService) {
+        throw StateError('Encryption changed while opening file');
+      }
 
       final decryptedFile = File(decryptedPath);
       await decryptedFile.writeAsBytes(decryptedBytes);
@@ -175,7 +178,10 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
       }
 
       final encryptedBytes = await encryptedFile.readAsBytes();
-      final decryptedBytes = encryptionService.decryptBytes(encryptedBytes);
+      final decryptedBytes = await encryptionService.decryptBytes(encryptedBytes);
+      if (EncryptionService.instance != encryptionService) {
+        throw StateError('Encryption changed while opening file');
+      }
 
       final decryptedFile = File(decryptedPath);
       await decryptedFile.writeAsBytes(decryptedBytes);
@@ -305,7 +311,10 @@ class _EncryptedAudioPlayerState extends State<EncryptedAudioPlayer> {
       }
 
       final encryptedBytes = await encryptedFile.readAsBytes();
-      final decryptedBytes = encryptionService.decryptBytes(encryptedBytes);
+      final decryptedBytes = await encryptionService.decryptBytes(encryptedBytes);
+      if (EncryptionService.instance != encryptionService) {
+        throw StateError('Encryption changed while opening file');
+      }
 
       final decryptedFile = File(decryptedPath);
       await decryptedFile.writeAsBytes(decryptedBytes);

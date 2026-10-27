@@ -574,6 +574,7 @@
   "syncUnlockFailed": "Entsperren und Synchronisieren fehlgeschlagen. Prüfe dein Verschlüsselungspasswort und die Verbindung und versuche es erneut. Deine lokalen Änderungen sind weiterhin gespeichert.",
   "syncStorageUnavailable": "Der Speicher für die Synchronisierung ist vorübergehend nicht verfügbar. Versuche es später erneut. Deine lokalen Änderungen sind weiterhin gespeichert.",
   "syncUnlockAction": "Entsperren und synchronisieren",
+  "syncInProgress": "Synchronisierung läuft…",
   "settingsFeedbackSection": "Rückmeldung",
   "settingsHaptics": "Haptische Rückmeldung",
   "settingsHapticsDescription": "Dezente Vibration auf unterstützten Geräten. Während der Aufnahme ausgeschaltet.",

@@ -44,7 +44,8 @@ public class S3Service : IS3Service
 
     public bool IsConfigured { get; }
 
-    public S3Service(IConfiguration config, ILogger<S3Service> logger)
+    public S3Service(IConfiguration config, ILogger<S3Service> logger,
+        Amazon.Runtime.HttpClientFactory? httpClientFactory = null)
     {
         _logger = logger;
         var endpoint = config["S3:ENDPOINT"];
@@ -66,10 +67,15 @@ public class S3Service : IS3Service
         var usePathStyle = config.GetValue("S3:USE_PATH_STYLE", true);
         _client = new Lazy<AmazonS3Client>(() =>
         {
+            // SDK v3 otherwise falls back to SigV2 for us-east-1 presigned URLs.
+            Amazon.AWSConfigsS3.UseSignatureVersion4 = true;
             var s3Config = new AmazonS3Config
             {
                 ServiceURL = endpoint,
-                ForcePathStyle = usePathStyle
+                ForcePathStyle = usePathStyle,
+                AuthenticationRegion = new Uri(endpoint!).Host.EndsWith(".r2.cloudflarestorage.com", StringComparison.OrdinalIgnoreCase)
+                    ? "auto" : null,
+                HttpClientFactory = httpClientFactory
             };
             return new AmazonS3Client(accessKey, secretKey, s3Config);
         });

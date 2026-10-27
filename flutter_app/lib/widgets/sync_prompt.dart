@@ -125,9 +125,10 @@ class _UnlockSyncDialogState extends State<_UnlockSyncDialog> {
                           TextStyle(color: Theme.of(context).colorScheme.error)),
                 ),
               if (_busy)
-                const Padding(
-                    padding: EdgeInsets.only(top: 16),
-                    child: LinearProgressIndicator()),
+                Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: LinearProgressIndicator(
+                        semanticsLabel: l10n.syncInProgress)),
             ]),
           ),
         ),
@@ -137,7 +138,7 @@ class _UnlockSyncDialogState extends State<_UnlockSyncDialog> {
               child: Text(l10n.commonCancel)),
           FilledButton(
               onPressed: _busy ? null : _unlock,
-              child: Text(l10n.syncUnlockAction)),
+              child: Text(_busy ? l10n.syncInProgress : l10n.syncUnlockAction)),
         ],
       ),
     );

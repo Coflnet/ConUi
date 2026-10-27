@@ -176,7 +176,7 @@ void main() {
       final remotePerson = Person(name: 'Grace Hopper');
       final encryptor = EncryptionService();
       await encryptor.initializeWithPassword('correct horse battery staple', 'u1');
-      final encryptedBlob = encryptor.encryptString(jsonEncode(remotePerson.toJson()));
+      final encryptedBlob = await encryptor.encryptString(jsonEncode(remotePerson.toJson()));
 
       final auth = AuthService(
         httpClient: MockClient((request) async {
