@@ -193,7 +193,8 @@ public class S3Service : IS3Service
             BucketName = _bucket,
             Key = key,
             InputStream = data,
-            ContentType = contentType
+            ContentType = contentType,
+            UseChunkEncoding = false // R2 does not support streaming SigV4 payloads.
         };
         await Client.PutObjectAsync(request);
     }
