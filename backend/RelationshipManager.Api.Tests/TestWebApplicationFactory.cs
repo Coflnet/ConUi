@@ -39,6 +39,8 @@ public class TestWebApplicationFactory : IAsyncDisposable
     public FakeTranscriptionService TranscriptionService { get; } = new();
     public InMemoryAnonymousQuotaStore AnonymousQuotaStore { get; set; } = new();
     public TimeProvider Clock { get; set; } = TimeProvider.System;
+    public IS3Service? Storage { get; set; }
+    public IConfiguration Configuration => _app!.Configuration;
 
     public string Environment { get; set; } = "Development";
     public HttpMessageHandler? OidcHttpHandler { get; set; }
@@ -81,6 +83,7 @@ public class TestWebApplicationFactory : IAsyncDisposable
             builder.Services.AddSingleton<ITranscriptionService>(TranscriptionService);
             builder.Services.AddSingleton<IAnonymousQuotaStore>(AnonymousQuotaStore);
             builder.Services.AddSingleton(Clock);
+            if (Storage != null) builder.Services.AddSingleton(Storage);
         }, environmentName: Environment, contentRootPath: ContentRootPath);
 
         await _app.StartAsync();

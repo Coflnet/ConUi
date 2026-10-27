@@ -88,6 +88,32 @@ class SyncService extends ChangeNotifier {
     _safeNotifyListeners();
   }
 
+  static const _metadataTypes = {'person', 'place', 'object', 'connection'};
+  int _batchEntries = 0;
+  int _batchBytes = 0;
+  bool _canUploadPacks = false;
+  String? _batchUserId;
+
+  void _readBatching(dynamic batching) {
+    _batchUserId = _auth.userId;
+    _batchEntries = _batchBytes = 0;
+    _canUploadPacks = false;
+    if (batching is! Map || batching['version'] != 1) return;
+    final entries = batching['maxEntries'];
+    final bytes = batching['maxPayloadBytes'];
+    if (entries is! int || bytes is! int || entries <= 0 || bytes <= 0) return;
+    _batchEntries = entries.clamp(1, 128);
+    _batchBytes = bytes.clamp(1, 4194304);
+    _canUploadPacks = batching['canUploadPacks'] == true;
+  }
+
+  bool get _hasBatching => _batchUserId == _auth.userId && _batchEntries > 0;
+
+  bool _unsupportedBatch(http.Response response) {
+    _checkSyncSession();
+    return const [404, 405, 501].contains(response.statusCode);
+  }
+
   int _encryptionRevision = 0;
   int _syncRevision = 0;
   String? _lastError;
@@ -146,8 +172,10 @@ class SyncService extends ChangeNotifier {
     EncryptionService.instance = null;
     final encryption = EncryptionService();
     await encryption.initializeWithPassword(password, salt);
-    if (!_auth.isAuthenticated || _auth.userId != userId ||
-        _currentEncryptionSalt != salt || _encryptionRevision != revision) {
+    if (!_auth.isAuthenticated ||
+        _auth.userId != userId ||
+        _currentEncryptionSalt != salt ||
+        _encryptionRevision != revision) {
       throw StateError('Account or encryption changed during unlock');
     }
     _encryption = encryption;
@@ -246,15 +274,28 @@ class SyncService extends ChangeNotifier {
 
       _checkResponse(response, 'updates');
       final data = jsonDecode(response.body);
+      _readBatching(data['batching']);
       final entries = (data['entries'] as List)
           .map((e) => _SyncEntry.fromJson(e))
           .where((entry) => entry.blobType != _recordingBlobType)
           .toList();
       _setPhase(SyncPhase.downloading, entries.length);
 
+      final prefetched = <_SyncEntry, ({String? data, String? downloadUrl})>{};
+
       // Download and apply each updated blob
-      for (final entry in entries) {
-        await _downloadAndApplyBlob(entry);
+      for (var i = 0; i < entries.length; i++) {
+        final entry = entries[i];
+        if (_hasBatching &&
+            _metadataTypes.contains(entry.blobType) &&
+            !entry.isDeleted &&
+            !prefetched.containsKey(entry)) {
+          prefetched.addAll(await _prefetchMetadata(entries.sublist(
+              i, (i + _batchEntries).clamp(0, entries.length))));
+        }
+        final payload = prefetched.remove(entry);
+        await _downloadAndApplyBlob(entry,
+            encryptedData: payload?.data, downloadUrl: payload?.downloadUrl);
         _checkSyncSession();
         _completeItem();
       }
@@ -293,17 +334,18 @@ class SyncService extends ChangeNotifier {
       final pendingChanges = await _db.getPendingChanges();
       if (pendingChanges.isEmpty) return;
 
-      // Group changes by entity type for efficient blob creation
-      final personChanges =
-          pendingChanges.where((c) => c.entityType == 'person').toList();
-      final placeChanges =
-          pendingChanges.where((c) => c.entityType == 'place').toList();
-      final objectChanges =
-          pendingChanges.where((c) => c.entityType == 'object').toList();
+      // Capture the newest snapshot and every row ID before network awaits.
+      // Downloaded remote data may already have replaced the current DB row.
+      final metadata = <(String, String), PendingChange>{};
+      final metadataIds = <(String, String), List<String>>{};
+      for (final change in pendingChanges) {
+        if (!_metadataTypes.contains(change.entityType)) continue;
+        final key = (change.entityType, change.entityId);
+        metadata[key] = change;
+        (metadataIds[key] ??= []).add(change.id);
+      }
       final eventChanges =
           pendingChanges.where((c) => c.entityType == 'event').toList();
-      final connectionChanges =
-          pendingChanges.where((c) => c.entityType == 'connection').toList();
 
       // Group events by month and upload month blobs
       final eventMonths = eventChanges.map((c) {
@@ -311,48 +353,10 @@ class SyncService extends ChangeNotifier {
         return event.monthKey;
       }).toSet();
 
-      _setPhase(
-          SyncPhase.uploading,
-          personChanges.length +
-              placeChanges.length +
-              objectChanges.length +
-              connectionChanges.length +
-              eventMonths.length +
-              1);
+      _setPhase(SyncPhase.uploading, metadata.length + eventMonths.length + 1);
 
       final syncedIds = <String>[];
-
-      // Upload person blobs
-      for (final change in personChanges) {
-        if (await _uploadPersonBlob(change.entityId)) {
-          syncedIds.add(change.id);
-          _completeItem();
-        }
-      }
-
-      // Upload place blobs
-      for (final change in placeChanges) {
-        if (await _uploadPlaceBlob(change.entityId)) {
-          syncedIds.add(change.id);
-          _completeItem();
-        }
-      }
-
-      // Upload object blobs
-      for (final change in objectChanges) {
-        if (await _uploadObjectBlob(change.entityId)) {
-          syncedIds.add(change.id);
-          _completeItem();
-        }
-      }
-
-      // Upload connection blobs
-      for (final change in connectionChanges) {
-        if (await _uploadConnectionBlob(change.entityId)) {
-          syncedIds.add(change.id);
-          _completeItem();
-        }
-      }
+      await _uploadMetadata(metadata, metadataIds, syncedIds);
 
       for (final monthKey in eventMonths) {
         if (await _uploadEventMonthBlob(monthKey)) {
@@ -387,211 +391,132 @@ class SyncService extends ChangeNotifier {
     }
   }
 
-  Future<bool> _uploadPersonBlob(String personId) async {
+  Future<void> _uploadMetadata(Map<(String, String), PendingChange> changes,
+      Map<(String, String), List<String>> ids, List<String> syncedIds) async {
+    final batch = <Map<String, dynamic>>[];
+    var batchBytes = 0;
+
+    void acknowledge(Map<String, dynamic> entry) {
+      syncedIds.addAll(ids[(entry['blobType'], entry['blobId'])]!);
+      _completeItem();
+    }
+
+    Future<void> flush() async {
+      if (batch.isEmpty) return;
+      if (_hasBatching && _canUploadPacks) {
+        final response =
+            await _syncPost('/api/sync/upload/batch', {'entries': batch});
+        if (_unsupportedBatch(response)) {
+          _canUploadPacks = false;
+        } else {
+          // An uncertain or partial commit must retain every pending row.
+          _checkResponse(response, 'batch upload');
+          for (final entry in batch) {
+            acknowledge(entry);
+          }
+          batch.clear();
+          batchBytes = 0;
+          return;
+        }
+      }
+      for (final entry in batch) {
+        if (await _uploadMetadataBlob(entry)) acknowledge(entry);
+      }
+      batch.clear();
+      batchBytes = 0;
+    }
+
+    for (final change in changes.values) {
+      final plain = jsonEncode(change.data);
+      final encrypted = await _encryption.encryptString(plain);
+      _checkSyncSession();
+      final entry = <String, dynamic>{
+        'blobType': change.entityType,
+        'blobId': change.entityId,
+        'checksum': _encryption.calculateChecksum(plain),
+        'isDeleted': change.data['isDeleted'] == true,
+        'data': encrypted,
+      };
+      final size = utf8.encode(encrypted).length;
+      if (!_hasBatching || !_canUploadPacks || size > _batchBytes) {
+        await flush();
+        if (await _uploadMetadataBlob(entry)) acknowledge(entry);
+        continue;
+      }
+      if (batch.length == _batchEntries || batchBytes + size > _batchBytes) {
+        await flush();
+      }
+      batch.add(entry);
+      batchBytes += size;
+    }
+    await flush();
+  }
+
+  Future<bool> _uploadMetadataBlob(Map<String, dynamic> entry) async {
     try {
-      final person = await _db.getPerson(personId);
-      if (person == null) return false;
-
-      final jsonData = jsonEncode(person.toJson());
-      // _requireEncryptionOrSkip() guarantees this is always initialized
-      // before any of these upload helpers run - see its doc comment for
-      // why data must never fall back to being uploaded as plain jsonData.
-      final encryptedData = await _encryption.encryptString(jsonData);
-      final checksum = _encryption.calculateChecksum(jsonData);
-
-      // Get upload URL
-      final uploadResponse = await _syncPost('/api/sync/upload', {
-        'blobType': 'person',
-        'blobId': personId,
-        'checksum': checksum,
+      final metadata = Map<String, dynamic>.from(entry)..remove('data');
+      final encrypted = entry['data'] as String;
+      final upload = await _syncPost('/api/sync/upload', {
+        'blobType': metadata['blobType'],
+        'blobId': metadata['blobId'],
+        'checksum': metadata['checksum'],
         'expectedVersion': 0,
       });
-
-      _checkResponse(uploadResponse, 'upload URL');
-
-      final uploadData = jsonDecode(uploadResponse.body);
-      final uploadUrl = uploadData['uploadUrl'];
-      final s3Key = uploadData['s3Key'];
-
-      // Upload to S3
-      final s3Response = await _http.put(
-        Uri.parse(uploadUrl),
-        headers: {'Content-Type': 'application/octet-stream'},
-        body: utf8.encode(encryptedData),
-      );
-
-      _checkResponse(s3Response, 'blob upload');
-
-      // Commit upload
-      final commitResponse = await _syncPost('/api/sync/commit', {
-        'blobType': 'person',
-        'blobId': personId,
-        's3Key': s3Key,
-        'checksum': checksum,
-        'size': encryptedData.length,
-        'isDeleted': person.isDeleted,
+      _checkResponse(upload, 'upload URL');
+      final target = jsonDecode(upload.body);
+      final put = await _http.put(Uri.parse(target['uploadUrl']),
+          headers: {'Content-Type': 'application/octet-stream'},
+          body: utf8.encode(encrypted));
+      _checkResponse(put, 'blob upload');
+      final commit = await _syncPost('/api/sync/commit', {
+        ...metadata,
+        's3Key': target['s3Key'],
+        'size': utf8.encode(encrypted).length,
       });
-
-      _checkResponse(commitResponse, 'commit');
+      _checkResponse(commit, 'commit');
       return true;
     } catch (e) {
       _lastError = e.toString();
-      debugPrint('Upload person blob error: $e');
+      debugPrint('Upload metadata blob error: $e');
       return false;
     }
   }
 
-  Future<bool> _uploadPlaceBlob(String placeId) async {
-    try {
-      final place = await _db.getPlace(placeId);
-      if (place == null) return false;
-
-      final jsonData = jsonEncode(place.toJson());
-      // _requireEncryptionOrSkip() guarantees this is always initialized
-      // before any of these upload helpers run - see its doc comment for
-      // why data must never fall back to being uploaded as plain jsonData.
-      final encryptedData = await _encryption.encryptString(jsonData);
-      final checksum = _encryption.calculateChecksum(jsonData);
-
-      final uploadResponse = await _syncPost('/api/sync/upload', {
-        'blobType': 'place',
-        'blobId': placeId,
-        'checksum': checksum,
-        'expectedVersion': 0,
-      });
-
-      _checkResponse(uploadResponse, 'upload URL');
-
-      final uploadData = jsonDecode(uploadResponse.body);
-      final uploadUrl = uploadData['uploadUrl'];
-      final s3Key = uploadData['s3Key'];
-
-      final s3Response = await _http.put(
-        Uri.parse(uploadUrl),
-        headers: {'Content-Type': 'application/octet-stream'},
-        body: utf8.encode(encryptedData),
-      );
-
-      _checkResponse(s3Response, 'blob upload');
-
-      final commitResponse = await _syncPost('/api/sync/commit', {
-        'blobType': 'place',
-        'blobId': placeId,
-        's3Key': s3Key,
-        'checksum': checksum,
-        'size': encryptedData.length,
-        'isDeleted': place.isDeleted,
-      });
-
-      _checkResponse(commitResponse, 'commit');
-      return true;
-    } catch (e) {
-      _lastError = e.toString();
-      debugPrint('Upload place blob error: $e');
-      return false;
+  Future<Map<_SyncEntry, ({String? data, String? downloadUrl})>>
+      _prefetchMetadata(List<_SyncEntry> entries) async {
+    final result = <_SyncEntry, ({String? data, String? downloadUrl})>{};
+    if (!_hasBatching) return result;
+    final batch = entries
+        .where((entry) =>
+            _metadataTypes.contains(entry.blobType) && !entry.isDeleted)
+        .toList();
+    final response = await _syncPost('/api/sync/download/batch', {
+      'entries': batch
+          .map((entry) => {
+                'blobType': entry.blobType,
+                'blobId': entry.blobId,
+              })
+          .toList(),
+    });
+    if (_unsupportedBatch(response)) {
+      _batchEntries = 0;
+      return result;
     }
-  }
-
-  Future<bool> _uploadObjectBlob(String objectId) async {
-    try {
-      final object = await _db.getObject(objectId);
-      if (object == null) return false;
-
-      final jsonData = jsonEncode(object.toJson());
-      // _requireEncryptionOrSkip() guarantees this is always initialized
-      // before any of these upload helpers run - see its doc comment for
-      // why data must never fall back to being uploaded as plain jsonData.
-      final encryptedData = await _encryption.encryptString(jsonData);
-      final checksum = _encryption.calculateChecksum(jsonData);
-
-      final uploadResponse = await _syncPost('/api/sync/upload', {
-        'blobType': 'object',
-        'blobId': objectId,
-        'checksum': checksum,
-        'expectedVersion': 0,
-      });
-
-      _checkResponse(uploadResponse, 'upload URL');
-
-      final uploadData = jsonDecode(uploadResponse.body);
-      final uploadUrl = uploadData['uploadUrl'];
-      final s3Key = uploadData['s3Key'];
-
-      final s3Response = await _http.put(
-        Uri.parse(uploadUrl),
-        headers: {'Content-Type': 'application/octet-stream'},
-        body: utf8.encode(encryptedData),
-      );
-
-      _checkResponse(s3Response, 'blob upload');
-
-      final commitResponse = await _syncPost('/api/sync/commit', {
-        'blobType': 'object',
-        'blobId': objectId,
-        's3Key': s3Key,
-        'checksum': checksum,
-        'size': encryptedData.length,
-        'isDeleted': object.isDeleted,
-      });
-
-      _checkResponse(commitResponse, 'commit');
-      return true;
-    } catch (e) {
-      _lastError = e.toString();
-      debugPrint('Upload object blob error: $e');
-      return false;
+    _checkResponse(response, 'batch download');
+    final downloaded = jsonDecode(response.body)['entries'] as List;
+    for (final entry in batch) {
+      final payload = downloaded.singleWhere((item) =>
+          item['blobType'] == entry.blobType && item['blobId'] == entry.blobId);
+      if (payload['isDeleted'] == true) {
+        entry.isDeleted = true;
+      } else if (payload['data'] is String) {
+        result[entry] = (data: payload['data'] as String, downloadUrl: null);
+      } else {
+        result[entry] =
+            (data: null, downloadUrl: payload['downloadUrl'] as String);
+      }
     }
-  }
-
-  Future<bool> _uploadConnectionBlob(String connectionId) async {
-    try {
-      final connection = await _db.getConnection(connectionId);
-      if (connection == null) return false;
-
-      final jsonData = jsonEncode(connection.toJson());
-      // _requireEncryptionOrSkip() guarantees this is always initialized
-      // before any of these upload helpers run - see its doc comment for
-      // why data must never fall back to being uploaded as plain jsonData.
-      final encryptedData = await _encryption.encryptString(jsonData);
-      final checksum = _encryption.calculateChecksum(jsonData);
-
-      final uploadResponse = await _syncPost('/api/sync/upload', {
-        'blobType': 'connection',
-        'blobId': connectionId,
-        'checksum': checksum,
-        'expectedVersion': 0,
-      });
-
-      _checkResponse(uploadResponse, 'upload URL');
-
-      final uploadData = jsonDecode(uploadResponse.body);
-      final uploadUrl = uploadData['uploadUrl'];
-      final s3Key = uploadData['s3Key'];
-
-      final s3Response = await _http.put(
-        Uri.parse(uploadUrl),
-        headers: {'Content-Type': 'application/octet-stream'},
-        body: utf8.encode(encryptedData),
-      );
-
-      _checkResponse(s3Response, 'blob upload');
-
-      final commitResponse = await _syncPost('/api/sync/commit', {
-        'blobType': 'connection',
-        'blobId': connectionId,
-        's3Key': s3Key,
-        'checksum': checksum,
-        'size': encryptedData.length,
-        'isDeleted': connection.isDeleted,
-      });
-
-      _checkResponse(commitResponse, 'commit');
-      return true;
-    } catch (e) {
-      _lastError = e.toString();
-      debugPrint('Upload connection blob error: $e');
-      return false;
-    }
+    return result;
   }
 
   Future<bool> _uploadEventMonthBlob(String monthKey) async {
@@ -893,7 +818,8 @@ class SyncService extends ChangeNotifier {
     }
   }
 
-  Future<void> _downloadAndApplyBlob(_SyncEntry entry) async {
+  Future<void> _downloadAndApplyBlob(_SyncEntry entry,
+      {String? encryptedData, String? downloadUrl}) async {
     _checkSyncSession();
     // Audio is fetched only through its authenticated story metadata, so
     // orphan chunks from an interrupted upload do not become local recordings.
@@ -946,18 +872,17 @@ class SyncService extends ChangeNotifier {
       }
       return;
     }
-    final response = await _syncGet(
-        '/api/sync/download/${entry.blobType}/${entry.blobId}');
-
-    _checkResponse(response, 'download');
-
-    final data = jsonDecode(response.body);
-    final downloadUrl = data['downloadUrl'];
-
-    final blobResponse = await _http.get(Uri.parse(downloadUrl));
-    _checkResponse(blobResponse, 'blob download');
-
-    final encryptedData = blobResponse.body;
+    if (encryptedData == null) {
+      if (downloadUrl == null) {
+        final response = await _syncGet(
+            '/api/sync/download/${entry.blobType}/${entry.blobId}');
+        _checkResponse(response, 'download');
+        downloadUrl = jsonDecode(response.body)['downloadUrl'] as String;
+      }
+      final blobResponse = await _http.get(Uri.parse(downloadUrl));
+      _checkResponse(blobResponse, 'blob download');
+      encryptedData = blobResponse.body;
+    }
     // Same guarantee as above: encryption is always initialized here.
     final jsonData = await _encryption.decryptString(encryptedData);
     _checkSyncSession();
@@ -1026,7 +951,9 @@ class SyncService extends ChangeNotifier {
     final revision = _encryptionRevision;
     // Request all updates without changing the persisted cursor until success.
     await syncOnOpen(forceFull: true);
-    if (_lastError == null && _keyMatchesAccount && revision == _encryptionRevision) {
+    if (_lastError == null &&
+        _keyMatchesAccount &&
+        revision == _encryptionRevision) {
       await syncOnClose();
     }
   }
@@ -1043,7 +970,7 @@ class _SyncEntry {
   final String blobId;
   final String s3Key;
   final int version;
-  final bool isDeleted;
+  bool isDeleted;
 
   _SyncEntry({
     required this.blobType,

@@ -13,13 +13,15 @@ public class SyncController : ControllerBase
 {
     private readonly SyncService _syncService;
     private readonly IS3Service _s3Service;
+    private readonly PackedSyncService _packedSync;
     private readonly ILogger<SyncController> _logger;
 
-    public SyncController(SyncService syncService, IS3Service s3Service, ILogger<SyncController> logger)
+    public SyncController(SyncService syncService, IS3Service s3Service, ILogger<SyncController> logger, PackedSyncService packedSync)
     {
         _syncService = syncService;
         _s3Service = s3Service;
         _logger = logger;
+        _packedSync = packedSync;
     }
 
     /// <summary>
@@ -32,6 +34,7 @@ public class SyncController : ControllerBase
         if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
 
         var response = await _syncService.GetUpdatesAsync(userId.Value, request);
+        response.Batching = _packedSync.Capabilities;
         return Ok(response);
     }
 
@@ -273,6 +276,74 @@ public class SyncController : ControllerBase
         {
             _logger.LogError(ex, "Error in proxy download for {BlobType}/{BlobId}", blobType, blobId);
             return StatusCode(500, new ApiError("download_failed", "The download could not be completed."));
+        }
+    }
+
+    [HttpPost("upload/batch")]
+    [RequestSizeLimit(8 * 1024 * 1024)]
+    public async Task<ActionResult> UploadPackedBatch([FromBody] PackedUploadRequest request)
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
+        try
+        {
+            await _packedSync.UploadAsync(userId.Value, request);
+            return Ok();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ApiError("invalid_batch", ex.Message));
+        }
+        catch (InvalidOperationException ex) when (ex.Message == "packing_disabled")
+        {
+            return Conflict(new ApiError("packing_disabled", "Packed uploads are not enabled."));
+        }
+        catch (S3UnavailableException)
+        {
+            return StorageUnavailable();
+        }
+    }
+
+    [HttpPost("download/batch")]
+    [RequestSizeLimit(8 * 1024 * 1024)]
+    public async Task<ActionResult<PackedDownloadResponse>> DownloadPackedBatch([FromBody] PackedDownloadRequest request)
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized(new ApiError("unauthorized", "Authentication is required."));
+        try
+        {
+            return Ok(await _packedSync.DownloadAsync(userId.Value, request));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ApiError("invalid_batch", ex.Message));
+        }
+        catch (KeyNotFoundException)
+        {
+            return Conflict(new ApiError("blob_missing", "A requested blob is no longer available. Retry synchronization."));
+        }
+        catch (S3UnavailableException)
+        {
+            return StorageUnavailable();
+        }
+    }
+
+    // The short-lived capability grants access to exactly one encrypted slice, including for
+    // older clients that follow their existing single-blob download URLs without app JWTs.
+    [AllowAnonymous]
+    [HttpGet("packed/{ticket}")]
+    public async Task<IActionResult> DownloadPackedSlice(string ticket)
+    {
+        Response.Headers.CacheControl = "private, no-store";
+        try
+        {
+            var stream = await _packedSync.DownloadTicketAsync(ticket);
+            return stream == null ? NotFound(new ApiError("not_found", "Blob not found"))
+                : File(stream, "application/octet-stream");
+        }
+        catch (S3UnavailableException)
+        {
+            return StorageUnavailable();
         }
     }
 

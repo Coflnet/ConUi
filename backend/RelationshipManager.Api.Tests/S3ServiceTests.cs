@@ -96,6 +96,67 @@ public class S3ServiceTests
         Assert.That(http.Requests, Is.EqualTo(1), "Only the bucket access check may use HTTP");
     }
 
+    [TestCase("valid")]
+    [TestCase("wrong-range")]
+    [TestCase("ignored-range")]
+    [TestCase("truncated")]
+    [TestCase("oversized")]
+    [TestCase("missing")]
+    public async Task PackedRange_RequiresExactBoundedPartialResponse(string mode)
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["S3:ENDPOINT"] = "http://localhost:9000", ["S3:ACCESS_KEY"] = "synthetic-key",
+            ["S3:SECRET_KEY"] = "synthetic-secret", ["S3:BUCKET"] = "con-stories"
+        }).Build();
+        var factory = new RangeHttpClientFactory(mode);
+        var service = new S3Service(config, NullLogger<S3Service>.Instance, factory);
+        if (mode == "valid")
+        {
+            using var stream = await service.DownloadRangeAsync("owner/.packs/v1/pack", 2, 3);
+            using var data = new MemoryStream();
+            await stream!.CopyToAsync(data);
+            Assert.That(data.ToArray(), Is.EqualTo(new byte[] { 2, 3, 4 }));
+        }
+        else if (mode == "missing")
+            Assert.That(await service.DownloadRangeAsync("owner/.packs/v1/pack", 2, 3), Is.Null);
+        else Assert.ThrowsAsync<S3UnavailableException>(() => service.DownloadRangeAsync("owner/.packs/v1/pack", 2, 3));
+        Assert.That(factory.ObjectRequests, Is.EqualTo(1));
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.DownloadRangeAsync("key", long.MaxValue, 3));
+        Assert.That(factory.ObjectRequests, Is.EqualTo(1));
+    }
+
+    private sealed class RangeHttpClientFactory(string mode) : Amazon.Runtime.HttpClientFactory
+    {
+        public int ObjectRequests { get; private set; }
+        public override HttpClient CreateHttpClient(Amazon.Runtime.IClientConfig clientConfig) => new(new RangeHandler(this, mode));
+        public override bool UseSDKHttpClientCaching(Amazon.Runtime.IClientConfig clientConfig) => false;
+
+        private sealed class RangeHandler(RangeHttpClientFactory owner, string mode) : HttpMessageHandler
+        {
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                if (request.RequestUri!.Query.Length > 0)
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent("""<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>con-stories</Name><KeyCount>0</KeyCount><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated></ListBucketResult>""")
+                    });
+                owner.ObjectRequests++;
+                Assert.That(request.RequestUri.AbsolutePath, Is.EqualTo("/con-stories/owner/.packs/v1/pack"));
+                Assert.That(request.Headers.Range!.ToString(), Is.EqualTo("bytes=2-4"));
+                if (mode == "missing") return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
+                {
+                    Content = new StringContent("<Error><Code>NoSuchKey</Code></Error>")
+                });
+                var content = new ByteArrayContent(mode == "truncated" ? new byte[] { 2, 3 } :
+                    mode == "oversized" ? new byte[] { 2, 3, 4, 5 } : new byte[] { 2, 3, 4 });
+                content.Headers.ContentLength = 3;
+                content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(mode == "wrong-range" ? 1 : 2, 4, 10);
+                return Task.FromResult(new HttpResponseMessage(mode == "ignored-range" ? HttpStatusCode.OK : HttpStatusCode.PartialContent) { Content = content });
+            }
+        }
+    }
+
     private static void AssertPresignedSignature(Uri url, string verb, string? contentType)
     {
         var query = QueryHelpers.ParseQuery(url.Query);

@@ -10,13 +10,15 @@ public class SyncService
     private readonly ISyncStore _store;
     private readonly IS3Service _s3Service;
     private readonly ILogger<SyncService> _logger;
+    private readonly IConfiguration? _configuration;
     private const long DefaultStorageLimit = 100 * 1024 * 1024; // 100MB
 
-    public SyncService(ISyncStore store, IS3Service s3Service, ILogger<SyncService> logger)
+    public SyncService(ISyncStore store, IS3Service s3Service, ILogger<SyncService> logger, IConfiguration? configuration = null)
     {
         _store = store;
         _s3Service = s3Service;
         _logger = logger;
+        _configuration = configuration;
     }
 
     public async Task<SyncResponse> GetUpdatesAsync(Guid userId, SyncRequest request)
@@ -27,6 +29,8 @@ public class SyncService
 
         var newEntries = allEntriesResult
             .Where(e => e.Version > request.LastSyncVersion)
+            .GroupBy(e => (e.BlobType, e.BlobId))
+            .Select(group => group.MaxBy(e => e.Version)!)
             .ToList();
 
         if (request.BlobTypes?.Count > 0)
@@ -82,7 +86,19 @@ public class SyncService
             return null;
         }
 
-        var downloadUrl = await _s3Service.GetDownloadUrlAsync(entry.S3Key, TimeSpan.FromMinutes(15));
+        string downloadUrl;
+        if (PackReference.TryParse(entry.S3Key, out var reference))
+        {
+            if (_configuration == null || !PackTickets.TryGetOrigin(_configuration, out var origin) ||
+                string.IsNullOrEmpty(_configuration["jwt:secret"]))
+                throw new S3UnavailableException("Packed downloads require a canonical API origin and signing secret.");
+            var ticket = PackTickets.Create(userId, reference, _configuration["jwt:secret"]!, DateTimeOffset.UtcNow);
+            downloadUrl = new Uri(origin, $"api/sync/packed/{ticket}").AbsoluteUri;
+        }
+        else
+        {
+            downloadUrl = await _s3Service.GetDownloadUrlAsync(entry.S3Key, TimeSpan.FromMinutes(15));
+        }
 
         return new BlobDownloadResponse
         {
@@ -103,6 +119,20 @@ public class SyncService
             throw new ArgumentException("The blob key does not match this user's upload.");
         }
 
+        await CommitTrustedUploadAsync(userId, commit);
+    }
+
+    internal Task CommitPackedUploadAsync(Guid userId, CommitEntry commit)
+    {
+        GetBlobKey(userId, commit.BlobType, commit.BlobId);
+        if (!PackReference.TryParse(commit.S3Key, out var reference) ||
+            (!commit.IsDeleted && commit.Size != reference.Length))
+            throw new ArgumentException("Invalid packed blob reference or size.");
+        return CommitTrustedUploadAsync(userId, commit);
+    }
+
+    private async Task CommitTrustedUploadAsync(Guid userId, CommitEntry commit)
+    {
         var version = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var now = DateTime.UtcNow;
 
@@ -224,7 +254,7 @@ public class SyncService
         if (entry != null)
         {
             // Mark as deleted via commit
-            await CommitUploadAsync(userId, new CommitEntry
+            var commit = new CommitEntry
             {
                 BlobType = blobType,
                 BlobId = blobId,
@@ -232,7 +262,11 @@ public class SyncService
                 Checksum = string.Empty,
                 Size = 0,
                 IsDeleted = true
-            });
+            };
+            if (PackReference.TryParse(entry.S3Key, out _))
+                await CommitPackedUploadAsync(userId, commit);
+            else
+                await CommitUploadAsync(userId, commit);
         }
     }
 

@@ -193,6 +193,7 @@ public static class RelationshipManagerApp
 
         builder.Services.AddSingleton<AuthService>();
         builder.Services.AddSingleton<SyncService>();
+        builder.Services.AddSingleton<PackedSyncService>();
 
         // CORS: origins come from Cors:AllowedOrigins. Empty means no cross-origin access. In
         // Development, localhost on any port is also allowed so `flutter run -d chrome` works.
