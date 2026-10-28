@@ -230,6 +230,7 @@
   "homeNavPeople": "Personen",
   "homeNavStories": "Geschichten",
   "homeNavPlaces": "Orte",
+  "homeLastPlace": "Zuletzt verwendeter Ort",
   "homeNavObjects": "Objekte",
   "homeNoResultsFor": "Keine Ergebnisse für „{query}“",
   "homeAka": "auch bekannt als {alias}",

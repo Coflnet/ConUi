@@ -371,46 +371,68 @@ class _PlaceMarker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final label = group.isCluster ? '${group.places.length}' : null;
     return Semantics(
       label: group.isCluster
           ? l10n.mapClusterStoryCountSemantics(group.places.length, group.storyCount)
           : l10n.mapPlaceStoryCountSemantics(group.places.single.name, group.storyCount),
       button: true,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Icon(
-            group.isCluster ? Icons.location_city : Icons.location_pin,
-            color: group.isCluster ? Colors.deepPurple : Colors.red,
-            size: 44,
-          ),
-          if (group.storyCount > 0)
-            Positioned(
-              right: 0,
-              top: 0,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${group.storyCount}',
-                  style: const TextStyle(color: Colors.white, fontSize: 11),
+      excludeSemantics: true,
+      child: group.isCluster
+          ? Container(
+              margin: const EdgeInsets.all(4),
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.deepPurple,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: const [
+                  BoxShadow(color: Colors.deepPurple, spreadRadius: 3),
+                ],
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.auto_stories,
+                      color: Colors.white,
+                      size: 14,
+                    ),
+                    Text(
+                      '${group.storyCount}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
+            )
+          : Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.location_pin, color: Colors.red, size: 44),
+                if (group.storyCount > 0)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${group.storyCount}',
+                        style: const TextStyle(color: Colors.white, fontSize: 11),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-          if (label != null)
-            Positioned(
-              left: 10,
-              top: 10,
-              child: Text(label,
-                  style: const TextStyle(
-                      color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-            ),
-        ],
-      ),
     );
   }
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:latlong2/latlong.dart';
 import '../l10n/gen/app_localizations.dart';
+import '../models/place.dart';
 import '../services/database_service.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
@@ -16,6 +18,7 @@ import 'settings_screen.dart';
 import 'login_screen.dart';
 import 'persons/person_detail_screen.dart';
 import 'events/event_detail_screen.dart';
+import 'quick_add/quick_add_sheet.dart';
 
 enum SearchResultType { person, event, object, place }
 
@@ -140,6 +143,55 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
+  Future<void> _addStoryAt(Place place) async {
+    final position = ValueNotifier(LatLng(place.latitude, place.longitude));
+    try {
+      await QuickAddSheet.show(context,
+          position: position, initialPlace: place);
+    } finally {
+      position.dispose();
+    }
+  }
+
+  Widget _lastPlaceShortcut(AppLocalizations l10n) => Consumer<DatabaseService>(
+        builder: (context, db, _) => FutureBuilder<Place?>(
+          future: db.getLastStoryPlace(),
+          builder: (context, snapshot) {
+            final place = snapshot.data;
+            if (place == null) return const SizedBox.shrink();
+            return SizedBox(
+                width: 128,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Divider(),
+                    Text(l10n.homeLastPlace,
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.labelSmall),
+                    const SizedBox(height: 8),
+                    Tooltip(
+                      message: '${l10n.placeSheetAddStoryHere}: ${place.name}',
+                      child: OutlinedButton(
+                        onPressed: () => _addStoryAt(place),
+                        child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.add_location_alt_outlined),
+                                  Text(place.name,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center),
+                                ])),
+                      ),
+                    ),
+                  ]),
+                ));
+          },
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -259,9 +311,11 @@ class _HomeScreenState extends State<HomeScreen>
           ? Row(
               children: [
                 NavigationRail(
+                  scrollable: true,
                   selectedIndex: _selectedIndex,
                   onDestinationSelected: _onDestinationSelected,
                   labelType: NavigationRailLabelType.all,
+                  trailing: _lastPlaceShortcut(l10n),
                   destinations: [
                     for (final (index, d) in _destinationIcons.indexed)
                       NavigationRailDestination(

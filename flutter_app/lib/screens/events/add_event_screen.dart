@@ -403,7 +403,8 @@ class _AddEventScreenState extends State<AddEventScreen> {
       final db = context.read<DatabaseService>();
       final detectedIds = await saveStoryPeople(db, await _peoplePicker.peopleForSave());
       final participantIds = {..._participantIds, ...detectedIds}.toList();
-      final event = _currentEvent(title: title, participants: participantIds);
+      final event = _currentEvent(title: title, participants: participantIds)
+        ..updatedAt = DateTime.now();
 
       await db.saveEvent(event);
       await _peoplePicker.saveInformation(event);

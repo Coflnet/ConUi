@@ -276,6 +276,19 @@ class DatabaseService extends ChangeNotifier {
     return Place.fromJson(jsonDecode(results.first['data'] as String));
   }
 
+  /// Story dates can be historical; recency follows when a story was saved.
+  Future<Place?> getLastStoryPlace() async {
+    final places = {for (final place in await getPlaces()) place.id: place};
+    Event? latest;
+    for (final event in await getEvents()) {
+      if (places.containsKey(event.placeId) &&
+          (latest == null || event.updatedAt.isAfter(latest.updatedAt))) {
+        latest = event;
+      }
+    }
+    return places[latest?.placeId];
+  }
+
   Future<void> savePlace(Place place, {bool recordPendingChange = true}) async {
     final db = await database;
     final exists =

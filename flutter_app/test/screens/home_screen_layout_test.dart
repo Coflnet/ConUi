@@ -2,6 +2,8 @@
 // production rollout brief): a bottom NavigationBar below ~840 logical
 // pixels wide, a side NavigationRail at or above it - never both, and
 // switching tabs works the same way through either one.
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +16,7 @@ import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/screens/home_screen.dart';
 import 'package:relationship_manager/screens/events/add_event_screen.dart';
 import 'package:relationship_manager/screens/places/place_sheet.dart';
+import 'package:relationship_manager/screens/quick_add/quick_add_sheet.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/screens/persons/persons_screen.dart';
 import 'package:relationship_manager/services/app_settings_service.dart';
@@ -170,6 +173,80 @@ void main() {
     expect(tester.widget<NavigationRail>(find.byType(NavigationRail)).destinations
         .map((destination) => (destination.label as Text).data),
         ['Map', 'People', 'Stories', 'Places']);
+    expect(find.text('Last used place'), findsNothing);
+  });
+
+  testWidgets('desktop shortcut reuses the last saved story place, not its historical date',
+      (tester) async {
+    const recorderChannel = MethodChannel('com.llfbandit.record/messages');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        recorderChannel, (_) async => null);
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(recorderChannel, null));
+    await http.runWithClient(() async {
+      late DatabaseService database;
+      await pumpHome(tester, const Size(1440, 900), seed: (db) async {
+        database = db;
+        for (final id in ['earlier', 'recent', 'deleted']) {
+          await db.savePlace(Place(id: id, name: '$id place', latitude: 50,
+              longitude: 10, isDeleted: id == 'deleted'));
+        }
+        await db.saveEvent(Event(title: 'Earlier save', dateTime: DateTime(2026),
+            placeId: 'earlier', updatedAt: DateTime(2026, 1)));
+        await db.saveEvent(Event(title: 'Historical story saved later', dateTime: DateTime(1952),
+            placeId: 'recent', updatedAt: DateTime(2026, 2)));
+        await db.saveEvent(Event(title: 'Deleted place', dateTime: DateTime(2026),
+            placeId: 'deleted', updatedAt: DateTime(2026, 3)));
+        await db.saveEvent(Event(title: 'No place', dateTime: DateTime(2026),
+            updatedAt: DateTime(2026, 4)));
+      });
+      final shortcut = find.widgetWithText(OutlinedButton, 'recent place');
+      expect(find.text('Last used place'), findsOneWidget);
+      expect(shortcut, findsOneWidget);
+      await tester.tap(shortcut);
+      await _settle(tester);
+      final sheet = tester.widget<QuickAddSheet>(find.byType(QuickAddSheet));
+      expect(sheet.initialPlace?.id, 'recent');
+      expect(sheet.position.value.latitude, 50);
+      expect(sheet.position.value.longitude, 10);
+      await tester.enterText(find.widgetWithText(TextField, 'What happened here?'),
+          'Another memory at the same place.');
+      await _settle(tester);
+      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save story'));
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        final Function save = tester.widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Save story')).onPressed!;
+        final dynamic result = save();
+        if (result is Future) await result;
+      });
+      await _settle(tester);
+      await tester.pumpAndSettle();
+      expect((await tester.runAsync(database.getEvents))!
+          .where((event) => event.placeId == 'recent'), hasLength(2));
+      expect(find.byType(QuickAddSheet), findsNothing);
+      expect(await tester.runAsync(database.getLastStoryPlace),
+          isA<Place>().having((place) => place.id, 'id', 'recent'));
+      tester.view.physicalSize = const Size(390, 844);
+      await _settle(tester);
+      expect(find.text('Last used place'), findsNothing);
+      tester.view.physicalSize = const Size(840, 400);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _settle(tester);
+      await tester.ensureVisible(shortcut);
+      await tester.pumpAndSettle();
+      await tester.tap(shortcut);
+      await _settle(tester);
+      expect(tester.widget<QuickAddSheet>(find.byType(QuickAddSheet)).initialPlace?.id,
+          'recent');
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }, () => MockClient((request) async => request.url.host == 'photon.komoot.io'
+        ? http.Response('{"features":[]}', 200)
+        : http.Response.bytes(base64Decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='),
+            200, headers: {'content-type': 'image/png'})));
   });
 
   testWidgets(

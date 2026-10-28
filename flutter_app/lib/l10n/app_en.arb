@@ -265,6 +265,7 @@
   "homeNavPeople": "People",
   "homeNavStories": "Stories",
   "homeNavPlaces": "Places",
+  "homeLastPlace": "Last used place",
   "homeNavObjects": "Objects",
   "homeNoResultsFor": "No results for \"{query}\"",
   "@homeNoResultsFor": {"placeholders": {"query": {"type": "String"}}},
