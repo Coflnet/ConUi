@@ -22,6 +22,16 @@ void main() {
       RelationshipType.ward,
       RelationshipType.mentor,
       RelationshipType.mentee,
+      RelationshipType.auntOrUncle,
+      RelationshipType.nieceOrNephew,
+      RelationshipType.parentInLaw,
+      RelationshipType.childInLaw,
+      RelationshipType.manager,
+      RelationshipType.directReport,
+      RelationshipType.employer,
+      RelationshipType.employee,
+      RelationshipType.teacher,
+      RelationshipType.student,
     };
 
     for (final type in RelationshipType.values) {
@@ -42,6 +52,11 @@ void main() {
       RelationshipType.godparent: RelationshipType.godchild,
       RelationshipType.guardian: RelationshipType.ward,
       RelationshipType.mentor: RelationshipType.mentee,
+      RelationshipType.auntOrUncle: RelationshipType.nieceOrNephew,
+      RelationshipType.parentInLaw: RelationshipType.childInLaw,
+      RelationshipType.manager: RelationshipType.directReport,
+      RelationshipType.employer: RelationshipType.employee,
+      RelationshipType.teacher: RelationshipType.student,
     };
 
     pairs.forEach((a, b) {

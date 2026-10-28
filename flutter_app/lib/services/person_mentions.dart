@@ -1,4 +1,5 @@
 import '../models/person.dart';
+import 'transcript_relationship_vocabulary.dart';
 
 String normalizedPersonName(String name) => name
     .trim()
@@ -45,11 +46,9 @@ List<PersonMention> extractPersonMentions(String text, List<Person> people) {
   // Bare German genitive -s needs a relationship cue so plurals such as
   // "Annas kamen" cannot introduce a partial name match.
   final possessive = RegExp(
-      r"^(?:['’]s?(?:$|[^\p{L}\p{M}\p{N}'’\-])|s\s+(?:"
-      r'bruder|schwester|vater|mutter|sohn|tochter|halbbruder|halbschwester|'
-      r'großvater|großmutter|opa|oma|enkel|enkelin|stiefvater|stiefmutter|'
-      r'stiefkind|stiefsohn|stieftochter|nachbar|nachbarin|kollege|kollegin|'
-      r'freund|freundin|partner|partnerin|ehemann|ehefrau)\b)',
+      r"^(?:['’]s?(?:$|[^\p{L}\p{M}\p{N}'’\-])|s\s+(?:" +
+          transcriptHumanRolePattern +
+          r')\b)',
       caseSensitive: false,
       unicode: true);
   final occurrences = <_Occurrence>[];
@@ -74,9 +73,8 @@ List<PersonMention> extractPersonMentions(String text, List<Person> people) {
   }
 
   final cues = RegExp(
-      r'\b(?:schwester|bruder|onkel|tante|oma|opa|mutter|vater|cousine|cousin|'
-      r'herr|frau|sister|brother|uncle|aunt|grandma|grandpa|mother|father|'
-      r'mr\.?|mrs\.?|ms\.?|named|called|namens|heißt|heisst)\s+',
+      '\\b(?:$transcriptHumanRolePattern|'
+      r'herr|frau|grandma|grandpa|mr\.?|mrs\.?|ms\.?|named|called|namens|heißt|heisst)\s+',
       caseSensitive: false,
       unicode: true);
   const capitalized = r"\p{Lu}[\p{L}\p{M}]*(?:[-'’]\p{L}[\p{L}\p{M}]*)*";
@@ -85,6 +83,41 @@ List<PersonMention> extractPersonMentions(String text, List<Person> people) {
       unicode: true);
   final academicTitle = RegExp(r'^(?:(?:dr|prof)\.?(?:\s+|$))+',
       caseSensitive: false, unicode: true);
+  final humanRole = RegExp('^(?:$transcriptHumanRolePattern)\$',
+      caseSensitive: false, unicode: true);
+  final namedRolePrefix = RegExp('^(?:$transcriptHumanRolePattern)\\s+',
+      caseSensitive: false, unicode: true);
+  final conjunction = RegExp(r'\b(?:and|und)\b', caseSensitive: false);
+  final nameSeparator = RegExp(
+      r'^(?:,\s*(?:(?:and|und)\s+)?|\s+(?:and|und)\s+)',
+      caseSensitive: false);
+  final organization =
+      RegExp(r'\b(?:GmbH|AG|Inc|Ltd|LLC|Corp)\.?$', caseSensitive: false);
+  List<(int, int, String)> namesAt(int offset, {bool allowList = false}) {
+    final spans = <(int, int, String)>[];
+    var hasConjunction = false;
+    for (var i = 0; i < 4; i++) {
+      final start =
+          offset + (academicTitle.firstMatch(text.substring(offset))?.end ?? 0);
+      final match = personName.firstMatch(text.substring(start));
+      if (match == null || !boundary(start + match.end)) break;
+      final name = match.group(0)!;
+      if (organization.hasMatch(name) ||
+          namedRolePrefix.hasMatch(name) ||
+          RegExp(r"['’]s$").hasMatch(name)) {
+        break;
+      }
+      spans.add((start, start + match.end, name));
+      if (!allowList) break;
+      final separator =
+          nameSeparator.firstMatch(text.substring(start + match.end));
+      if (separator == null) break;
+      hasConjunction |= conjunction.hasMatch(separator.group(0)!);
+      offset = start + match.end + separator.end;
+    }
+    return spans.length > 1 && !hasConjunction ? [spans.first] : spans;
+  }
+
   for (final cue in cues.allMatches(text)) {
     if (!boundary(cue.start - 1)) continue;
     // A role followed by "of/von" describes a relationship, not a name particle.
@@ -94,39 +127,51 @@ List<PersonMention> extractPersonMentions(String text, List<Person> people) {
             .hasMatch(text.substring(cue.end))) {
       continue;
     }
-    final start =
-        cue.end + (academicTitle.firstMatch(text.substring(cue.end))?.end ?? 0);
-    final match = personName.firstMatch(text.substring(start));
-    if (match == null || !boundary(start + match.end)) continue;
-    final name = match.group(0)!;
-    final key = normalizedPersonName(name);
-    // A surname alone identifies someone only after an explicit human cue.
-    final matches = names[key]?.values.toList() ??
-        {
-          for (final person in people)
-            if (!person.isDeleted &&
-                normalizedPersonName(person.name).endsWith(' $key'))
-              person.id: person
-        }.values.toList();
-    occurrences.add(_Occurrence(
-        start, start + match.end, PersonMention(name: name, matches: matches)));
+    final isHumanRole = humanRole.hasMatch(cue.group(0)!.trim());
+    final copula = isHumanRole
+        ? RegExp(r'^(?:is|ist|are|sind)\s+', caseSensitive: false)
+            .firstMatch(text.substring(cue.end))
+        : null;
+    for (final (start, end, name)
+        in namesAt(cue.end + (copula?.end ?? 0), allowList: isHumanRole)) {
+      final key = normalizedPersonName(name);
+      // A surname alone identifies someone only after an explicit human cue.
+      final matches = names[key]?.values.toList() ??
+          {
+            for (final person in people)
+              if (!person.isDeleted &&
+                  normalizedPersonName(person.name).endsWith(' $key'))
+                person.id: person
+          }.values.toList();
+      occurrences.add(
+          _Occurrence(start, end, PersonMention(name: name, matches: matches)));
+    }
   }
 
   // Naming a pet does not mention a human with the same name. Filter each
   // occurrence so an independent human mention elsewhere still survives.
   final petCue = RegExp(
-      r'\b(?:hund|hündin|welpe|katze|kater|haustier|kaninchen|pferd|vogel|'
-      r'hamster|dog|puppy|cat|kitten|pet|rabbit|horse|bird)\s+'
-      r'(?:(?:ist|is)\s+)?(?:namens|heißt|heisst|named|called)\s+',
+      r'\b(hund|hunde|hündin|welpe|katze|katzen|kater|haustier|kaninchen|pferd|vogel|'
+      r'hamster|dog|dogs|puppy|cat|cats|kitten|pet|pets|rabbit|horse|bird)\s+'
+      r'(?:(?:(?:ist|is)\s+)?(?:namens|heißt|heisst|named|called)\s+)?',
       caseSensitive: false,
       unicode: true);
   for (final cue in petCue.allMatches(text)) {
     if (!boundary(cue.start - 1)) continue;
-    final name = personName.firstMatch(text.substring(cue.end));
-    if (name == null) continue;
-    final end = cue.end + name.end;
-    occurrences.removeWhere(
-        (occurrence) => occurrence.start >= cue.end && occurrence.end <= end);
+    for (final (start, end, _) in namesAt(cue.end,
+        allowList: const {'hunde', 'katzen', 'dogs', 'cats', 'pets'}
+            .contains(cue.group(1)!.toLowerCase()))) {
+      occurrences.removeWhere(
+          (occurrence) => occurrence.start >= start && occurrence.end <= end);
+    }
+  }
+  // A familiar human name inside a company name still denotes the company.
+  final companies = RegExp(
+      '$capitalized(?:\\s+$capitalized){0,3}\\s+(?:GmbH|AG|Inc|Ltd|LLC|Corp)\\b',
+      unicode: true);
+  for (final company in companies.allMatches(text)) {
+    occurrences.removeWhere((occurrence) =>
+        occurrence.start >= company.start && occurrence.end <= company.end);
   }
 
   // Keep full names ahead of overlapping first names and aliases.

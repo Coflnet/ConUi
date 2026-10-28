@@ -1,6 +1,7 @@
 import '../models/person.dart';
 import '../relationships/relationship_type.dart';
 import 'person_mentions.dart';
+import 'transcript_relationship_vocabulary.dart';
 
 class TranscriptConnection {
   final String person1Name;
@@ -35,68 +36,6 @@ class TranscriptConnections {
   const TranscriptConnections({required this.connections, required this.facts});
 }
 
-const _relationshipWords = {
-  'brother': RelationshipType.sibling,
-  'sister': RelationshipType.sibling,
-  'half-sibling': RelationshipType.halfSibling,
-  'half-brother': RelationshipType.halfSibling,
-  'half-sister': RelationshipType.halfSibling,
-  'halbbruder': RelationshipType.halfSibling,
-  'halbschwester': RelationshipType.halfSibling,
-  'grandparent': RelationshipType.grandparent,
-  'grandfather': RelationshipType.grandparent,
-  'grandmother': RelationshipType.grandparent,
-  'großvater': RelationshipType.grandparent,
-  'großmutter': RelationshipType.grandparent,
-  'opa': RelationshipType.grandparent,
-  'oma': RelationshipType.grandparent,
-  'grandchild': RelationshipType.grandchild,
-  'grandson': RelationshipType.grandchild,
-  'granddaughter': RelationshipType.grandchild,
-  'enkel': RelationshipType.grandchild,
-  'enkelin': RelationshipType.grandchild,
-  'stepparent': RelationshipType.stepParent,
-  'step-parent': RelationshipType.stepParent,
-  'stepfather': RelationshipType.stepParent,
-  'stepmother': RelationshipType.stepParent,
-  'stiefvater': RelationshipType.stepParent,
-  'stiefmutter': RelationshipType.stepParent,
-  'stepchild': RelationshipType.stepChild,
-  'stiefkind': RelationshipType.stepChild,
-  'stepson': RelationshipType.stepChild,
-  'stepdaughter': RelationshipType.stepChild,
-  'stiefsohn': RelationshipType.stepChild,
-  'stieftochter': RelationshipType.stepChild,
-  'neighbor': RelationshipType.neighbour,
-  'neighbour': RelationshipType.neighbour,
-  'nachbar': RelationshipType.neighbour,
-  'nachbarin': RelationshipType.neighbour,
-  'bruder': RelationshipType.sibling,
-  'schwester': RelationshipType.sibling,
-  'father': RelationshipType.parent,
-  'mother': RelationshipType.parent,
-  'vater': RelationshipType.parent,
-  'mutter': RelationshipType.parent,
-  'son': RelationshipType.child,
-  'daughter': RelationshipType.child,
-  'sohn': RelationshipType.child,
-  'tochter': RelationshipType.child,
-  'colleague': RelationshipType.colleague,
-  'collegue': RelationshipType.colleague,
-  'kollege': RelationshipType.colleague,
-  'kollegin': RelationshipType.colleague,
-  'friend': RelationshipType.friend,
-  'freund': RelationshipType.friend,
-  'freundin': RelationshipType.friend,
-  'partner': RelationshipType.partner,
-  'partnerin': RelationshipType.partner,
-  'spouse': RelationshipType.spouse,
-  'husband': RelationshipType.spouse,
-  'wife': RelationshipType.spouse,
-  'ehemann': RelationshipType.spouse,
-  'ehefrau': RelationshipType.spouse,
-};
-
 RegExp _pattern(String pattern) =>
     RegExp(pattern, caseSensitive: false, unicode: true);
 
@@ -104,7 +43,8 @@ const _monthWords = r'(?:Januar|Februar|März|April|Mai|Juni|Juli|August|'
     r'September|Oktober|November|Dezember|January|February|March|May|'
     r'June|July|October|December)';
 
-Iterable<String> _transcriptAssertions(String text) sync* {
+Iterable<String> _transcriptAssertions(
+    String text, bool Function(String) independentAssertion) sync* {
   final abbreviation =
       _pattern(r'\b(?:Dr|Prof|Mr|Mrs|Ms|St|Str|Apt|Nr|No|OG|EG)\.$');
   final ordinal = _pattern(r'\b\d{1,2}\.$');
@@ -130,11 +70,17 @@ Iterable<String> _transcriptAssertions(String text) sync* {
     if (sentence.isEmpty) continue;
     // Contrast can introduce an independent assertion, but cannot release a
     // question, conditional, or reported claim from its original scope.
-    yield* sentence.endsWith('?') || context.hasMatch(sentence)
-        ? [sentence]
-        : sentence
-            .split(_pattern(r',(?=\s*(?:aber|but)\b)'))
-            .map((s) => s.trim());
+    var assertionStart = 0;
+    if (!sentence.endsWith('?') && !context.hasMatch(sentence)) {
+      for (final contrast
+          in _pattern(r',\s*(?:aber|but)\s+').allMatches(sentence)) {
+        if (independentAssertion(sentence.substring(contrast.end))) {
+          yield sentence.substring(assertionStart, contrast.start).trim();
+          assertionStart = contrast.start + 1;
+        }
+      }
+    }
+    yield sentence.substring(assertionStart).trim();
   }
 }
 
@@ -154,7 +100,7 @@ TranscriptConnections extractTranscriptConnections(
     }
     known.add(normalizedPersonName(person.name).split(' ').first);
   }
-  final relation = _relationshipWords.keys.join('|');
+  final relation = transcriptRelationshipPattern;
   final namedRole = _pattern(
       '^(?:my|our|your|his|her|their|mein(?:e[nmrs]?)?|dein(?:e[nmrs]?)?|sein(?:e[nmrs]?)?|ihr(?:e[nmrs]?)?|unser(?:e[nmrs]?)?|euer|eure[nmrs]?)\\s+(?:$relation)(?:\\s+|\$)');
   final capitalized = RegExp(
@@ -163,14 +109,27 @@ TranscriptConnections extractTranscriptConnections(
   // These are pronouns or common sentence/noun slots, never unfamiliar people.
   final nonNames = _pattern(
       r'^(?:he|she|it|they|we|i|you|him|her|them|us|me|his|hers|its|ours|yours|theirs|'
-      r'er|sie|es|wir|ich|du|ihn|ihm|ihr|ihnen|mir|mich|dir|dich|uns|euch|der|die|das|'
+      r'mine|myself|yourself|himself|herself|itself|ourselves|themselves|yourselves|'
+      r'er|sie|es|wir|ich|du|ihn|ihm|ihr|ihnen|mir|mich|dir|dich|uns|euch|sich|der|die|das|'
       r'auto|car|garten|garden|stadt|city|firma|company|museum|weihnachten|'
-      r'man|woman|mann|frau|jemand|someone|niemand|nobody)$');
+      r'man|woman|mann|frau|jemand|someone|niemand|nobody|dog|cat|hund|katze)$');
   String? personName(String raw) {
-    final name =
-        raw.trim().replaceFirst(namedRole, '').replaceAll(RegExp(r'\s+'), ' ');
+    final name = raw
+        .trim()
+        .replaceFirst(namedRole, '')
+        .replaceFirst(_pattern(r'^(?:(?:Dr|Prof|Mr|Mrs|Ms)\.\s+)+'), '')
+        .replaceAll(RegExp(r'\s+'), ' ');
     if (name.isEmpty ||
+        _pattern(r'\b(?:and|und)\b').hasMatch(name) ||
+        _pattern('^(?:$relation)\$').hasMatch(name) ||
+        _pattern(r'\b(?:GmbH|AG|Inc|Ltd|LLC|Corp)\.?$').hasMatch(name) ||
         nonNames.hasMatch(name) ||
+        _pattern(
+                r'^(?:(?:the|der|die|das)\s+)?(?:company|firma|unternehmen|organisation|organization|verein)\b')
+            .hasMatch(name) ||
+        _pattern(
+                r'^(?:(?:my|our|his|her|mein(?:e[nmrs]?)?|sein(?:e[nmrs]?)?|ihr(?:e[nmrs]?)?)\s+)?(?:Hund|Katze|Pferd|Vogel|dog|cat|horse|bird)\b')
+            .hasMatch(name) ||
         _pattern(r'^(?:das|the|ein|eine)\s+').hasMatch(name)) {
       return null;
     }
@@ -180,15 +139,53 @@ TranscriptConnections extractTranscriptConnections(
         : null;
   }
 
-  String identity(String name) {
-    final mentions = extractPersonMentions(name, people);
-    if (mentions.length == 1 &&
-        mentions.single.matches.length == 1 &&
-        normalizedPersonName(mentions.single.name) ==
-            normalizedPersonName(name)) {
-      return 'id:${mentions.single.matches.single.id}';
+  final identities = <String, String>{};
+  String identity(String name) =>
+      identities.putIfAbsent(normalizedPersonName(name), () {
+        final mentions = extractPersonMentions(name, people);
+        if (mentions.length == 1 &&
+            mentions.single.matches.length == 1 &&
+            normalizedPersonName(mentions.single.name) ==
+                normalizedPersonName(name)) {
+          return 'id:${mentions.single.matches.single.id}';
+        }
+        return 'name:${normalizedPersonName(name)}';
+      });
+
+  void connect(
+      String first, String second, RelationshipType type, String source) {
+    final a = identity(first);
+    final b = identity(second);
+    if (a == b ||
+        isDuplicateConnection(
+            existing: connections.map((c) => (
+                  person1Id: identity(c.person1Name),
+                  person2Id: identity(c.person2Name),
+                  relationshipType: c.type.name
+                )),
+            person1Id: a,
+            person2Id: b,
+            type: type)) {
+      return;
     }
-    return 'name:${normalizedPersonName(name)}';
+    connections.add(TranscriptConnection(
+        person1Name: first,
+        person2Name: second,
+        type: type,
+        sourceText: source));
+  }
+
+  List<String>? names(String raw) {
+    // A bounded grammatical list must contain a final conjunction.
+    if (raw.contains(',') &&
+        !_pattern(r',?\s+(?:and|und)\s+[^,]+$').hasMatch(raw)) {
+      return null;
+    }
+    final parts =
+        raw.split(_pattern(r',\s*(?:(?:and|und)\s+)?|\s+(?:and|und)\s+'));
+    if (parts.length > 4) return null;
+    final result = parts.map(personName).toList();
+    return result.any((name) => name == null) ? null : result.cast<String>();
   }
 
   final seenFacts = <String>{};
@@ -204,7 +201,7 @@ TranscriptConnections extractTranscriptConnections(
   }
 
   final direct = _pattern(
-      '^(.*?)\\s+(?:is|ist)\\s+(?:(?:the|a|an|der|die|ein|eine)\\s+)?($relation)\\s+(?:of|von)\\s+(.+?)(?:\\s+ist)?\$');
+      '^(.*?)\\s+(?:is|ist|are|sind)\\s+(?:(?:the|a|an|der|die|das|ein|eine)\\s+)?($relation)\\s+(?:of|von)\\s+(.+?)(?:\\s+ist)?\$');
   const ownership = r"(?:[’']s|s|[’'])";
   final possessive = _pattern('^(.*?)\\s+(?:is|ist)\\s+'
       r'(?!(?:his|hers|its|ours|yours|theirs)\b)'
@@ -213,39 +210,90 @@ TranscriptConnections extractTranscriptConnections(
       _pattern(r'^(?!(?:his|hers|its|ours|yours|theirs)\b)'
           '(.+?)$ownership\\s+($relation)\\s+(?:is|ist)\\s+(.+)\$');
   final appositive = _pattern(
-      '^(.+?),\\s*((?:(?:the|a|an|der|die|ein|eine)\\s+)?(?:$relation)\\s+(?:of|von)\\s+[^,]+|[^,]+$ownership\\s+(?:$relation))(?=,|\$)');
-  const pairedWords = {
-    'siblings': 'brother',
-    'brothers': 'brother',
-    'sisters': 'sister',
-    'geschwister': 'bruder',
-    'brüder': 'bruder',
-    'schwestern': 'schwester',
-    'friends': 'friend',
-    'freunde': 'freund',
-    'freundinnen': 'freundin',
-    'colleagues': 'colleague',
-    'kollegen': 'kollege',
-    'kolleginnen': 'kollegin',
-    'partners': 'partner',
-    'partner': 'partner',
-    'partnerinnen': 'partnerin',
-    'spouses': 'spouse',
-    'married': 'spouse',
-    'verheiratet': 'spouse',
-    'neighbors': 'neighbor',
-    'neighbours': 'neighbour',
-    'nachbarn': 'nachbar',
-    'nachbarinnen': 'nachbarin',
-    'half-siblings': 'half-brother',
-    'halbgeschwister': 'halbbruder',
-  };
+      '^(.+?),\\s*((?:(?:the|a|an|der|die|das|ein|eine)\\s+)?(?:$relation)\\s+(?:of|von)\\s+[^,]+|[^,]+$ownership\\s+(?:$relation))(?=,|\$)');
   final paired = _pattern(
-      '^(.*?)\\s+(?:and|und)\\s+(.+?)\\s+(?:are|sind)\\s+(${pairedWords.keys.join('|')})\$');
+      '^(.*?)\\s+(?:and|und)\\s+(.+?)\\s+(?:are|sind)\\s+(${transcriptRelationshipPlurals.keys.join('|')})\$');
   final married = _pattern(
       r'^(.*?)\s+(?:is\s+married\s+to\s+(.+)|ist\s+mit\s+(.+)\s+verheiratet)$');
+  final hasRole = _pattern(
+      '^(.*?)\\s+(?:has|hat|have|haben)\\s+(?:(?:a|an|einen?|eine)\\s+)?($relation)\\s+(?:(?:named|called|namens)\\s+)?(.+)\$');
+  final actions = <(RegExp, RelationshipType)>[
+    (
+      _pattern(
+          r'^(.*?)\s+(?:is\s+friends\s+with|ist\s+befreundet\s+mit)\s+(.+)$'),
+      RelationshipType.friend
+    ),
+    (
+      _pattern(r'^(.*?)\s+ist\s+mit\s+(.+)\s+befreundet$'),
+      RelationshipType.friend
+    ),
+    (
+      _pattern(
+          r'^(.*?)\s+(?:is\s+in\s+a\s+relationship\s+with|ist\s+zusammen\s+mit)\s+(.+)$'),
+      RelationshipType.partner
+    ),
+    (
+      _pattern(r'^(.*?)\s+ist\s+mit\s+(.+)\s+zusammen$'),
+      RelationshipType.partner
+    ),
+    (
+      _pattern(
+          r'^(.*?)\s+(?:is\s+divorced\s+from|ist\s+geschieden\s+von)\s+(.+)$'),
+      RelationshipType.exPartner
+    ),
+    (
+      _pattern(r'^(.*?)\s+ist\s+von\s+(.+)\s+geschieden$'),
+      RelationshipType.exPartner
+    ),
+    (_pattern(r'^(.*?)\s+mentors\s+(.+)$'), RelationshipType.mentor),
+    (
+      _pattern(r'^(.*?)\s+(?:adopted|adoptiert|adoptierte)\s+(.+)$'),
+      RelationshipType.adoptiveParent
+    ),
+    (
+      _pattern(r'^(.*?)\s+hat\s+(.+)\s+adoptiert$'),
+      RelationshipType.adoptiveParent
+    ),
+    (
+      _pattern(r'^(.*?)\s+(?:teaches|unterrichtet)\s+(.+)$'),
+      RelationshipType.teacher
+    ),
+    (
+      _pattern(r'^(.*?)\s+(?:reports\s+to|berichtet\s+an)\s+(.+)$'),
+      RelationshipType.directReport
+    ),
+    (
+      _pattern(r'^(.*?)\s+(?:knows|kennt)\s+(.+)$'),
+      RelationshipType.acquaintance
+    ),
+    (
+      _pattern(
+          r'^(.*?)\s+(?:works?\s+with|arbeitet\s+mit)\s+(.+?)(?:\s+zusammen)?$'),
+      RelationshipType.colleague
+    ),
+    (
+      _pattern(r'^(.*?)\s+betreut\s+(.+)\s+als\s+Mentor(?:in)?$'),
+      RelationshipType.mentor
+    ),
+    (
+      _pattern(r'^(.*?)\s+ist\s+(.+)\s+direkt\s+unterstellt$'),
+      RelationshipType.directReport
+    ),
+  ];
+  final mutualActions = <(RegExp, RelationshipType)>[
+    (
+      _pattern(
+          r'^(.*?)\s+(?:and|und)\s+(.+?)\s+(?:work\s+together|arbeiten\s+zusammen)$'),
+      RelationshipType.colleague
+    ),
+    (
+      _pattern(
+          r'^(.*?)\s+(?:and|und)\s+(.+?)\s+(?:know\s+each\s+other|kennen\s+(?:sich|einander))$'),
+      RelationshipType.acquaintance
+    ),
+  ];
   final employer = _pattern(
-      r'^(.*?)\s+(?:(?:works?\s+(?:at|for)|arbeitet\s+bei)\s+(.+)|bei\s+(.+)\s+arbeitet)$');
+      r'^(.*?)\s+(?:(?:works?\s+(?:at|for)|arbeit(?:et|en)\s+bei)\s+(.+)|bei\s+(.+)\s+arbeitet)$');
   final car = _pattern(
       r'^(.*?)\s+(?:(?:got|bought|has)\s+a\s+new\s+car|(?:hat|kaufte)\s+ein\s+neues\s+Auto)$');
   final residence =
@@ -287,20 +335,23 @@ TranscriptConnections extractTranscriptConnections(
       r'said|says|heard|thinks?|believes?|sagt\w*|sagte|glaub\w*|denkt|behaupt\w*)\b');
   const finitePredicate = r'(?:is|ist|works?|arbeitet|lives|lived|wohnt|wohnte|'
       r'used\s+to\s+live|moved|will\s+move|zieht|hat|has|owns|plays|spielt|enjoys|'
-      r'was|wurde)\b';
+      r'was|wurde|mentors|adopted|adoptiert|adoptierte|teaches|unterrichtet|reports|berichtet|knows|kennt|betreut)\b';
   const predicate = '(?:$finitePredicate|(?:bei|in)\\b)';
   final explicitStart = _pattern('^(.+?)\\s+$finitePredicate');
   final implicitStart = _pattern('^(?:$finitePredicate|bei\\s+|'
       'in\\s+.+\\s+(?:wohnt|wohnte)\\b|'
-      '(?:(?:the|a|an|der|die|ein|eine)\\s+)?(?:$relation)\\s+(?:of|von)\\s+)');
+      '(?:(?:the|a|an|der|die|das|ein|eine)\\s+)?(?:$relation)\\s+(?:of|von)\\s+)');
   final relativeStart = _pattern(r'^(?:who|which|der|die)\s+');
-  final clauseSeparator = _pattern(r',\s*|\s+(?:and|und)\s+|'
+  final clauseSeparator = _pattern(r',\s*(?:(?:and|und)\s+)?|\s+(?:and|und)\s+|'
       '\\s+(?=(?:who|which)\\s+|(?:der|die)\\s+'
-      '(?:$predicate|(?:ein|eine)\\b|$profession\\b))');
+      '(?!$profession\\s+(?:of|von)\\b)(?:$predicate|(?:ein|eine)\\b|$profession\\b))');
   final correction =
       _pattern(r'^(.*?)\s+(wohnt\s+in|lives\s+(?:in|at))\s+[^,]+,\s*'
           r'(?:nein|no|sorry|ich\s+meine|I\s+mean),?\s+(?:in|at)\s+([^,]+)$');
-  for (final sentence in _transcriptAssertions(text)) {
+  for (final sentence in _transcriptAssertions(text, (tail) {
+    final explicit = explicitStart.firstMatch(tail);
+    return explicit != null && personName(explicit.group(1)!) != null;
+  })) {
     if (sentence.endsWith('?')) continue;
     var body = sentence.replaceFirst(RegExp(r'[.!]$'), '');
     final corrected = correction.firstMatch(body);
@@ -317,12 +368,33 @@ TranscriptConnections extractTranscriptConnections(
       clauses.add((body, original, false));
       body = '';
     } else if (pair != null &&
-        !_pattern(r'\b(?:and|und)\b').hasMatch(pair.group(2)!)) {
-      clauses.add((
-        '${pair.group(1)} is ${pairedWords[pair.group(3)!.toLowerCase()]} of ${pair.group(2)}',
-        body,
-        false
-      ));
+        names('${pair.group(1)} and ${pair.group(2)}') != null) {
+      final members = names('${pair.group(1)} and ${pair.group(2)}')!;
+      final type = transcriptRelationshipWords[
+          transcriptRelationshipPlurals[pair.group(3)!.toLowerCase()]]!;
+      // Explicit collective roles establish all pairs; plural romantic roles
+      // do not say which group members are partners of one another.
+      if (members.length == 2 ||
+          {
+            RelationshipType.friend,
+            RelationshipType.sibling,
+            RelationshipType.halfSibling,
+            RelationshipType.stepSibling,
+            RelationshipType.cousin,
+            RelationshipType.colleague,
+            RelationshipType.roommate,
+            RelationshipType.classmate,
+            RelationshipType.teammate,
+            RelationshipType.businessPartner,
+            RelationshipType.neighbour,
+            RelationshipType.acquaintance,
+          }.contains(type)) {
+        for (var i = 0; i < members.length; i++) {
+          for (var j = i + 1; j < members.length; j++) {
+            connect(members[i], members[j], type, body);
+          }
+        }
+      }
       body = '';
     } else if (apposition != null && personName(apposition.group(1)!) != null) {
       clauses.add((
@@ -333,7 +405,9 @@ TranscriptConnections extractTranscriptConnections(
       body = body.substring(apposition.end);
     }
     var start = 0;
-    for (final separator in clauseSeparator.allMatches(body)) {
+    final mutual = mutualActions.any((rule) => rule.$1.hasMatch(body));
+    for (final separator
+        in mutual ? <RegExpMatch>[] : clauseSeparator.allMatches(body)) {
       final tail = body.substring(separator.end);
       final explicit = explicitStart.firstMatch(tail);
       if (relativeStart.hasMatch(tail) ||
@@ -351,6 +425,10 @@ TranscriptConnections extractTranscriptConnections(
     for (final (raw, source, isAppositive) in clauses) {
       if (source.isEmpty) continue;
       var clause = raw.replaceFirst(_pattern(r'^(?:aber|but)\s+'), '');
+      if (_pattern(r'^which\s+').hasMatch(clause)) {
+        subject = antecedent = null;
+        continue;
+      }
       final relative =
           _pattern(r'^(?:who|which|der|die)\s+').firstMatch(clause);
       if (relative != null) {
@@ -358,12 +436,12 @@ TranscriptConnections extractTranscriptConnections(
         clause = clause.substring(relative.end);
       }
       if (relative != null ||
-          _pattern('^(?:$predicate|(?:the|a|an|der|die|ein|eine)\\s+)')
+          _pattern('^(?:$predicate|(?:the|a|an|der|die|das|ein|eine)\\s+)')
               .hasMatch(clause)) {
         if (subject == null) continue;
         // A coordinated role can omit its copula; German relatives put it last.
         if (_pattern(
-                '^(?:(?:the|a|an|der|die|ein|eine)\\s+)?($relation)\\s+(?:of|von)\\s+')
+                '^(?:(?:the|a|an|der|die|das|ein|eine)\\s+)?($relation)\\s+(?:of|von)\\s+')
             .hasMatch(clause)) {
           clause = 'is ${clause.replaceFirst(_pattern(r'\s+ist$'), '')}';
         }
@@ -371,6 +449,78 @@ TranscriptConnections extractTranscriptConnections(
       } else {
         subject = null;
         antecedent = null;
+      }
+      // English chef is an occupation; German Chef explicitly means boss.
+      if (_pattern(r'\b(?:is|are|has|have)\b').hasMatch(clause) &&
+          _pattern(r'\bchef\b').hasMatch(clause)) {
+        continue;
+      }
+      var expanded = false;
+      String? expandedSubject;
+      String? expandedAntecedent;
+      final listed = direct.firstMatch(clause);
+      if (listed != null) {
+        final subjects = names(listed.group(1)!);
+        final objects = names(listed.group(3)!);
+        if (subjects != null &&
+            objects != null &&
+            (subjects.length > 1 || objects.length > 1) &&
+            (subjects.length == 1 || objects.length == 1)) {
+          final type = transcriptRelationshipWords[
+              listed.group(2)!.toLowerCase().replaceAll(RegExp(r'\s+'), ' ')]!;
+          for (final first in subjects) {
+            for (final second in objects) {
+              connect(first, second, type, source);
+            }
+          }
+          expandedSubject = subjects.length == 1 ? subjects.single : null;
+          expandedAntecedent = objects.length == 1 ? objects.single : null;
+          expanded = true;
+        }
+      }
+      final held = hasRole.firstMatch(clause);
+      if (!expanded && held != null) {
+        final owner = personName(held.group(1)!);
+        final holders = names(held.group(3)!);
+        if (owner != null && holders != null) {
+          final type = transcriptRelationshipWords[
+              held.group(2)!.toLowerCase().replaceAll(RegExp(r'\s+'), ' ')]!;
+          for (final holder in holders) {
+            connect(holder, owner, type, source);
+          }
+          expandedSubject = owner;
+          expandedAntecedent = holders.length == 1 ? holders.single : null;
+          expanded = true;
+        }
+      }
+      for (final (pattern, type) in actions) {
+        if (expanded) break;
+        final action = pattern.firstMatch(clause);
+        if (action == null) continue;
+        final first = personName(action.group(1)!);
+        final second = personName(action.group(2)!);
+        if (first != null && second != null) {
+          connect(first, second, type, source);
+          expandedSubject = first;
+          expandedAntecedent = second;
+          expanded = true;
+        }
+      }
+      for (final (pattern, type) in mutualActions) {
+        if (expanded) break;
+        final action = pattern.firstMatch(clause);
+        if (action == null) continue;
+        final first = personName(action.group(1)!);
+        final second = personName(action.group(2)!);
+        if (first != null && second != null) {
+          connect(first, second, type, source);
+          expanded = true;
+        }
+      }
+      if (expanded) {
+        subject = expandedSubject;
+        antecedent = expandedAntecedent;
+        continue;
       }
       final directMatch = direct.firstMatch(clause);
       var objectIsAntecedent = directMatch != null;
@@ -408,46 +558,30 @@ TranscriptConnections extractTranscriptConnections(
       if (first != null && second != null && word != null) {
         subject = first;
         antecedent = objectIsAntecedent && !isAppositive ? second : first;
-        final type = _relationshipWords[word.toLowerCase()]!;
-        final a = identity(first);
-        final b = identity(second);
-        if (a != b &&
-            !isDuplicateConnection(
-                existing: connections.map((c) => (
-                      person1Id: identity(c.person1Name),
-                      person2Id: identity(c.person2Name),
-                      relationshipType: c.type.name
-                    )),
-                person1Id: a,
-                person2Id: b,
-                type: type)) {
-          connections.add(TranscriptConnection(
-              person1Name: first,
-              person2Name: second,
-              type: type,
-              sourceText: source));
-        }
+        final type = transcriptRelationshipWords[
+            word.toLowerCase().replaceAll(RegExp(r'\s+'), ' ')]!;
+        connect(first, second, type, source);
         continue;
       }
       match = employer.firstMatch(clause);
       if (match != null) {
-        final name = personName(match.group(1)!);
-        if (name != null) {
-          subject = antecedent = name;
-          fact(name, (match.group(2) ?? match.group(3))!.trim(), source,
-              company: true);
+        final workers = names(match.group(1)!);
+        if (workers != null) {
+          subject = workers.length == 1 ? workers.single : null;
+          antecedent = null;
+          for (final worker in workers) {
+            fact(worker, (match.group(2) ?? match.group(3))!.trim(), source,
+                company: true);
+          }
           continue;
         }
       }
       match = sharedResidence.firstMatch(clause);
       if (match != null) {
-        final names = [
-          personName(match.group(1)!),
-          personName(match.group(2)!)
-        ];
-        if (names.every((name) => name != null)) {
-          for (final name in names) {
-            fact(name!, clause, source);
+        final residents = names('${match.group(1)} and ${match.group(2)}');
+        if (residents != null) {
+          for (final resident in residents) {
+            fact(resident, clause, source);
           }
           // A plural subject cannot license a subsequent singular predicate.
           subject = antecedent = null;
@@ -460,7 +594,8 @@ TranscriptConnections extractTranscriptConnections(
       if (match != null) {
         final name = personName(match.group(1)!);
         if (name != null) {
-          subject = antecedent = name;
+          subject = name;
+          antecedent = null;
           fact(name, clause, source);
           continue;
         }

@@ -341,6 +341,91 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets(
+      'new directional roles require a choice and share inverse story evidence',
+      (tester) async {
+    final first = Person(id: 'first', name: 'Paul Müller');
+    final second = Person(id: 'second', name: 'Paul Schmidt');
+    final db = await _database(tester, [first, second]);
+    const text = 'Paul is the teacher of Ben. '
+        'Paul ist der Arbeitgeber von Ben. Paul is the manager of Ben.';
+    final controller = await _controller(tester, db, text);
+    expect(controller.connections, isEmpty);
+    expect(controller.selectedPeople.single.name, 'Ben');
+    await tester.pumpWidget(wrapLocalized(
+        Scaffold(body: TranscriptPeoplePicker(controller: controller))));
+    await tester.tap(find.widgetWithText(ActionChip, second.name));
+    await tester.pump();
+    expect(
+        controller.connections
+            .map((c) => (c.person1.id, c.type, c.person2.name)),
+        [
+          ('second', RelationshipType.teacher, 'Ben'),
+          ('second', RelationshipType.employer, 'Ben'),
+          ('second', RelationshipType.manager, 'Ben'),
+        ]);
+    final story = Event(title: 'Roles', dateTime: DateTime(2026, 10, 27));
+    late String benId;
+    late Map<String, String> connectionIds;
+    await tester.runAsync(() async {
+      expect(await db.getConnections(), isEmpty);
+      expect(await db.getPersons(), hasLength(2));
+      final ids = await saveStoryPeople(db, await controller.peopleForSave());
+      benId = ids.singleWhere((id) => id != second.id);
+      await db.saveEvent(story.copyWith(participantIds: ids));
+      await controller.saveInformation(story);
+      final saved = await db.getConnectionsForEvent(story.id);
+      connectionIds = {
+        for (final edge in saved) edge.relationshipType: edge.id
+      };
+      expect(connectionIds.keys,
+          unorderedEquals(['teacher', 'employer', 'manager']));
+      expect(saved.map((edge) => edge.description),
+          unorderedEquals(text.substring(0, text.length - 1).split('. ')));
+      for (final edge in saved) {
+        expect((edge.person1Id, edge.person2Id), (second.id, benId));
+        expect(edge.isInferred, isTrue);
+        expect(edge.sourceEventIds, [story.id]);
+      }
+    });
+    await tester.pumpWidget(const SizedBox.shrink());
+
+    final inverse = await _controller(
+        tester,
+        db,
+        'Ben ist der Schüler von Paul Schmidt. '
+        'Ben is the employee of Paul Schmidt. Ben berichtet an Paul Schmidt.');
+    expect(
+        inverse.connections.map((c) => (c.person1.id, c.type, c.person2.id)), [
+      (benId, RelationshipType.student, second.id),
+      (benId, RelationshipType.employee, second.id),
+      (benId, RelationshipType.directReport, second.id),
+    ]);
+    await tester.runAsync(() async {
+      final ids = await saveStoryPeople(db, await inverse.peopleForSave());
+      expect(ids, unorderedEquals([benId, second.id]));
+      final other = Event(
+          title: 'Inverse roles',
+          dateTime: DateTime(2026, 10, 28),
+          participantIds: ids);
+      await db.saveEvent(other);
+      await inverse.saveInformation(other);
+      expect(await db.getPersons(), hasLength(3));
+      final saved = await db.getConnections();
+      expect(saved, hasLength(3));
+      expect((await db.getConnectionsForEvent(other.id)).map((edge) => edge.id),
+          unorderedEquals(connectionIds.values));
+      expect(saved.map((edge) => edge.description),
+          unorderedEquals(text.substring(0, text.length - 1).split('. ')));
+      for (final edge in saved) {
+        expect(edge.id, connectionIds[edge.relationshipType]);
+        expect((edge.person1Id, edge.person2Id), (second.id, benId));
+        expect(edge.originEventId, story.id);
+        expect(edge.sourceEventIds, [story.id, other.id]);
+      }
+    });
+  });
+
   testWidgets('relationship aliases reuse canonical people and deduplicate',
       (tester) async {
     final anna = Person(id: 'anna', name: 'Anna Müller', aliases: ['Änni']);

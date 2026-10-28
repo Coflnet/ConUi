@@ -1,0 +1,1494 @@
+[
+  {
+    "id": "r001",
+    "family": "care-and-mentorship",
+    "language": "en",
+    "text": "Anna is the adoptive mother of Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "adoptiveParent",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r002",
+    "family": "care-and-mentorship",
+    "language": "de",
+    "text": "Anna ist die Adoptivtochter von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "adoptedChild",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r003",
+    "family": "care-and-mentorship",
+    "language": "de",
+    "text": "Anna ist die Adoptivmutter von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "adoptiveParent",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r004",
+    "family": "care-and-mentorship",
+    "language": "en",
+    "text": "Anna is Ben’s adopted son.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "adoptedChild",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r005",
+    "family": "care-and-mentorship",
+    "language": "en",
+    "text": "Anna is the godmother of Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "godparent",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r006",
+    "family": "care-and-mentorship",
+    "language": "de",
+    "text": "Anna ist das Patenkind von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "godchild",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r007",
+    "family": "care-and-mentorship",
+    "language": "de",
+    "text": "Bens Patentante ist Anna.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "godparent",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r008",
+    "family": "care-and-mentorship",
+    "language": "en",
+    "text": "Anna is Ben's godchild.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "godchild",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r009",
+    "family": "care-and-mentorship",
+    "language": "en",
+    "text": "Anna is the guardian of Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "guardian",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r010",
+    "family": "care-and-mentorship",
+    "language": "de",
+    "text": "Anna ist das Mündel von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "ward",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r011",
+    "family": "care-and-mentorship",
+    "language": "de",
+    "text": "Anna ist der Vormund von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "guardian",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r012",
+    "family": "care-and-mentorship",
+    "language": "en",
+    "text": "Ben's ward is Anna.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "ward",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r013",
+    "family": "care-and-mentorship",
+    "language": "en",
+    "text": "Anna is Ben's mentor.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "mentor",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r014",
+    "family": "care-and-mentorship",
+    "language": "de",
+    "text": "Anna ist die Mentorin von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "mentor",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r015",
+    "family": "care-and-mentorship",
+    "language": "en",
+    "text": "Anna is the mentee of Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "mentee",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r016",
+    "family": "care-and-mentorship",
+    "language": "de",
+    "text": "Anna ist der Mentee von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "mentee",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r017",
+    "family": "extended-family",
+    "language": "en",
+    "text": "Anna is the aunt of Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "auntOrUncle",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r018",
+    "family": "extended-family",
+    "language": "de",
+    "text": "Anna ist der Onkel von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "auntOrUncle",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r019",
+    "family": "extended-family",
+    "language": "en",
+    "text": "Ben's niece is Anna.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "nieceOrNephew",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r020",
+    "family": "extended-family",
+    "language": "de",
+    "text": "Anna ist der Neffe von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "nieceOrNephew",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r021",
+    "family": "extended-family",
+    "language": "en",
+    "text": "Anna and Ben are cousins.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "cousin",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r022",
+    "family": "extended-family",
+    "language": "de",
+    "text": "Anna ist die Cousine von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "cousin",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r023",
+    "family": "extended-family",
+    "language": "en",
+    "text": "Anna is Ben's mother-in-law.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "parentInLaw",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r024",
+    "family": "extended-family",
+    "language": "de",
+    "text": "Anna ist der Schwiegervater von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "parentInLaw",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r025",
+    "family": "extended-family",
+    "language": "en",
+    "text": "Anna is the son-in-law of Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "childInLaw",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r026",
+    "family": "extended-family",
+    "language": "de",
+    "text": "Bens Schwiegertochter ist Anna.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "childInLaw",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r027",
+    "family": "extended-family",
+    "language": "en",
+    "text": "Anna is the sister-in-law of Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "siblingInLaw",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r028",
+    "family": "extended-family",
+    "language": "de",
+    "text": "Anna ist der Schwager von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "siblingInLaw",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r029",
+    "family": "extended-family",
+    "language": "en",
+    "text": "Anna is Ben’s stepsister.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "stepSibling",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r030",
+    "family": "extended-family",
+    "language": "de",
+    "text": "Anna und Ben sind Stiefgeschwister.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "stepSibling",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r031",
+    "family": "household-school-work",
+    "language": "en",
+    "text": "Anna and Ben are roommates.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "roommate",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r032",
+    "family": "household-school-work",
+    "language": "de",
+    "text": "Anna ist die Mitbewohnerin von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "roommate",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r033",
+    "family": "household-school-work",
+    "language": "en",
+    "text": "Anna is Ben's classmate.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "classmate",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r034",
+    "family": "household-school-work",
+    "language": "de",
+    "text": "Anna und Ben sind Klassenkameraden.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "classmate",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r035",
+    "family": "household-school-work",
+    "language": "en",
+    "text": "Anna is the teammate of Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "teammate",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r036",
+    "family": "household-school-work",
+    "language": "de",
+    "text": "Anna ist die Teamkollegin von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "teammate",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r037",
+    "family": "household-school-work",
+    "language": "en",
+    "text": "Anna is the manager of Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "manager",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r038",
+    "family": "household-school-work",
+    "language": "de",
+    "text": "Bens Vorgesetzte ist Anna.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "manager",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r039",
+    "family": "household-school-work",
+    "language": "en",
+    "text": "Anna is Ben's direct report.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "directReport",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r040",
+    "family": "household-school-work",
+    "language": "de",
+    "text": "Anna ist Ben direkt unterstellt.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "directReport",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r041",
+    "family": "household-school-work",
+    "language": "en",
+    "text": "Anna is the teacher of Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "teacher",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r042",
+    "family": "household-school-work",
+    "language": "de",
+    "text": "Anna ist die Lehrerin von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "teacher",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r043",
+    "family": "household-school-work",
+    "language": "en",
+    "text": "Ben's student is Anna.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "student",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r044",
+    "family": "household-school-work",
+    "language": "de",
+    "text": "Anna ist die Schülerin von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "student",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r045",
+    "family": "household-school-work",
+    "language": "en",
+    "text": "Anna and Ben are business partners.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "businessPartner",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r046",
+    "family": "household-school-work",
+    "language": "de",
+    "text": "Anna ist die Geschäftspartnerin von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "businessPartner",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r047",
+    "family": "natural-and-attribution",
+    "language": "en",
+    "text": "Anna adopted Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "adoptiveParent",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r048",
+    "family": "natural-and-attribution",
+    "language": "de",
+    "text": "Anna hat Ben adoptiert.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "adoptiveParent",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r049",
+    "family": "natural-and-attribution",
+    "language": "en",
+    "text": "Anna mentors Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "mentor",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r050",
+    "family": "natural-and-attribution",
+    "language": "de",
+    "text": "Anna betreut Ben als Mentorin.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "mentor",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r051",
+    "family": "natural-and-attribution",
+    "language": "en",
+    "text": "Anna teaches Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "teacher",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r052",
+    "family": "natural-and-attribution",
+    "language": "de",
+    "text": "Anna unterrichtet Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "teacher",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r053",
+    "family": "natural-and-attribution",
+    "language": "en",
+    "text": "Ben reports to Anna.",
+    "expected": [
+      {
+        "from": "Ben",
+        "type": "directReport",
+        "to": "Anna"
+      }
+    ]
+  },
+  {
+    "id": "r054",
+    "family": "natural-and-attribution",
+    "language": "de",
+    "text": "Ben berichtet an Anna.",
+    "expected": [
+      {
+        "from": "Ben",
+        "type": "directReport",
+        "to": "Anna"
+      }
+    ]
+  },
+  {
+    "id": "r055",
+    "family": "natural-and-attribution",
+    "language": "en",
+    "text": "Anna is married to Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "spouse",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r056",
+    "family": "natural-and-attribution",
+    "language": "de",
+    "text": "Anna ist mit Ben verheiratet.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "spouse",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r057",
+    "family": "natural-and-attribution",
+    "language": "en",
+    "text": "Ben’s grandfather is Anna.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "grandparent",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r058",
+    "family": "natural-and-attribution",
+    "language": "de",
+    "text": "Bens Enkelin ist Anna.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "grandchild",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r059",
+    "family": "natural-and-attribution",
+    "language": "en",
+    "text": "Anna, Ben's aunt, lives in Leeds.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "auntOrUncle",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r060",
+    "family": "natural-and-attribution",
+    "language": "de",
+    "text": "Anna, die Schwiegermutter von Ben, wohnt in Bonn.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "parentInLaw",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r061",
+    "family": "natural-and-attribution",
+    "language": "en",
+    "text": "Anna, the guardian of Ben, works at Atlas.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "guardian",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r062",
+    "family": "natural-and-attribution",
+    "language": "de",
+    "text": "Anna, Bens Mentorin, wohnt in Köln.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "mentor",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r063",
+    "family": "natural-and-attribution",
+    "language": "en",
+    "text": "Anna is the acquaintance of Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "acquaintance",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r064",
+    "family": "natural-and-attribution",
+    "language": "de",
+    "text": "Anna ist die Ex-Partnerin von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "exPartner",
+        "to": "Ben"
+      }
+    ]
+  },
+  {
+    "id": "r065",
+    "family": "named-lists",
+    "language": "en",
+    "text": "Anna, Ben and Clara are friends.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "friend",
+        "to": "Ben"
+      },
+      {
+        "from": "Anna",
+        "type": "friend",
+        "to": "Clara"
+      },
+      {
+        "from": "Ben",
+        "type": "friend",
+        "to": "Clara"
+      }
+    ]
+  },
+  {
+    "id": "r066",
+    "family": "named-lists",
+    "language": "de",
+    "text": "Anna, Ben und Clara sind Geschwister.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "sibling",
+        "to": "Ben"
+      },
+      {
+        "from": "Anna",
+        "type": "sibling",
+        "to": "Clara"
+      },
+      {
+        "from": "Ben",
+        "type": "sibling",
+        "to": "Clara"
+      }
+    ]
+  },
+  {
+    "id": "r067",
+    "family": "named-lists",
+    "language": "en",
+    "text": "Anna is the mother of Ben and Clara.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "parent",
+        "to": "Ben"
+      },
+      {
+        "from": "Anna",
+        "type": "parent",
+        "to": "Clara"
+      }
+    ]
+  },
+  {
+    "id": "r068",
+    "family": "named-lists",
+    "language": "de",
+    "text": "Anna ist die Tante von Ben und Clara.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "auntOrUncle",
+        "to": "Ben"
+      },
+      {
+        "from": "Anna",
+        "type": "auntOrUncle",
+        "to": "Clara"
+      }
+    ]
+  },
+  {
+    "id": "r069",
+    "family": "named-lists",
+    "language": "en",
+    "text": "Anna and Ben are the parents of Clara.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "parent",
+        "to": "Clara"
+      },
+      {
+        "from": "Ben",
+        "type": "parent",
+        "to": "Clara"
+      }
+    ]
+  },
+  {
+    "id": "r070",
+    "family": "named-lists",
+    "language": "de",
+    "text": "Anna und Ben sind Eltern von Clara.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "parent",
+        "to": "Clara"
+      },
+      {
+        "from": "Ben",
+        "type": "parent",
+        "to": "Clara"
+      }
+    ]
+  },
+  {
+    "id": "r071",
+    "family": "named-lists",
+    "language": "en",
+    "text": "Anna is the teacher of Ben, Clara and David.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "teacher",
+        "to": "Ben"
+      },
+      {
+        "from": "Anna",
+        "type": "teacher",
+        "to": "Clara"
+      },
+      {
+        "from": "Anna",
+        "type": "teacher",
+        "to": "David"
+      }
+    ]
+  },
+  {
+    "id": "r072",
+    "family": "named-lists",
+    "language": "de",
+    "text": "Anna, Ben und Clara sind Mitbewohner.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "roommate",
+        "to": "Ben"
+      },
+      {
+        "from": "Anna",
+        "type": "roommate",
+        "to": "Clara"
+      },
+      {
+        "from": "Ben",
+        "type": "roommate",
+        "to": "Clara"
+      }
+    ]
+  },
+  {
+    "id": "r073",
+    "family": "identity",
+    "language": "en",
+    "text": "Anni is the mentor of Ben.",
+    "expected": [
+      {
+        "from": "id:anna",
+        "type": "mentor",
+        "to": "id:ben"
+      }
+    ],
+    "people": [
+      {
+        "id": "anna",
+        "name": "Anna Weber",
+        "aliases": [
+          "Anni"
+        ]
+      },
+      {
+        "id": "ben",
+        "name": "Benjamin Roth",
+        "aliases": [
+          "Ben"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "r074",
+    "family": "identity",
+    "language": "de",
+    "text": "Anna Weber ist die Mentorin von Benjamin Roth. Anni ist die Mentorin von Ben.",
+    "expected": [
+      {
+        "from": "id:anna",
+        "type": "mentor",
+        "to": "id:ben"
+      }
+    ],
+    "note": "Aliases must not duplicate one relationship.",
+    "people": [
+      {
+        "id": "anna",
+        "name": "Anna Weber",
+        "aliases": [
+          "Anni"
+        ]
+      },
+      {
+        "id": "ben",
+        "name": "Benjamin Roth",
+        "aliases": [
+          "Ben"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "r075",
+    "family": "identity",
+    "language": "en",
+    "text": "Anni is the friend of Anna Weber.",
+    "expected": [],
+    "note": "Two names of the same person cannot create a self edge.",
+    "people": [
+      {
+        "id": "anna",
+        "name": "Anna Weber",
+        "aliases": [
+          "Anni"
+        ]
+      },
+      {
+        "id": "ben",
+        "name": "Benjamin Roth",
+        "aliases": [
+          "Ben"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "r076",
+    "family": "identity",
+    "language": "de",
+    "text": "Anna ist die Freundin von Anna.",
+    "expected": [],
+    "note": "Identical new names cannot create a self edge."
+  },
+  {
+    "id": "r077",
+    "family": "identity",
+    "language": "en",
+    "text": "Alex is the friend of Ben.",
+    "expected": [
+      {
+        "from": "Alex",
+        "type": "friend",
+        "to": "id:ben"
+      }
+    ],
+    "note": "The surface mention stays ambiguous; controller review must choose the existing person.",
+    "people": [
+      {
+        "id": "a1",
+        "name": "Alex Meyer"
+      },
+      {
+        "id": "a2",
+        "name": "Alex Schulz"
+      },
+      {
+        "id": "ben",
+        "name": "Benjamin Roth",
+        "aliases": [
+          "Ben"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "r078",
+    "family": "identity",
+    "language": "de",
+    "text": "Élodie ist die Nachbarin von Anne-Marie.",
+    "expected": [
+      {
+        "from": "Élodie",
+        "type": "neighbour",
+        "to": "Anne-Marie"
+      }
+    ]
+  },
+  {
+    "id": "r079",
+    "family": "hard-negatives",
+    "language": "en",
+    "text": "Anna and Ben live together in London.",
+    "expected": [],
+    "note": "Shared residence does not establish romance."
+  },
+  {
+    "id": "r080",
+    "family": "hard-negatives",
+    "language": "de",
+    "text": "Anna und Ben arbeiten bei Atlas.",
+    "expected": [],
+    "note": "Coemployment does not establish friendship or a direct reporting line."
+  },
+  {
+    "id": "r081",
+    "family": "hard-negatives",
+    "language": "en",
+    "text": "Anna works at Ben.",
+    "expected": [],
+    "note": "An employer named Ben is not a person endpoint."
+  },
+  {
+    "id": "r082",
+    "family": "hard-negatives",
+    "language": "de",
+    "text": "Anna hat einen Hund namens Ben.",
+    "expected": [],
+    "note": "A named animal is not a person endpoint."
+  },
+  {
+    "id": "r083",
+    "family": "hard-negatives",
+    "language": "en",
+    "text": "Anna is not the guardian of Ben.",
+    "expected": [],
+    "note": "Negated role."
+  },
+  {
+    "id": "r084",
+    "family": "hard-negatives",
+    "language": "de",
+    "text": "Anna ist keine Lehrerin von Ben.",
+    "expected": [],
+    "note": "Negated role."
+  },
+  {
+    "id": "r085",
+    "family": "hard-negatives",
+    "language": "en",
+    "text": "Anna might be the aunt of Ben.",
+    "expected": [],
+    "note": "Modal uncertainty."
+  },
+  {
+    "id": "r086",
+    "family": "hard-negatives",
+    "language": "de",
+    "text": "Vielleicht ist Anna die Mutter von Ben.",
+    "expected": [],
+    "note": "Explicit uncertainty."
+  },
+  {
+    "id": "r087",
+    "family": "hard-negatives",
+    "language": "en",
+    "text": "If Anna is the mentor of Ben, Clara will help.",
+    "expected": [],
+    "note": "Conditional scope."
+  },
+  {
+    "id": "r088",
+    "family": "hard-negatives",
+    "language": "de",
+    "text": "Falls Anna die Tante von Ben ist, kommt Clara.",
+    "expected": [],
+    "note": "Conditional scope."
+  },
+  {
+    "id": "r089",
+    "family": "hard-negatives",
+    "language": "en",
+    "text": "Clara says Anna is the mother of Ben.",
+    "expected": [],
+    "note": "Reported claim."
+  },
+  {
+    "id": "r090",
+    "family": "hard-negatives",
+    "language": "de",
+    "text": "Clara behauptet, Anna ist die Tante von Ben.",
+    "expected": [],
+    "note": "Reported claim."
+  },
+  {
+    "id": "r091",
+    "family": "hard-negatives",
+    "language": "en",
+    "text": "\"Anna is the mother of Ben.\"",
+    "expected": [],
+    "note": "A quotation alone is not an asserted current relationship."
+  },
+  {
+    "id": "r092",
+    "family": "hard-negatives",
+    "language": "de",
+    "text": "„Anna ist die Mutter von Ben.“",
+    "expected": [],
+    "note": "Quoted claim."
+  },
+  {
+    "id": "r093",
+    "family": "hard-negatives",
+    "language": "en",
+    "text": "Is Anna the teacher of Ben?",
+    "expected": [],
+    "note": "Question."
+  },
+  {
+    "id": "r094",
+    "family": "hard-negatives",
+    "language": "de",
+    "text": "Ist Anna die Mutter von Ben?",
+    "expected": [],
+    "note": "Question."
+  },
+  {
+    "id": "r095",
+    "family": "hard-negatives",
+    "language": "en",
+    "text": "Anna will marry Ben.",
+    "expected": [],
+    "note": "Future marriage is not a current spouse relationship."
+  },
+  {
+    "id": "r096",
+    "family": "hard-negatives",
+    "language": "de",
+    "text": "Anna wird Ben heiraten.",
+    "expected": [],
+    "note": "Future marriage."
+  },
+  {
+    "id": "r097",
+    "family": "hard-negatives",
+    "language": "en",
+    "text": "Anna was married to Ben.",
+    "expected": [],
+    "note": "Historical marriage does not establish a current spouse."
+  },
+  {
+    "id": "r098",
+    "family": "hard-negatives",
+    "language": "de",
+    "text": "Anna war mit Ben verheiratet.",
+    "expected": [],
+    "note": "Historical marriage."
+  },
+  {
+    "id": "r099",
+    "family": "hard-negatives",
+    "language": "en",
+    "text": "Anna met Clara. She is the sister of Ben.",
+    "expected": [],
+    "note": "Ambiguous general pronoun."
+  },
+  {
+    "id": "r100",
+    "family": "hard-negatives",
+    "language": "de",
+    "text": "Anna traf Clara. Sie ist die Schwester von Ben.",
+    "expected": [],
+    "note": "Ambiguous general pronoun."
+  },
+  {
+    "id": "r101",
+    "family": "hard-negatives",
+    "language": "en",
+    "text": "Anna is the friend of the company Atlas.",
+    "expected": [],
+    "note": "An explicitly described company is not a person."
+  },
+  {
+    "id": "r102",
+    "family": "hard-negatives",
+    "language": "de",
+    "text": "Anna ist die Freundin des Hundes Ben.",
+    "expected": [],
+    "note": "An explicitly described pet is not a person."
+  },
+  {
+    "id": "r103",
+    "family": "hard-negatives",
+    "language": "en",
+    "text": "Anna and Ben play tennis.",
+    "expected": [],
+    "note": "A shared activity does not establish teammate or friendship."
+  },
+  {
+    "id": "r104",
+    "family": "hard-negatives",
+    "language": "de",
+    "text": "Anna und Ben besuchen dieselbe Schule.",
+    "expected": [],
+    "note": "Same school does not establish classmate."
+  },
+  {
+    "id": "r105",
+    "family": "scope",
+    "language": "en",
+    "text": "Anna is not the aunt of Ben. Clara is the cousin of David.",
+    "expected": [
+      {
+        "from": "Clara",
+        "type": "cousin",
+        "to": "David"
+      }
+    ]
+  },
+  {
+    "id": "r106",
+    "family": "scope",
+    "language": "de",
+    "text": "Anna ist vielleicht die Mutter von Ben. Clara ist die Lehrerin von David.",
+    "expected": [
+      {
+        "from": "Clara",
+        "type": "teacher",
+        "to": "David"
+      }
+    ]
+  },
+  {
+    "id": "r107",
+    "family": "scope",
+    "language": "en",
+    "text": "Anna is the mother of Ben. Ben is the son of Anna.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "parent",
+        "to": "Ben"
+      }
+    ],
+    "note": "Inverse wording must not duplicate the same fact."
+  },
+  {
+    "id": "r108",
+    "family": "scope",
+    "language": "de",
+    "text": "Anna und Ben sind Geschäftspartner. Anna ist die Schwester von Clara.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "businessPartner",
+        "to": "Ben"
+      },
+      {
+        "from": "Anna",
+        "type": "sibling",
+        "to": "Clara"
+      }
+    ],
+    "note": "Business partnership must not add a romantic partner edge."
+  },
+  {
+    "id": "r109",
+    "family": "household-school-work",
+    "language": "en",
+    "text": "Anna is the employer of Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "employer",
+        "to": "Ben"
+      }
+    ],
+    "note": "An employer is not necessarily a direct manager."
+  },
+  {
+    "id": "r110",
+    "family": "household-school-work",
+    "language": "de",
+    "text": "Anna ist der Arbeitgeber von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "employer",
+        "to": "Ben"
+      }
+    ],
+    "note": "Named employer inverse of employee."
+  },
+  {
+    "id": "r111",
+    "family": "household-school-work",
+    "language": "en",
+    "text": "Anna is the employee of Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "employee",
+        "to": "Ben"
+      }
+    ],
+    "note": "Employment does not establish a direct reporting line."
+  },
+  {
+    "id": "r112",
+    "family": "household-school-work",
+    "language": "de",
+    "text": "Anna ist der Mitarbeiter von Ben.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "employee",
+        "to": "Ben"
+      }
+    ],
+    "note": "Mitarbeiter means employee, not necessarily direct report."
+  },
+  {
+    "id": "r113",
+    "family": "hard-negatives",
+    "language": "en",
+    "text": "Anna is Ben's chef.",
+    "expected": [],
+    "note": "English chef describes a cook and must not match German Chef (manager)."
+  },
+  {
+    "id": "r114",
+    "family": "household-school-work",
+    "language": "de",
+    "text": "Anna ist Bens Chef.",
+    "expected": [
+      {
+        "from": "Anna",
+        "type": "manager",
+        "to": "Ben"
+      }
+    ],
+    "note": "German Chef describes a manager, unlike English chef."
+  },
+  {
+    "id": "r115",
+    "family": "hard-negatives",
+    "language": "en",
+    "text": "Anna is the former colleague of Ben.",
+    "expected": [],
+    "note": "A former colleague does not establish a current colleague relationship."
+  },
+  {
+    "id": "r116",
+    "family": "hard-negatives",
+    "language": "de",
+    "text": "Anna ist die ehemalige Kollegin von Ben.",
+    "expected": [],
+    "note": "An explicitly former role must not become a current colleague relationship."
+  }
+]

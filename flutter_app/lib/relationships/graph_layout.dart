@@ -3,17 +3,17 @@ import 'dart:collection';
 import 'family_graph.dart';
 import 'relationship_type.dart';
 
-/// Line style a graph edge should be drawn with, independent of layout: every directed
-/// type (parent/child and its variants - step, adoptive, grand-, god-, guardian/ward,
-/// mentor/mentee) renders as "parent-child", the romantic-tie types as "partner",
-/// sibling/half-sibling as "sibling", and everything else (friend, colleague, unknown
-/// legacy values, ...) as "other".
+/// Line style independent of layout: parent-like, guardian and mentor roles use
+/// parent-child lines; romantic ties use partner lines; siblings use sibling lines.
+/// Other family, work, education and social relationships use neutral lines.
 enum GraphEdgeKind { parentChild, partner, sibling, other }
 
 GraphEdgeKind edgeKindFor(RelationshipKind kind) {
   final type = kind.known;
   if (type == null) return GraphEdgeKind.other;
-  if (type.isDirected) return GraphEdgeKind.parentChild;
+  if (_upperRoles.contains(type) || _upperRoles.contains(inverseOf(type))) {
+    return GraphEdgeKind.parentChild;
+  }
   switch (type) {
     case RelationshipType.spouse:
     case RelationshipType.partner:
@@ -21,6 +21,7 @@ GraphEdgeKind edgeKindFor(RelationshipKind kind) {
       return GraphEdgeKind.partner;
     case RelationshipType.sibling:
     case RelationshipType.halfSibling:
+    case RelationshipType.stepSibling:
       return GraphEdgeKind.sibling;
     default:
       return GraphEdgeKind.other;
@@ -88,7 +89,7 @@ class GraphLayoutNode {
   });
 }
 
-/// One positioned edge in a [GraphLayout]. For a directed type, [sourceId] is always
+/// One positioned edge in a [GraphLayout]. For a parent-child line, [sourceId] is always
 /// the generationally-earlier/"upper" person (e.g. the parent) so lines are always
 /// drawn from the earlier generation toward the later one, regardless of which person
 /// was stored as person1/person2.
@@ -321,7 +322,7 @@ Map<String, int> _finalizeColumns(
 GraphLayoutEdge _normalizeEdge(GraphEdge edge) {
   final kind = edgeKindFor(edge.kind);
   final type = edge.kind.known;
-  if (type != null && type.isDirected) {
+  if (type != null && kind == GraphEdgeKind.parentChild) {
     final person1IsUpper = _upperRoles.contains(type);
     return GraphLayoutEdge(
       id: edge.id,

@@ -42,6 +42,7 @@ RelationshipGroup groupFor(RelationshipType type) {
       return RelationshipGroup.grandchildren;
     case RelationshipType.sibling:
     case RelationshipType.halfSibling:
+    case RelationshipType.stepSibling:
       return RelationshipGroup.siblings;
     case RelationshipType.spouse:
     case RelationshipType.partner:
@@ -51,6 +52,12 @@ RelationshipGroup groupFor(RelationshipType type) {
     case RelationshipType.godchild:
     case RelationshipType.guardian:
     case RelationshipType.ward:
+    case RelationshipType.auntOrUncle:
+    case RelationshipType.nieceOrNephew:
+    case RelationshipType.parentInLaw:
+    case RelationshipType.childInLaw:
+    case RelationshipType.cousin:
+    case RelationshipType.siblingInLaw:
     case RelationshipType.otherRelative:
       return RelationshipGroup.otherFamily;
     case RelationshipType.mentor:
@@ -59,6 +66,16 @@ RelationshipGroup groupFor(RelationshipType type) {
     case RelationshipType.colleague:
     case RelationshipType.neighbour:
     case RelationshipType.acquaintance:
+    case RelationshipType.manager:
+    case RelationshipType.directReport:
+    case RelationshipType.employer:
+    case RelationshipType.employee:
+    case RelationshipType.teacher:
+    case RelationshipType.student:
+    case RelationshipType.roommate:
+    case RelationshipType.classmate:
+    case RelationshipType.teammate:
+    case RelationshipType.businessPartner:
     case RelationshipType.other:
       return RelationshipGroup.friendsAndOthers;
   }

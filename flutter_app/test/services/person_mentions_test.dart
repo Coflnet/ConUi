@@ -3,6 +3,88 @@ import 'package:relationship_manager/models/person.dart';
 import 'package:relationship_manager/services/person_mentions.dart';
 
 void main() {
+  test('new human roles and their genitives reuse known people', () {
+    final anna = Person(id: 'anna', name: 'Anna Müller');
+    for (final role in [
+      'Mentorin',
+      'Mitbewohnerin',
+      'Lehrerin',
+      'Chefin',
+      'Geschäftspartnerin',
+      'Schwägerin',
+      'Patentante',
+      'Arbeitgeberin'
+    ]) {
+      expect(
+          extractPersonMentions('Annas $role heißt Clara.', [anna]).any(
+              (mention) =>
+                  mention.matches.any((person) => person.id == anna.id)),
+          isTrue,
+          reason: role);
+    }
+    for (final text in [
+      'My mentor Anna arrived.',
+      'Meine Mitbewohnerin Anna kam.',
+      'My teacher is Anna.',
+      'Meine Lehrerin ist Anna.'
+    ]) {
+      expect(
+          extractPersonMentions(text, [anna]).single.matches.single.id, 'anna',
+          reason: text);
+    }
+  });
+
+  test('explicit human introductions recognize named lists and academic titles',
+      () {
+    for (final text in [
+      'Our colleagues Anna, Ben and Clara arrived.',
+      'Meine Mitbewohner Anna, Ben und Clara kamen.',
+      'My friends are Anna, Ben and Clara.'
+    ]) {
+      expect(extractPersonMentions(text, []).map((mention) => mention.name),
+          ['Anna', 'Ben', 'Clara'],
+          reason: text);
+    }
+    expect(
+        extractPersonMentions('Meine Mentorin Dr. Clara Müller kam.', [])
+            .single
+            .name,
+        'Clara Müller');
+    expect(
+        extractPersonMentions('My colleague Anna, Berlin was sunny.', [])
+            .map((mention) => mention.name),
+        ['Anna']);
+    expect(
+        extractPersonMentions("My mentor Ben's colleague arrived.", [])
+            .any((mention) => mention.name == "Ben's"),
+        isFalse);
+  });
+
+  test('named pets and companies do not reuse a familiar human identity', () {
+    final people = [
+      Person(name: 'Milo'),
+      Person(name: 'Rex'),
+      Person(name: 'Atlas')
+    ];
+    for (final text in [
+      'Mein Hund Milo kam.',
+      'My dog Milo arrived.',
+      'Meine Hunde Milo und Rex kamen.',
+      'My dogs named Milo and Rex arrived.',
+      'My business partner Atlas GmbH expanded.'
+    ]) {
+      expect(extractPersonMentions(text, people), isEmpty, reason: text);
+    }
+    expect(
+        extractPersonMentions(
+                'Atlas GmbH expanded. My colleague Atlas arrived.', people)
+            .single
+            .matches
+            .single
+            .name,
+        'Atlas');
+  });
+
   test('normalizes whitespace, case and apostrophes', () {
     expect(normalizedPersonName('  Élodie   O’Connor '), "élodie o'connor");
   });
@@ -167,11 +249,21 @@ void main() {
     final hans = Person(id: 'hans', name: 'Hans');
     for (final text in ['Bens Vater ist Alex.', 'Alex ist Bens Mutter.']) {
       expect(
-          extractPersonMentions(text, [ben]).single.matches.single.id, 'ben');
+          extractPersonMentions(text, [ben])
+              .singleWhere((mention) => mention.matches.isNotEmpty)
+              .matches
+              .single
+              .id,
+          'ben');
     }
     for (final text in ["Hans' Vater ist Alex.", 'Alex ist Hans’ Mutter.']) {
       expect(
-          extractPersonMentions(text, [hans]).single.matches.single.id, 'hans');
+          extractPersonMentions(text, [hans])
+              .singleWhere((mention) => mention.matches.isNotEmpty)
+              .matches
+              .single
+              .id,
+          'hans');
     }
     for (final text in [
       'Bens kamen.',

@@ -76,6 +76,40 @@ class RelationshipText {
         return l10n.relLabelAcquaintance;
       case RelationshipType.otherRelative:
         return l10n.relLabelOtherRelative;
+      case RelationshipType.auntOrUncle:
+        return l10n.relLabelAuntOrUncle;
+      case RelationshipType.nieceOrNephew:
+        return l10n.relLabelNieceOrNephew;
+      case RelationshipType.parentInLaw:
+        return l10n.relLabelParentInLaw;
+      case RelationshipType.childInLaw:
+        return l10n.relLabelChildInLaw;
+      case RelationshipType.manager:
+        return l10n.relLabelManager;
+      case RelationshipType.directReport:
+        return l10n.relLabelDirectReport;
+      case RelationshipType.employer:
+        return l10n.relLabelEmployer;
+      case RelationshipType.employee:
+        return l10n.relLabelEmployee;
+      case RelationshipType.teacher:
+        return l10n.relLabelTeacher;
+      case RelationshipType.student:
+        return l10n.relLabelStudent;
+      case RelationshipType.cousin:
+        return l10n.relLabelCousin;
+      case RelationshipType.siblingInLaw:
+        return l10n.relLabelSiblingInLaw;
+      case RelationshipType.stepSibling:
+        return l10n.relLabelStepSibling;
+      case RelationshipType.roommate:
+        return l10n.relLabelRoommate;
+      case RelationshipType.classmate:
+        return l10n.relLabelClassmate;
+      case RelationshipType.teammate:
+        return l10n.relLabelTeammate;
+      case RelationshipType.businessPartner:
+        return l10n.relLabelBusinessPartner;
       case RelationshipType.other:
         return l10n.relLabelOther;
     }
@@ -148,6 +182,40 @@ class RelationshipText {
         return l10n.relRoleOfAcquaintance(otherName);
       case RelationshipType.otherRelative:
         return l10n.relRoleOfOtherRelative(otherName);
+      case RelationshipType.auntOrUncle:
+        return l10n.relRoleOfAuntOrUncle(otherName);
+      case RelationshipType.nieceOrNephew:
+        return l10n.relRoleOfNieceOrNephew(otherName);
+      case RelationshipType.parentInLaw:
+        return l10n.relRoleOfParentInLaw(otherName);
+      case RelationshipType.childInLaw:
+        return l10n.relRoleOfChildInLaw(otherName);
+      case RelationshipType.manager:
+        return l10n.relRoleOfManager(otherName);
+      case RelationshipType.directReport:
+        return l10n.relRoleOfDirectReport(otherName);
+      case RelationshipType.employer:
+        return l10n.relRoleOfEmployer(otherName);
+      case RelationshipType.employee:
+        return l10n.relRoleOfEmployee(otherName);
+      case RelationshipType.teacher:
+        return l10n.relRoleOfTeacher(otherName);
+      case RelationshipType.student:
+        return l10n.relRoleOfStudent(otherName);
+      case RelationshipType.cousin:
+        return l10n.relRoleOfCousin(otherName);
+      case RelationshipType.siblingInLaw:
+        return l10n.relRoleOfSiblingInLaw(otherName);
+      case RelationshipType.stepSibling:
+        return l10n.relRoleOfStepSibling(otherName);
+      case RelationshipType.roommate:
+        return l10n.relRoleOfRoommate(otherName);
+      case RelationshipType.classmate:
+        return l10n.relRoleOfClassmate(otherName);
+      case RelationshipType.teammate:
+        return l10n.relRoleOfTeammate(otherName);
+      case RelationshipType.businessPartner:
+        return l10n.relRoleOfBusinessPartner(otherName);
       case RelationshipType.other:
         return l10n.relRoleOfOther(otherName);
     }
@@ -233,6 +301,40 @@ class RelationshipText {
         return l10n.relSentenceAcquaintance(person1Name, person2Name);
       case RelationshipType.otherRelative:
         return l10n.relSentenceOtherRelative(person1Name, person2Name);
+      case RelationshipType.auntOrUncle:
+        return l10n.relSentenceAuntOrUncle(person1Name, person2Name);
+      case RelationshipType.nieceOrNephew:
+        return l10n.relSentenceNieceOrNephew(person1Name, person2Name);
+      case RelationshipType.parentInLaw:
+        return l10n.relSentenceParentInLaw(person1Name, person2Name);
+      case RelationshipType.childInLaw:
+        return l10n.relSentenceChildInLaw(person1Name, person2Name);
+      case RelationshipType.manager:
+        return l10n.relSentenceManager(person1Name, person2Name);
+      case RelationshipType.directReport:
+        return l10n.relSentenceDirectReport(person1Name, person2Name);
+      case RelationshipType.employer:
+        return l10n.relSentenceEmployer(person1Name, person2Name);
+      case RelationshipType.employee:
+        return l10n.relSentenceEmployee(person1Name, person2Name);
+      case RelationshipType.teacher:
+        return l10n.relSentenceTeacher(person1Name, person2Name);
+      case RelationshipType.student:
+        return l10n.relSentenceStudent(person1Name, person2Name);
+      case RelationshipType.cousin:
+        return l10n.relSentenceCousin(person1Name, person2Name);
+      case RelationshipType.siblingInLaw:
+        return l10n.relSentenceSiblingInLaw(person1Name, person2Name);
+      case RelationshipType.stepSibling:
+        return l10n.relSentenceStepSibling(person1Name, person2Name);
+      case RelationshipType.roommate:
+        return l10n.relSentenceRoommate(person1Name, person2Name);
+      case RelationshipType.classmate:
+        return l10n.relSentenceClassmate(person1Name, person2Name);
+      case RelationshipType.teammate:
+        return l10n.relSentenceTeammate(person1Name, person2Name);
+      case RelationshipType.businessPartner:
+        return l10n.relSentenceBusinessPartner(person1Name, person2Name);
       case RelationshipType.other:
         return l10n.relSentenceOther(person1Name, person2Name);
     }

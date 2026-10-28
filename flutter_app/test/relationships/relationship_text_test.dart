@@ -24,6 +24,32 @@ void main() {
     });
   });
 
+  test('every relationship has localized role and sentence templates', () {
+    for (final l10n in [en, de]) {
+      for (final type in RelationshipType.values) {
+        final role = RelationshipText.roleOfLabel(l10n, type, 'Bert');
+        final sentence = RelationshipText.sentence(l10n, 'Anna', 'Bert', type);
+        expect(role, contains('Bert'), reason: type.name);
+        expect(sentence, startsWith('Anna '), reason: type.name);
+        expect(sentence, contains('Bert'), reason: type.name);
+        expect(sentence, endsWith('.'), reason: type.name);
+        expect(sentence, isNot(contains('{')), reason: type.name);
+      }
+    }
+    expect(RelationshipText.sentence(en, 'Anna', 'Bert', RelationshipType.employee),
+        'Anna is the employee of Bert.');
+    expect(RelationshipText.sentence(de, 'Anna', 'Bert', RelationshipType.employee),
+        'Anna ist angestellt bei Bert.');
+    expect(RelationshipText.roleOfLabel(de, RelationshipType.employer, 'Bert'),
+        'Arbeitgeberin oder Arbeitgeber von Bert');
+    expect(RelationshipText.sentence(en, 'Anna', 'Bert', RelationshipType.directReport),
+        'Anna reports to Bert.');
+    expect(RelationshipText.sentence(de, 'Anna', 'Bert', RelationshipType.parentInLaw),
+        'Anna ist Schwiegerelternteil von Bert.');
+    expect(RelationshipText.roleOfLabel(de, RelationshipType.auntOrUncle, 'Bert'),
+        'Tante oder Onkel von Bert');
+  });
+
   group('RelationshipText.labelForRaw()', () {
     test('known raw value uses the typed label', () {
       expect(RelationshipText.labelForRaw(en, 'parent'),

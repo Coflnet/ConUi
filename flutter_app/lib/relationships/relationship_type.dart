@@ -32,6 +32,16 @@ enum RelationshipType {
   ward,
   mentor,
   mentee,
+  auntOrUncle,
+  nieceOrNephew,
+  parentInLaw,
+  childInLaw,
+  manager,
+  directReport,
+  employer,
+  employee,
+  teacher,
+  student,
 
   // Symmetric: true in both directions.
   spouse,
@@ -39,6 +49,13 @@ enum RelationshipType {
   exPartner,
   sibling,
   halfSibling,
+  cousin,
+  siblingInLaw,
+  stepSibling,
+  roommate,
+  classmate,
+  teammate,
+  businessPartner,
   friend,
   colleague,
   neighbour,
@@ -62,6 +79,16 @@ enum RelationshipType {
     ward,
     mentor,
     mentee,
+    auntOrUncle,
+    nieceOrNephew,
+    parentInLaw,
+    childInLaw,
+    manager,
+    directReport,
+    employer,
+    employee,
+    teacher,
+    student,
   };
 
   /// True when person1 and person2 play different roles (e.g. parent/child) - swapping
@@ -123,6 +150,26 @@ RelationshipType inverseOf(RelationshipType type) {
       return RelationshipType.mentee;
     case RelationshipType.mentee:
       return RelationshipType.mentor;
+    case RelationshipType.auntOrUncle:
+      return RelationshipType.nieceOrNephew;
+    case RelationshipType.nieceOrNephew:
+      return RelationshipType.auntOrUncle;
+    case RelationshipType.parentInLaw:
+      return RelationshipType.childInLaw;
+    case RelationshipType.childInLaw:
+      return RelationshipType.parentInLaw;
+    case RelationshipType.manager:
+      return RelationshipType.directReport;
+    case RelationshipType.directReport:
+      return RelationshipType.manager;
+    case RelationshipType.employer:
+      return RelationshipType.employee;
+    case RelationshipType.employee:
+      return RelationshipType.employer;
+    case RelationshipType.teacher:
+      return RelationshipType.student;
+    case RelationshipType.student:
+      return RelationshipType.teacher;
     default:
       return type; // symmetric: its own inverse
   }

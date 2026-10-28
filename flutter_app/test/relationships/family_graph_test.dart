@@ -64,6 +64,20 @@ void main() {
       expect(groupFor(RelationshipType.other), RelationshipGroup.friendsAndOthers);
     });
 
+    test('extended family stays separate from ancestry and step-siblings group with siblings', () {
+      for (final type in [
+        RelationshipType.auntOrUncle,
+        RelationshipType.nieceOrNephew,
+        RelationshipType.cousin,
+        RelationshipType.parentInLaw,
+        RelationshipType.childInLaw,
+        RelationshipType.siblingInLaw,
+      ]) {
+        expect(groupFor(type), RelationshipGroup.otherFamily, reason: type.name);
+      }
+      expect(groupFor(RelationshipType.stepSibling), RelationshipGroup.siblings);
+    });
+
     test('every RelationshipType maps to exactly one group without throwing', () {
       for (final type in RelationshipType.values) {
         expect(() => groupFor(type), returnsNormally);
@@ -167,6 +181,30 @@ void main() {
   });
 
   group('derived siblings', () {
+    test('shared in-law, employment or teacher roles never derive siblings', () {
+      for (final type in [
+        RelationshipType.parentInLaw,
+        RelationshipType.childInLaw,
+        RelationshipType.manager,
+        RelationshipType.directReport,
+        RelationshipType.employer,
+        RelationshipType.employee,
+        RelationshipType.teacher,
+        RelationshipType.student,
+      ]) {
+        final graph = FamilyGraph.build(
+          persons: [person('a'), person('b'), person('c')],
+          connections: [
+            connection('r1', 'a', 'b', type.storageValue),
+            connection('r2', 'a', 'c', type.storageValue),
+          ],
+        );
+        expect(graph.traverse('a').edges.any((edge) => edge.isDerived), isFalse,
+            reason: type.name);
+        expect(graph.shortestPath('b', 'c')!.edges, hasLength(2), reason: type.name);
+      }
+    });
+
     test('two children sharing one parent become derived siblings', () {
       final graph = FamilyGraph.build(
         persons: [person('karl'), person('anna'), person('tom')],

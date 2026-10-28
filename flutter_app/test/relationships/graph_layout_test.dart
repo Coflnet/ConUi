@@ -24,8 +24,16 @@ GraphLayoutNode? findNode(GraphLayout layout, String id) =>
 
 void main() {
   group('edgeKindFor()', () {
-    test('every directed type renders as parent-child', () {
-      for (final type in RelationshipType.values.where((t) => t.isDirected)) {
+    test('parent-like, guardian and mentor roles render as parent-child', () {
+      for (final type in [
+        RelationshipType.parent, RelationshipType.child,
+        RelationshipType.grandparent, RelationshipType.grandchild,
+        RelationshipType.stepParent, RelationshipType.stepChild,
+        RelationshipType.adoptiveParent, RelationshipType.adoptedChild,
+        RelationshipType.godparent, RelationshipType.godchild,
+        RelationshipType.guardian, RelationshipType.ward,
+        RelationshipType.mentor, RelationshipType.mentee,
+      ]) {
         expect(edgeKindFor(RelationshipKind.of(type)), GraphEdgeKind.parentChild, reason: type.name);
       }
     });
@@ -39,6 +47,7 @@ void main() {
     test('sibling/half-sibling render as sibling', () {
       expect(edgeKindFor(RelationshipKind.of(RelationshipType.sibling)), GraphEdgeKind.sibling);
       expect(edgeKindFor(RelationshipKind.of(RelationshipType.halfSibling)), GraphEdgeKind.sibling);
+      expect(edgeKindFor(RelationshipKind.of(RelationshipType.stepSibling)), GraphEdgeKind.sibling);
     });
 
     test('friend/colleague/other and unknown raw values render as other', () {
@@ -48,6 +57,27 @@ void main() {
   });
 
   group('computeGraphLayout()', () {
+    test('extended family and professional roles do not imply ancestry', () {
+      for (final type in [
+        RelationshipType.auntOrUncle, RelationshipType.nieceOrNephew,
+        RelationshipType.parentInLaw, RelationshipType.childInLaw,
+        RelationshipType.cousin, RelationshipType.siblingInLaw,
+        RelationshipType.manager, RelationshipType.directReport,
+        RelationshipType.employer, RelationshipType.employee,
+        RelationshipType.teacher, RelationshipType.student,
+      ]) {
+        final layout = computeGraphLayout(
+          personIds: ['a', 'b'],
+          edges: [edge('e1', 'a', 'b', type)],
+          centerPersonId: 'b',
+        );
+        expect(findNode(layout, 'a')!.layer, 0, reason: type.name);
+        expect(layout.edges.single.kind, GraphEdgeKind.other, reason: type.name);
+        expect(findNode(layout, 'a')!.sideOnly,
+            groupFor(type) == RelationshipGroup.friendsAndOthers, reason: type.name);
+      }
+    });
+
     test('places the centered person at layer 0', () {
       final layout = computeGraphLayout(personIds: ['c'], edges: [], centerPersonId: 'c');
       expect(layout.nodes, hasLength(1));
