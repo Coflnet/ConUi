@@ -6,8 +6,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Mit Con Geschichten, Menschen und Beziehungen bewahren – auch als Audioaufnahme. Ohne Konto auf diesem Gerät starten, optional verschlüsselt synchronisieren.">
   <link rel="canonical" href="https://con.coflnet.com/">
+  <link rel="alternate" hreflang="de" href="https://con.coflnet.com/?lang=de">
+  <link rel="alternate" hreflang="en" href="https://con.coflnet.com/?lang=en">
+  <link rel="alternate" hreflang="x-default" href="https://con.coflnet.com/">
   <meta property="og:title" content="Con – Geschichten und Beziehungen bewahren">
   <meta property="og:description" content="Erinnerungen und Audioaufnahmen mit den Menschen verbinden, die dazugehören. Ohne Konto auf diesem Gerät starten.">
+  <meta property="og:locale" content="de_DE">
+  <meta property="og:locale:alternate" content="en_GB">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://con.coflnet.com/">
   <meta property="og:image" content="https://con.coflnet.com/icons/Icon-512.png">
@@ -31,6 +36,10 @@
     #startup h1 { font-size: clamp(2rem, 5vw, 3rem); max-width: 100%; overflow-wrap: anywhere; line-height: 1.15; letter-spacing: -.025em; margin: 32px 0 16px; }
     #startup p { max-width: 62ch; font-size: 1.0625rem; line-height: 1.65; margin: 0 0 16px; }
     .privacy { color: #4d526c; font-size: .9375rem; }
+    #startup #loading-tip { margin-top: 16px; }
+    .languages { font-size: .9375rem; }
+    .languages a { display: inline-block; color: #3f51b5; padding: 4px 0; margin-right: 16px; text-underline-offset: 3px; }
+    .languages a[aria-current] { font-weight: 700; }
     .loading { display: flex; align-items: center; gap: 12px; margin-top: 20px; font-weight: 600; }
     .spinner { width: 18px; height: 18px; flex: 0 0 auto; border: 3px solid #d6daf1; border-top-color: #3f51b5; border-radius: 50%; animation: spin 1s linear infinite; }
     #startup [hidden], #startup.failed .spinner { display: none; }
@@ -41,7 +50,7 @@
     @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
     @media (prefers-color-scheme: dark) {
       :root, #startup { background: #141623; color: #eef0ff; }
-      .brand { color: #bcc5ff; }
+      .brand, .languages a { color: #bcc5ff; }
       .privacy { color: #bcc0d5; }
       .spinner { border-color: #373d60; border-top-color: #bcc5ff; }
       #startup button { background: #bcc5ff; color: #17205a; }
@@ -55,7 +64,9 @@
       <h1 id="welcome-title">Geschichten bleiben.<br>Menschen verbinden.</h1>
       <p id="welcome-copy">Bewahre Erinnerungen als Geschichten und Audioaufnahmen. Halte fest, welche Menschen dazugehören und wie sie miteinander verbunden sind.</p>
       <p class="privacy" id="welcome-privacy">Starte ohne Konto. Deine Geschichten und Aufnahmen werden auf diesem Gerät gespeichert. Ein Konto ist optional, zum Beispiel für den verschlüsselten Abgleich zwischen deinen Geräten.</p>
+      <nav class="languages" id="languages" aria-label="Sprache"><a href="?lang=de" lang="de" hreflang="de">Deutsch</a><a href="?lang=en" lang="en" hreflang="en">English</a></nav>
       <div class="loading" id="loading" role="status" aria-live="polite" hidden><span class="spinner" aria-hidden="true"></span><span id="loading-copy">Con wird geladen …</span></div>
+      <p class="privacy" id="loading-tip" role="status" aria-live="polite" aria-atomic="true" hidden></p>
       <button id="retry" type="button" hidden>Erneut laden</button>
       <p id="javascript-guidance">Aktiviere JavaScript, um Con zu öffnen und deine erste Geschichte festzuhalten.</p>
     </div>
@@ -65,10 +76,27 @@
       const startup = document.getElementById('startup');
       const status = document.getElementById('loading-copy');
       const retry = document.getElementById('retry');
-      const english = !navigator.language.toLowerCase().startsWith('de');
+      const tip = document.getElementById('loading-tip');
+      const languages = navigator.languages?.length ? navigator.languages : [navigator.language];
+      const requestedLanguage = new URLSearchParams(location.search).get('lang');
+      const explicitLanguage = requestedLanguage === 'de' || requestedLanguage === 'en';
+      const language = explicitLanguage ? requestedLanguage : languages.find(locale => /^(de|en)(-|$)/i.test(locale)) || 'en';
+      const english = !language.toLowerCase().startsWith('de');
+      const canonical = 'https://con.coflnet.com/' + (explicitLanguage ? '?lang=' + requestedLanguage : '');
+      document.querySelector('link[rel="canonical"]').href = canonical;
+      document.querySelector('meta[property="og:url"]').content = canonical;
+      document.querySelector('.languages a[hreflang="' + (english ? 'en' : 'de') + '"]').setAttribute('aria-current', 'true');
       document.getElementById('javascript-guidance').remove();
       if (english) {
         document.documentElement.lang = 'en';
+        document.getElementById('languages').setAttribute('aria-label', 'Language');
+        document.title = 'Con – Preserve stories and relationships';
+        const description = 'Preserve stories, people and relationships with Con, including audio recordings. Start without an account on this device, with optional encrypted sync.';
+        document.querySelector('meta[name="description"]').content = description;
+        document.querySelector('meta[property="og:title"]').content = document.title;
+        document.querySelector('meta[property="og:description"]').content = description;
+        document.querySelector('meta[property="og:locale"]').content = 'en_GB';
+        document.querySelector('meta[property="og:locale:alternate"]').content = 'de_DE';
         document.getElementById('welcome-title').textContent = 'Keep stories. Connect people.';
         document.getElementById('welcome-copy').textContent = 'Save memories as stories and audio recordings. Remember the people behind them and how they are connected.';
         document.getElementById('welcome-privacy').textContent = 'Start without an account. Your stories and recordings are saved on this device. An account is optional, for example to sync securely between your devices using encryption.';
@@ -77,8 +105,35 @@
       }
       document.getElementById('loading').hidden = false;
       retry.addEventListener('click', () => location.reload());
+      const tips = english ? [
+        'Tip: Capture a memory in your own voice with an audio recording.',
+        'Tip: Review detected information about people before saving the story.',
+        'Tip: Create a backup in Settings to keep a separate copy of your stories and recordings.',
+        'Tip: An account is optional. Add one for encrypted sync between your devices.',
+      ] : [
+        'Tipp: Halte eine Erinnerung mit einer Audioaufnahme in deiner eigenen Stimme fest.',
+        'Tipp: Prüfe erkannte Informationen zu Personen, bevor du die Geschichte speicherst.',
+        'Tipp: Erstelle in den Einstellungen eine Sicherung, um Geschichten und Aufnahmen auch als separate Kopie aufzubewahren.',
+        'Tipp: Ein Konto ist optional. Füge eines für den verschlüsselten Abgleich zwischen deinen Geräten hinzu.',
+      ];
+      let tipIndex = 0;
+      let tipTimer;
+      const loadingTimer = setTimeout(() => {
+        status.textContent = english ? 'Con is still loading. Thank you for your patience …' : 'Con wird noch geladen. Danke für deine Geduld …';
+        tip.hidden = false;
+        tip.textContent = tips[tipIndex++];
+        tipTimer = setInterval(() => {
+          tip.textContent = tips[tipIndex++ % tips.length];
+        }, 15000);
+      }, 10000);
+      function stopLoadingUpdates() {
+        clearTimeout(loadingTimer);
+        clearInterval(tipTimer);
+      }
       function failed(event) {
         if (event.type === 'error' && event.target !== window && !(event.target instanceof HTMLScriptElement)) return;
+        stopLoadingUpdates();
+        tip.hidden = true;
         startup.classList.add('failed');
         status.textContent = english ? 'Con could not start. Check your connection and try again.' : 'Con konnte nicht starten. Prüfe deine Verbindung und versuche es erneut.';
         retry.hidden = false;
@@ -86,6 +141,7 @@
       window.addEventListener('error', failed, true);
       window.addEventListener('unhandledrejection', failed);
       window.addEventListener('flutter-first-frame', () => {
+        stopLoadingUpdates();
         startup.remove();
         window.removeEventListener('error', failed, true);
         window.removeEventListener('unhandledrejection', failed);

@@ -42,6 +42,8 @@ String messageForTranscriptionReason(AppLocalizations l10n, LiveTranscriptionRea
       return l10n.liveTranscriptionNotSignedIn;
     case LiveTranscriptionReason.anonymousLimit:
       return l10n.liveTranscriptionAnonymousLimit;
+    case LiveTranscriptionReason.dailyLimit:
+      return l10n.liveTranscriptionDailyLimit;
     case LiveTranscriptionReason.notConfigured:
       return l10n.liveTranscriptionNotConfigured;
     case LiveTranscriptionReason.failing:
@@ -401,17 +403,36 @@ class QuickAddSheetState extends State<QuickAddSheet> {
     final reason = _recorder.liveTranscriptionReason;
     if (reason == LiveTranscriptionReason.anonymousLimit ||
         reason == LiveTranscriptionReason.notSignedIn) {
-      showAccountRequiredDialog(context,
-          message: '${messageForTranscriptionReason(l10n, reason)}\n\n${l10n.accountStorySavedBeforeSignIn}',
-          beforeSignIn: () async => !_hasUnsavedContent || await _save(close: false));
+      _showRecordingSignIn(messageForTranscriptionReason(l10n, reason));
       return;
     }
     final message = reason == LiveTranscriptionReason.notConfigured ||
-            reason == LiveTranscriptionReason.offline
+            reason == LiveTranscriptionReason.offline ||
+            reason == LiveTranscriptionReason.dailyLimit
         ? messageForTranscriptionReason(l10n, reason)
         : l10n.recordingPartsFailedLive(failedCount);
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _showRecordingSignIn(String message) {
+    final l10n = AppLocalizations.of(context);
+    showAccountRequiredDialog(context,
+        message: '$message\n\n${l10n.accountStorySavedBeforeSignIn}',
+        beforeSignIn: () async {
+          _finalizingDraft = true;
+          try {
+            if (_recorder.state == RecorderState.recording || _recorder.canRetryStop) {
+              await _recorder.stop();
+            }
+            if (!mounted) return false;
+            return !_hasUnsavedContent || await _save(close: false);
+          } catch (_) {
+            return false;
+          } finally {
+            _finalizingDraft = false;
+          }
+        });
   }
 
   Future<void> _transcribeNow() async {
@@ -702,6 +723,10 @@ class QuickAddSheetState extends State<QuickAddSheet> {
                 if (_draftRestored) Text(l10n.storyDraftRestored),
                 if (_draftLoading) const LinearProgressIndicator(),
                 const SizedBox(height: 16),
+                Text(l10n.storyAudioFirstTitle,
+                    style: Theme.of(context).textTheme.titleMedium),
+                Text(l10n.storyAudioFirstHelp),
+                const SizedBox(height: 8),
                 _buildRecordButton(l10n),
                 const SizedBox(height: 12),
                 _buildTextField(l10n),
@@ -781,6 +806,8 @@ class QuickAddSheetState extends State<QuickAddSheet> {
           ),
         ),
         const SizedBox(height: 8),
+        Text(isRecording ? l10n.quickAddStopRecording
+            : _recorder.canRetryStop ? l10n.storyRetryFinish : l10n.quickAddStartRecording),
         if (_recorder.state == RecorderState.failed && _recorder.failure != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
@@ -821,11 +848,21 @@ class QuickAddSheetState extends State<QuickAddSheet> {
               ],
             ),
           ),
-        if (_recorder.isAnonymousRecording && _pendingRecording == null)
-          Text(l10n.recordingAnonymousAllowance,
+        if (_recorder.showGuestTranscriptionWarning &&
+            _recorder.liveTranscriptionReason != LiveTranscriptionReason.anonymousLimit)
+          Text(l10n.recordingGuestTranscriptionWarning,
               style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
         if (!isRecording && _recorder.liveTranscriptionReason == LiveTranscriptionReason.anonymousLimit)
           Text(l10n.liveTranscriptionAnonymousLimit),
+        if (!isRecording && _recorder.liveTranscriptionReason == LiveTranscriptionReason.dailyLimit)
+          Text(l10n.liveTranscriptionDailyLimit),
+        if (_recorder.showGuestTranscriptionWarning ||
+            _recorder.liveTranscriptionReason == LiveTranscriptionReason.anonymousLimit)
+          TextButton(
+            onPressed: isBusy ? null : () => _showRecordingSignIn(
+                _recorder.liveTranscriptionReason == LiveTranscriptionReason.anonymousLimit
+                    ? l10n.liveTranscriptionAnonymousLimit : l10n.recordingGuestTranscriptionWarning),
+            child: Text(l10n.loginAccountButton)),
         if (!isRecording && _pendingRecording != null)
           Text(l10n.recordingAttachedWithDuration(_formatElapsed(
               Duration(milliseconds: _pendingRecording!.durationMs ?? 0)))),
@@ -833,8 +870,6 @@ class QuickAddSheetState extends State<QuickAddSheet> {
           DiaCorrectionButton(file: _pendingRecording!, store: _recorder.fileStore,
               regionSuggestion: _suggestDiaRegion,
               transcriptController: _textController),
-        if (_recorder.lastStopResult?.stopReason == StopReason.anonymousLimit)
-          Text(l10n.recordingAnonymousStopped, textAlign: TextAlign.center),
         if (!isRecording &&
             _pendingRecording != null &&
             (_textController.text.trim().isEmpty ||

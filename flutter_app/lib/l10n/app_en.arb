@@ -639,9 +639,11 @@
       }
     }
   },
-  "liveTranscriptionAnonymousLimit": "You have used the 3 daily recordings for this internet connection. Save your story, then sign in in Settings to record more, or try again tomorrow.",
-  "recordingAnonymousAllowance": "Without signing in: 3 recordings per day per internet connection, up to 1 minute each.",
-  "recordingAnonymousStopped": "The 1-minute limit was reached. Your recording will be saved with this story. Save your story, then sign in in Settings for longer recordings.",
+  "liveTranscriptionAnonymousLimit": "You have used the 5 minutes of automatic transcription per day for this internet connection. Your original audio is kept. Save your story and sign in for 20 minutes per day, or retry transcription tomorrow (the day resets at 00:00 UTC).",
+  "recordingGuestTranscriptionWarning": "You have transcribed more than 3 minutes today. Without signing in, you have a total of 5 minutes per day per internet connection. Sign in for 20 minutes per day. Your original audio is kept.",
+  "liveTranscriptionDailyLimit": "You have used your 20 minutes of automatic transcription today. Your original audio is kept. Save your story on this device and retry transcription tomorrow (the day resets at 00:00 UTC).",
+  "storyAudioFirstTitle": "Tell your story",
+  "storyAudioFirstHelp": "Start a recording or type your story in the text field. We suggest a title, people and relationships from the text. You can review and edit the suggestions.",
   "settingsSyncRecovery": "Could not sync. Check your internet connection and try Sync now again. If the service is unavailable, try again later.",
   "backupPrepareRecovery": "Could not prepare the backup. Close this screen and try again. Check that this device has free storage.",
   "backupCreateRecovery": "Could not create the backup. Check the free storage on this device and try again.",
@@ -785,7 +787,6 @@
   "diaDetectError": "Could not detect sentences. Your audio is unchanged. Retry when the transcription service is available.",
   "diaMarksError": "Sentence marks could not be saved. They are available in this correction; retry to save them for next time.",
   "diaAudioContextHelp": "The matching audio includes surrounding words. They stay unchanged; only this sentence is corrected.",
-  "diaDetectTooLong": "Sign in in Settings to detect sentences in recordings longer than one minute. Your original audio is unchanged.",
   "syncPreparing": "Preparing encrypted sync…",
   "syncDownloadStep": "Download step",
   "syncUploadStep": "Upload step",

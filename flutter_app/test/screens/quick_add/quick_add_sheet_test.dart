@@ -68,7 +68,7 @@ RecorderController _buildRecorder({
   String transcribedText = 'said hello',
   String? Function()? getToken,
   String? errorSlug,
-  int remainingRecordings = 3,
+  double remainingSeconds = 300,
 }) {
   return RecorderController(
     createSpeechDetector: () async => EndingDetector(minSpeechFrames: 1),
@@ -80,7 +80,7 @@ RecorderController _buildRecorder({
       getToken: getToken ?? () => 'tok',
       httpClient: MockClient(
           (request) async => request.method == 'GET'
-              ? http.Response(jsonEncode({'available': true, 'remainingRecordings': remainingRecordings}), 200)
+              ? http.Response(jsonEncode({'available': true, 'remainingSeconds': remainingSeconds, 'usedSeconds': 300 - remainingSeconds, 'dailyLimitSeconds': 300, 'resetAt': '2026-10-29T00:00:00Z'}), 200)
               : errorSlug != null
                   ? http.Response(jsonEncode({'slug': errorSlug, 'message': 'Sign in to record more.'}), 429)
                   : http.Response(jsonEncode({'text': transcribedText}), 200)),
@@ -130,13 +130,21 @@ void main() {
   testWidgets('keyboard can reach the recorder before and during capture', (tester) async {
     final db = createTestDatabaseService();
     await tester.runAsync(db.initialize);
-    final recorder = _buildRecorder(capture: FakeAudioCapture(), db: db, tempDir: tempDir);
+    final capture = FakeAudioCapture();
+    final recorder = _buildRecorder(capture: capture, db: db, tempDir: tempDir,
+        getToken: () => null);
     addTearDown(recorder.dispose);
     final position = ValueNotifier(const LatLng(10, 10));
     addTearDown(position.dispose);
     await tester.pumpWidget(_wrap(db,
         QuickAddSheet(position: position, recorderController: recorder)));
     await _settle(tester);
+    final l10n = AppLocalizations.of(tester.element(find.byType(QuickAddSheet)));
+    expect(capture.isRecording, isFalse);
+    expect(recorder.state, RecorderState.idle);
+    expect(find.text(l10n.storyAudioFirstTitle), findsOneWidget);
+    expect(find.text(l10n.recordingGuestTranscriptionWarning), findsNothing);
+    expect(find.text(l10n.loginAccountButton), findsNothing);
     for (final target in [RecorderState.recording, RecorderState.idle]) {
       await tester.showKeyboard(find.widgetWithText(TextField, 'What happened here?'));
       await tester.pump();
@@ -158,6 +166,72 @@ void main() {
     }
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  for (final usedSeconds in [180, 181]) {
+    testWidgets('guest warning starts above three committed minutes '
+        'and sign-in saves active audio (used=$usedSeconds)', (tester) async {
+      final db = createTestDatabaseService();
+      await tester.runAsync(db.initialize);
+      final capture = FakeAudioCapture();
+      final store = NativeRecordingFileStore(baseDirectory: tempDir);
+      final recorder = RecorderController(
+        createSpeechDetector: () async => EndingDetector(minSpeechFrames: 1),
+        audioCapture: capture, fileStore: store, database: db,
+        transcriptionClient: TranscriptionClient(
+          baseUrl: 'https://api.example.com', getToken: () => null,
+          httpClient: MockClient((request) async => http.Response(jsonEncode({
+            'available': true, 'usedSeconds': usedSeconds,
+            'remainingSeconds': 300 - usedSeconds, 'dailyLimitSeconds': 300,
+            'warningAfterSeconds': 180, 'resetAt': '2026-10-29T00:00:00Z',
+            if (request.method != 'GET') 'text': 'Audio detail.',
+          }), 200))),
+      );
+      addTearDown(recorder.dispose);
+      final position = ValueNotifier(const LatLng(10, 10));
+      addTearDown(position.dispose);
+      final auth = AccountPromptAuth();
+      await tester.pumpWidget(_wrap(db,
+          QuickAddSheet(position: position, recorderController: recorder), auth: auth));
+      await _settle(tester);
+      final l10n = AppLocalizations.of(tester.element(find.byType(QuickAddSheet)));
+      expect(find.text(l10n.recordingGuestTranscriptionWarning), findsNothing);
+      await tester.enterText(find.widgetWithText(TextField, 'What happened here?'),
+          'Keep my typed notes.');
+      final start = tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.mic)).onPressed!;
+      await tester.runAsync(() async => await (start as Function)());
+      await tester.pump();
+      expect(capture.isRecording, isTrue);
+      if (usedSeconds == 180) {
+        expect(find.text(l10n.recordingGuestTranscriptionWarning), findsNothing);
+        expect(find.text(l10n.loginAccountButton), findsNothing);
+        await tester.runAsync(recorder.stop);
+      } else {
+        expect(find.text(l10n.recordingGuestTranscriptionWarning), findsOneWidget);
+        await tester.runAsync(() async {
+          capture.emitChunk(Uint8List(1600));
+          await Future<void>.delayed(Duration.zero);
+        });
+        await _pressAsync(tester, find.widgetWithText(TextButton, l10n.loginAccountButton));
+        await tester.pump();
+        expect(find.byType(AlertDialog), findsOneWidget);
+        expect(capture.isRecording, isTrue);
+        auth.beforeAttempt = () async {
+          expect(capture.isRecording, isFalse);
+          final saved = (await db.getEvents()).single;
+          expect(saved.description, contains('Keep my typed notes.'));
+          expect(saved.files.single.id, recorder.lastStopResult!.attachedFile.id);
+          expect(await store.exists(saved.files.single.id), isTrue);
+        };
+        await _pressAsync(tester, find.widgetWithText(FilledButton, l10n.loginGoogleButton));
+        await tester.pump();
+        expect(auth.choices, [false]);
+        expect(recorder.state, RecorderState.idle);
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
 
   group('save rules', () {
     for (final manualName in ['', 'My special place']) {
@@ -509,7 +583,7 @@ void main() {
     final db = createTestDatabaseService();
     await tester.runAsync(db.initialize);
     final recorder = _buildRecorder(capture: FakeAudioCapture(), db: db,
-        tempDir: tempDir, getToken: () => null, remainingRecordings: 0);
+        tempDir: tempDir, getToken: () => null, remainingSeconds: 0);
     addTearDown(recorder.dispose);
     final position = ValueNotifier(const LatLng(10, 10));
     addTearDown(position.dispose);
@@ -757,41 +831,49 @@ void main() {
   });
 
   testWidgets('Change position preserves typed draft and only unpins after confirmation', (tester) async {
-    final db = createTestDatabaseService();
-    final pinned = Place(name: 'Original place', latitude: 10, longitude: 10);
-    await tester.runAsync(() async { await db.initialize(); await db.savePlace(pinned); });
-    final recorder = _buildRecorder(capture: FakeAudioCapture(), db: db, tempDir: tempDir);
-    addTearDown(recorder.dispose);
-    final position = ValueNotifier<LatLng>(const LatLng(10, 10));
-    await tester.pumpWidget(_wrap(db, QuickAddSheet(position: position, initialPlace: pinned, recorderController: recorder)));
-    await _settle(tester);
-    await tester.enterText(find.widgetWithText(TextField, 'What happened here?'), 'Keep these story notes');
-    final change = find.widgetWithText(TextButton, 'Change position');
-    await tester.ensureVisible(change);
-    await tester.tap(change);
-    await tester.pumpAndSettle();
-    Navigator.of(tester.element(find.byType(LocationPickerScreen))).pop();
-    await tester.pumpAndSettle();
-    expect(position.value, const LatLng(10, 10));
-    expect(tester.widget<TextField>(find.widgetWithText(TextField, 'Original place')).enabled, isFalse);
-    await tester.ensureVisible(change);
-    await tester.tap(change);
-    await tester.pumpAndSettle();
-    Navigator.of(tester.element(find.byType(LocationPickerScreen))).pop(const LatLng(20, 20));
-    await tester.pumpAndSettle();
-    expect(position.value, const LatLng(20, 20));
-    expect(find.text('Keep these story notes'), findsOneWidget);
-    final l10n = AppLocalizations.of(tester.element(find.byType(QuickAddSheet)));
-    expect(tester.widget<TextField>(find.widgetWithText(TextField, l10n.quickAddPlaceNameLabel)).enabled, isTrue);
-    await _pressAsync(tester, find.widgetWithText(FilledButton, 'Save story'));
-    await tester.runAsync(() async {
-      final event = (await db.getEvents()).single;
-      expect(event.description, 'Keep these story notes');
-      final place = await db.getPlace(event.placeId!);
-      expect(place!.id, isNot(pinned.id));
-      expect(place.latitude, 20);
-      expect(place.longitude, 20);
-    });
+    await http.runWithClient(() async {
+      final db = createTestDatabaseService();
+      final pinned = Place(name: 'Original place', latitude: 10, longitude: 10);
+      await tester.runAsync(() async { await db.initialize(); await db.savePlace(pinned); });
+      final recorder = _buildRecorder(capture: FakeAudioCapture(), db: db, tempDir: tempDir);
+      addTearDown(recorder.dispose);
+      final position = ValueNotifier<LatLng>(const LatLng(10, 10));
+      await tester.pumpWidget(_wrap(db, QuickAddSheet(position: position, initialPlace: pinned, recorderController: recorder)));
+      await _settle(tester);
+      await tester.enterText(find.widgetWithText(TextField, 'What happened here?'), 'Keep these story notes');
+      final change = find.widgetWithText(TextButton, 'Change position');
+      await tester.ensureVisible(change);
+      await tester.tap(change);
+      await tester.pumpAndSettle();
+      Navigator.of(tester.element(find.byType(LocationPickerScreen))).pop();
+      await tester.pumpAndSettle();
+      expect(position.value, const LatLng(10, 10));
+      expect(tester.widget<TextField>(find.widgetWithText(TextField, 'Original place')).enabled, isFalse);
+      await tester.ensureVisible(change);
+      await tester.tap(change);
+      await tester.pumpAndSettle();
+      Navigator.of(tester.element(find.byType(LocationPickerScreen))).pop(const LatLng(20, 20));
+      await tester.pumpAndSettle();
+      expect(position.value, const LatLng(20, 20));
+      expect(find.text('Keep these story notes'), findsOneWidget);
+      final l10n = AppLocalizations.of(tester.element(find.byType(QuickAddSheet)));
+      expect(tester.widget<TextField>(find.widgetWithText(TextField, l10n.quickAddPlaceNameLabel)).enabled, isTrue);
+      await _pressAsync(tester, find.widgetWithText(FilledButton, 'Save story'));
+      await tester.runAsync(() async {
+        final event = (await db.getEvents()).single;
+        expect(event.description, 'Keep these story notes');
+        final place = await db.getPlace(event.placeId!);
+        expect(place!.id, isNot(pinned.id));
+        expect(place.latitude, 20);
+        expect(place.longitude, 20);
+      });
+      await tester.pumpWidget(const SizedBox.shrink());
+    }, () => MockClient((request) async => request.url.host == 'photon.komoot.io'
+        ? http.Response('{"features": []}', 200)
+        : http.Response.bytes(base64Decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='),
+            200, headers: {'content-type': 'image/png'})));
+
   });
 
 }

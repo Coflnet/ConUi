@@ -20,7 +20,14 @@ public class TranscriptionControllerTests
 
     private static ByteArrayContent WavContent(int bytes = 100)
     {
-        var content = new ByteArrayContent(new byte[bytes]);
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+        writer.Write(Encoding.ASCII.GetBytes("RIFF")); writer.Write(36 + bytes);
+        writer.Write(Encoding.ASCII.GetBytes("WAVEfmt ")); writer.Write(16);
+        writer.Write((short)1); writer.Write((short)1); writer.Write(16000); writer.Write(32000);
+        writer.Write((short)2); writer.Write((short)16);
+        writer.Write(Encoding.ASCII.GetBytes("data")); writer.Write(bytes); writer.Write(new byte[bytes]);
+        var content = new ByteArrayContent(stream.ToArray());
         content.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
         return content;
     }
@@ -33,10 +40,10 @@ public class TranscriptionControllerTests
         using var c = client;
         var prompt = string.Concat(Enumerable.Repeat("🙂", 1024));
         c.DefaultRequestHeaders.Add("X-Transcription-Prompt", Convert.ToBase64String(Encoding.UTF8.GetBytes(prompt)));
-        var response = await c.PostAsync("/api/transcription/segment?language=de", WavContent());
+        var response = await c.PostAsync($"/api/transcription/segment?language=de&recordingId={Guid.NewGuid()}&segment=0", WavContent());
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         Assert.That(factory.TranscriptionService.LastInitialPrompt, Is.EqualTo(prompt));
-        Assert.That(factory.TranscriptionService.LastAudioByteCount, Is.EqualTo(100));
+        Assert.That(factory.TranscriptionService.LastAudioByteCount, Is.EqualTo(144));
     }
 
     [TestCase("not-base64!")]
@@ -49,7 +56,7 @@ public class TranscriptionControllerTests
         using var c = client;
         if (encoded == "oversized") encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(new string('a', 1025)));
         c.DefaultRequestHeaders.Add("X-Transcription-Prompt", encoded);
-        var response = await c.PostAsync("/api/transcription/segment", WavContent());
+        var response = await c.PostAsync($"/api/transcription/segment?recordingId={Guid.NewGuid()}&segment=0", WavContent());
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
         Assert.That(await response.Content.ReadAsStringAsync(), Does.Contain("invalid_transcription_prompt"));
         Assert.That(factory.TranscriptionService.CallCount, Is.Zero);
@@ -79,7 +86,7 @@ public class TranscriptionControllerTests
         var token = await TestAuthHelper.GetDevTokenAsync(client);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        var response = await client.PostAsync("/api/transcription/segment", WavContent());
+        var response = await client.PostAsync($"/api/transcription/segment?recordingId={Guid.NewGuid()}&segment=0", WavContent());
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable), $"body: {body}");
@@ -93,7 +100,7 @@ public class TranscriptionControllerTests
         await using var f2 = factory;
         using var c = client;
 
-        var response = await c.PostAsync("/api/transcription/segment?language=de", WavContent());
+        var response = await c.PostAsync($"/api/transcription/segment?language=de&recordingId={Guid.NewGuid()}&segment=0", WavContent());
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), $"body: {body}");
@@ -112,7 +119,7 @@ public class TranscriptionControllerTests
         var content = new ByteArrayContent(new byte[10]);
         content.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
 
-        var response = await c.PostAsync("/api/transcription/segment", content);
+        var response = await c.PostAsync($"/api/transcription/segment?recordingId={Guid.NewGuid()}&segment=0", content);
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.UnsupportedMediaType), $"body: {body}");
@@ -126,7 +133,7 @@ public class TranscriptionControllerTests
         await using var f = factory;
         using var c = client;
 
-        var response = await c.PostAsync("/api/transcription/segment?language=deutsch", WavContent());
+        var response = await c.PostAsync($"/api/transcription/segment?language=deutsch&recordingId={Guid.NewGuid()}&segment=0", WavContent());
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest), $"body: {body}");
@@ -160,7 +167,7 @@ public class TranscriptionControllerTests
         var token = TestAuthHelper.MintTokenWithSub(factory, sub: "not-a-guid");
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        var response = await client.PostAsync("/api/transcription/segment", WavContent());
+        var response = await client.PostAsync($"/api/transcription/segment?recordingId={Guid.NewGuid()}&segment=0", WavContent());
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized), $"body: {body}");
@@ -176,7 +183,7 @@ public class TranscriptionControllerTests
         await using var f2 = factory;
         using var c = client;
 
-        var response = await c.PostAsync("/api/transcription/segment", WavContent());
+        var response = await c.PostAsync($"/api/transcription/segment?recordingId={Guid.NewGuid()}&segment=0", WavContent());
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadGateway), $"body: {body}");
@@ -190,7 +197,7 @@ public class TranscriptionControllerTests
         await using var f2 = factory;
         using var c = client;
 
-        var response = await c.PostAsync("/api/transcription/segment", WavContent(bytes: 1024));
+        var response = await c.PostAsync($"/api/transcription/segment?recordingId={Guid.NewGuid()}&segment=0", WavContent(bytes: 1024));
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.RequestEntityTooLarge), $"body: {body}");
@@ -206,14 +213,14 @@ public class TranscriptionControllerTests
 
         // Hold the first request "in flight" so the concurrency slot stays taken.
         factory.TranscriptionService.Gate = new TaskCompletionSource<bool>();
-        var firstRequest = c.PostAsync("/api/transcription/segment", WavContent());
+        var firstRequest = c.PostAsync($"/api/transcription/segment?recordingId={Guid.NewGuid()}&segment=0", WavContent());
 
         // Give the first request a moment to actually acquire the semaphore before the second fires.
         await Task.Delay(200);
 
         using var secondClient = new HttpClient { BaseAddress = c.BaseAddress };
         secondClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        var secondResponse = await secondClient.PostAsync("/api/transcription/segment", WavContent());
+        var secondResponse = await secondClient.PostAsync($"/api/transcription/segment?recordingId={Guid.NewGuid()}&segment=0", WavContent());
         var secondBody = await secondResponse.Content.ReadAsStringAsync();
 
         factory.TranscriptionService.Gate.SetResult(true);

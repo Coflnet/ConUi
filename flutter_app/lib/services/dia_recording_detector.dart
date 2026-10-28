@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/event.dart';
 import 'recording_file_store.dart';
+import 'sentence_segmenter.dart';
 import 'transcription_client.dart';
 import 'wav.dart';
 
@@ -14,6 +15,7 @@ Future<List<RecordingTranscriptSlice>> detectRecordingTranscript({
   required TranscriptionClient client,
   String? language,
   bool Function()? isCancelled,
+  Future<SpeechDetector> Function()? createSpeechDetector,
 }) async {
   void checkCancelled() {
     if (isCancelled?.call() ?? false) {
@@ -48,27 +50,40 @@ Future<List<RecordingTranscriptSlice>> detectRecordingTranscript({
       throw const FormatException('Invalid recording WAV');
     }
   }
-  if (client.getToken() == null &&
-      dataLength > 60 * WavFormat.standard.bytesPerSecond) {
-    throw const TranscriptionException(TranscriptionErrorKind.anonymousLimit,
-        'Sign in to recognize recordings longer than one minute.',
-        slug: 'anonymous_recording_too_long');
-  }
-
-  final analysisId = const Uuid().v4();
+  // Separate from live capture IDs; retrying immutable slices reuses allowance.
+  final analysisId = const Uuid().v5(
+      Namespace.url.value, 'con:analysis:${file.id}:${file.sha256 ?? size}');
   final slices = <RecordingTranscriptSlice>[];
   final pcm = Uint8List(6 * WavFormat.standard.bytesPerSecond);
   var filled = 0, offset = 0, segment = 0;
+  bool? hasSpeech;
+  final classifier = SentenceSegmenter(
+      format: WavFormat.standard,
+      maxDuration: const Duration(seconds: 6),
+      onSegment: (_, speech) => hasSpeech = speech);
   Future<void> transcribe() async {
     checkCancelled();
-    final text = (await client.transcribeSegment(
-      WavHeader.wrap(Uint8List.sublistView(pcm, 0, filled)),
-      language: language,
-      initialPrompt: slices.map((slice) => slice.text).join(' '),
-      recordingId: analysisId,
-      segment: segment++,
-    ))
-        .trim();
+    hasSpeech = null;
+    await classifier.add(Uint8List.sublistView(pcm, 0, filled),
+        allowCuts: false);
+    await classifier.flush();
+    checkCancelled();
+    if (hasSpeech == null) {
+      throw const TranscriptionException(TranscriptionErrorKind.other,
+          'Voice activity detection is unavailable. Retry analysis.',
+          slug: 'speech_detection_unavailable');
+    }
+    final index = segment++;
+    final text = hasSpeech == false
+        ? ''
+        : (await client.transcribeSegment(
+            WavHeader.wrap(Uint8List.sublistView(pcm, 0, filled)),
+            language: language,
+            initialPrompt: slices.map((slice) => slice.text).join(' '),
+            recordingId: analysisId,
+            segment: index,
+          ))
+            .trim();
     checkCancelled();
     slices.add(RecordingTranscriptSlice(
         startByte: offset, endByte: offset + filled, text: text));
@@ -76,26 +91,39 @@ Future<List<RecordingTranscriptSlice>> detectRecordingTranscript({
     filled = 0;
   }
 
-  var position = -wavHeaderLength;
-  await for (final chunk in store.openReadStream(file.id)) {
+  try {
+    try {
+      await classifier.attachDetector(
+          await (createSpeechDetector ?? DiaSpeechDetector.create)());
+    } catch (_) {
+      throw const TranscriptionException(TranscriptionErrorKind.other,
+          'Voice activity detection is unavailable. Retry analysis.',
+          slug: 'speech_detection_unavailable');
+    }
     checkCancelled();
-    var start = (-position).clamp(0, chunk.length);
-    position += chunk.length;
-    if (position > dataLength) {
-      throw const FormatException('Invalid recording WAV length');
+    var position = -wavHeaderLength;
+    await for (final chunk in store.openReadStream(file.id)) {
+      checkCancelled();
+      var start = (-position).clamp(0, chunk.length);
+      position += chunk.length;
+      if (position > dataLength) {
+        throw const FormatException('Invalid recording WAV length');
+      }
+      while (start < chunk.length) {
+        final count = (chunk.length - start).clamp(0, pcm.length - filled);
+        pcm.setRange(filled, filled + count, chunk, start);
+        filled += count;
+        start += count;
+        if (filled == pcm.length) await transcribe();
+      }
     }
-    while (start < chunk.length) {
-      final count = (chunk.length - start).clamp(0, pcm.length - filled);
-      pcm.setRange(filled, filled + count, chunk, start);
-      filled += count;
-      start += count;
-      if (filled == pcm.length) await transcribe();
+    if (position != dataLength) {
+      throw const FormatException('Recording is incomplete');
     }
+    if (filled > 0) await transcribe();
+    checkCancelled();
+    return slices;
+  } finally {
+    await classifier.dispose();
   }
-  if (position != dataLength) {
-    throw const FormatException('Recording is incomplete');
-  }
-  if (filled > 0) await transcribe();
-  checkCancelled();
-  return slices;
 }

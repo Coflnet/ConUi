@@ -19,6 +19,7 @@ import '../services/app_settings_service.dart';
 import '../services/database_service.dart';
 import '../services/recording_clip.dart';
 import '../services/recording_file_store.dart';
+import '../services/sentence_segmenter.dart';
 
 Future<void> showDiaCorrection(
   BuildContext context, {
@@ -178,6 +179,7 @@ class DiaCorrectionDialog extends StatefulWidget {
   final RecordingFileStore store;
   final DiaContributionClient? client;
   final TranscriptionClient? transcriptionClient;
+  final Future<SpeechDetector> Function()? createSpeechDetector;
   final String? language;
   final TextEditingValue? source;
   final Future<void> Function(List<RecordingTranscriptSlice>)?
@@ -191,6 +193,7 @@ class DiaCorrectionDialog extends StatefulWidget {
       required this.store,
       this.client,
       this.transcriptionClient,
+      this.createSpeechDetector,
       this.language,
       this.source,
       this.onTranscriptDetected,
@@ -313,6 +316,7 @@ class _DiaCorrectionDialogState extends State<DiaCorrectionDialog> {
               store: widget.store,
               client: widget.transcriptionClient!,
               language: widget.language,
+              createSpeechDetector: widget.createSpeechDetector,
               isCancelled: () => !mounted);
       if (!mounted) return;
       final sentences = detectDiaSentences(slices);
@@ -328,8 +332,8 @@ class _DiaCorrectionDialogState extends State<DiaCorrectionDialog> {
       await _saveDetectedBoundaries();
     } on TranscriptionException catch (error) {
       if (mounted) {
-        setState(() => _error = error.slug == 'anonymous_recording_too_long'
-            ? 'long'
+        setState(() => _error = error.kind == TranscriptionErrorKind.dailyLimit
+            ? 'dailyQuota'
             : error.kind == TranscriptionErrorKind.anonymousLimit
                 ? 'quota'
                 : error.kind == TranscriptionErrorKind.unauthorized
@@ -662,8 +666,8 @@ class _DiaCorrectionDialogState extends State<DiaCorrectionDialog> {
                   ],
                   if (_error != null)
                     Text(
-                        _error == 'long'
-                            ? l10n.diaDetectTooLong
+                        _error == 'dailyQuota'
+                            ? l10n.liveTranscriptionDailyLimit
                             : _error == 'quota'
                                 ? l10n.liveTranscriptionAnonymousLimit
                                 : _error == 'auth'

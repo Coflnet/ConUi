@@ -254,9 +254,24 @@ class _AddEventScreenState extends State<AddEventScreen> {
     final reason = _recorder.liveTranscriptionReason;
     if (reason == LiveTranscriptionReason.anonymousLimit ||
         reason == LiveTranscriptionReason.notSignedIn) {
-      showAccountRequiredDialog(context,
-          message: '${messageForTranscriptionReason(l10n, reason)}\n\n${l10n.accountStorySavedBeforeSignIn}',
-          beforeSignIn: () async {
+      _showRecordingSignIn(messageForTranscriptionReason(l10n, reason));
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(messageForTranscriptionReason(l10n, reason))));
+  }
+
+  void _showRecordingSignIn(String message) {
+    final l10n = AppLocalizations.of(context);
+    showAccountRequiredDialog(context,
+        message: '$message\n\n${l10n.accountStorySavedBeforeSignIn}',
+        beforeSignIn: () async {
+          _finalizingDraft = true;
+          try {
+            if (_recorder.state == RecorderState.recording || _recorder.canRetryStop) {
+              await _recorder.stop();
+            }
+            if (!mounted) return false;
             if (_titleController.text.trim().isEmpty &&
                 _descriptionController.text.trim().isEmpty &&
                 _pendingRecording == null && _photos.isEmpty &&
@@ -264,11 +279,12 @@ class _AddEventScreenState extends State<AddEventScreen> {
               return true;
             }
             return _save(close: false);
-          });
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(messageForTranscriptionReason(l10n, reason))));
+          } catch (_) {
+            return false;
+          } finally {
+            _finalizingDraft = false;
+          }
+        });
   }
 
   @override
@@ -461,6 +477,29 @@ class _AddEventScreenState extends State<AddEventScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             if (_draftRestored) Text(l10n.storyDraftRestored),
+            Text(l10n.storyAudioFirstTitle,
+                style: Theme.of(context).textTheme.titleMedium),
+            Text(l10n.storyAudioFirstHelp),
+            const SizedBox(height: 8),
+            _buildRecordingCard(l10n),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _descriptionController,
+              contextMenuBuilder: (context, editable) => diaCorrectionTextMenu(
+                  context, editable,
+                  recordings: _recorder.state == RecorderState.idle && !_isTranscribingNow
+                      ? [..._draftEvent.files, if (_pendingRecording != null) _pendingRecording!]
+                          .where((file) => file.isRecording).toList()
+                      : [],
+                  store: _recorder.fileStore,
+                  regionSuggestion: _suggestDiaRegion),
+              decoration: InputDecoration(
+                  labelText: l10n.addEventDescriptionLabel, prefixIcon: const Icon(Icons.note)),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 16),
+            TranscriptPeoplePicker(controller: _peoplePicker, selectedIds: _participantIds.toSet()),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _titleController,
               onChanged: (_) => _titleEdited = true,
@@ -518,8 +557,6 @@ class _AddEventScreenState extends State<AddEventScreen> {
               onTap: _selectEndDateTime,
             ),
             const SizedBox(height: 16),
-            _buildRecordingCard(l10n),
-            const SizedBox(height: 16),
             OutlinedButton.icon(
               onPressed: _isPickingPhotos || _isSaving ? null : _pickPhotos,
               icon: const Icon(Icons.add_photo_alternate_outlined),
@@ -536,22 +573,6 @@ class _AddEventScreenState extends State<AddEventScreen> {
                 ]),
               ),
             const SizedBox(height: 16),
-            TextFormField(
-              controller: _descriptionController,
-              contextMenuBuilder: (context, editable) => diaCorrectionTextMenu(
-                  context, editable,
-                  recordings: _recorder.state == RecorderState.idle && !_isTranscribingNow
-                      ? [..._draftEvent.files, if (_pendingRecording != null) _pendingRecording!]
-                          .where((file) => file.isRecording).toList()
-                      : [],
-                  store: _recorder.fileStore,
-                  regionSuggestion: _suggestDiaRegion),
-              decoration: InputDecoration(
-                  labelText: l10n.addEventDescriptionLabel, prefixIcon: const Icon(Icons.note)),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 16),
-            TranscriptPeoplePicker(controller: _peoplePicker, selectedIds: _participantIds.toSet()),
             Card(
               child: ListTile(
                 leading: const Icon(Icons.people),
@@ -606,6 +627,9 @@ class _AddEventScreenState extends State<AddEventScreen> {
                   onPressed: isBusy ? null : _toggleRecording,
                 ),
                 const SizedBox(width: 8),
+                Flexible(child: Text(isRecording ? l10n.quickAddStopRecording
+                    : _recorder.canRetryStop ? l10n.storyRetryFinish : l10n.quickAddStartRecording)),
+                const SizedBox(width: 8),
                 Text(_formatElapsed(_recorder.elapsed)),
                 const SizedBox(width: 16),
                 if (isRecording)
@@ -648,13 +672,21 @@ class _AddEventScreenState extends State<AddEventScreen> {
                   ],
                 ),
               ),
-            if (_recorder.isAnonymousRecording && _pendingRecording == null)
-              Text(l10n.recordingAnonymousAllowance,
+            if (_recorder.showGuestTranscriptionWarning &&
+                _recorder.liveTranscriptionReason != LiveTranscriptionReason.anonymousLimit)
+              Text(l10n.recordingGuestTranscriptionWarning,
                   style: Theme.of(context).textTheme.bodySmall),
             if (!isRecording && _recorder.liveTranscriptionReason == LiveTranscriptionReason.anonymousLimit)
               Text(l10n.liveTranscriptionAnonymousLimit),
-            if (_recorder.lastStopResult?.stopReason == StopReason.anonymousLimit)
-              Text(l10n.recordingAnonymousStopped),
+            if (!isRecording && _recorder.liveTranscriptionReason == LiveTranscriptionReason.dailyLimit)
+              Text(l10n.liveTranscriptionDailyLimit),
+            if (_recorder.showGuestTranscriptionWarning ||
+                _recorder.liveTranscriptionReason == LiveTranscriptionReason.anonymousLimit)
+              TextButton(
+                onPressed: isBusy ? null : () => _showRecordingSignIn(
+                    _recorder.liveTranscriptionReason == LiveTranscriptionReason.anonymousLimit
+                        ? l10n.liveTranscriptionAnonymousLimit : l10n.recordingGuestTranscriptionWarning),
+                child: Text(l10n.loginAccountButton)),
             if (_pendingRecording != null && _recorder.state == RecorderState.idle && !_isTranscribingNow)
               DiaCorrectionButton(file: _pendingRecording!, store: _recorder.fileStore,
                   regionSuggestion: _suggestDiaRegion,

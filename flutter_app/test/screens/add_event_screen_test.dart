@@ -42,6 +42,10 @@ import '../support/account_prompt_auth.dart';
 /// (non-FakeAsync) zone runAsync provides, since these callbacks reach the
 /// database.
 Future<void> _pressAsync(WidgetTester tester, Finder finder) async {
+  if (finder.evaluate().isEmpty) {
+    await tester.scrollUntilVisible(finder, -150,
+        scrollable: find.byType(Scrollable).first);
+  }
   await tester.runAsync(() async {
     final widget = tester.widget(finder);
     final callback = (widget is IconButton ? widget.onPressed : (widget as TextButton).onPressed)!
@@ -94,15 +98,23 @@ void main() {
             initialParticipantIds: const ['chosen-person'])),
     )));
     await tester.pumpAndSettle();
+    final l10n = AppLocalizations.of(
+        tester.element(find.byType(AddEventScreen)));
+    expect(capture.isRecording, isFalse);
+    expect(controller.state, RecorderState.idle);
+    expect(find.text(l10n.storyAudioFirstTitle), findsOneWidget);
+    expect(find.text(l10n.recordingGuestTranscriptionWarning), findsNothing);
+    expect(find.text(l10n.loginAccountButton), findsNothing);
+    expect(tester.getTopLeft(find.widgetWithIcon(IconButton, Icons.mic)).dy,
+        lessThan(tester.getTopLeft(find.widgetWithText(TextFormField, 'Title *')).dy));
     final titleController = tester.widget<TextFormField>(find.widgetWithText(TextFormField, 'Title *')).controller!;
     await tester.scrollUntilVisible(find.widgetWithText(TextFormField, 'Description'), 150,
         scrollable: find.byType(Scrollable).first);
     await tester.enterText(find.widgetWithText(TextFormField, 'Description'), 'My unsaved notes.');
+    expect(capture.isRecording, isFalse);
     await _pressAsync(tester, find.widgetWithIcon(IconButton, Icons.mic));
     await tester.pump();
-    final l10n = AppLocalizations.of(
-        tester.element(find.byType(AddEventScreen)));
-    expect(find.text(l10n.recordingAnonymousAllowance), findsOneWidget);
+    expect(find.text(l10n.recordingGuestTranscriptionWarning), findsNothing);
     await tester.runAsync(() async {
       capture.emitChunk(Uint8List(1600));
       await Future<void>.delayed(Duration.zero);
@@ -205,16 +217,12 @@ void main() {
 
     expect(find.byIcon(Icons.mic), findsOneWidget); // back to idle
     // The live transcript should have flowed into the description field.
-    expect(
-      find.byWidgetPredicate((w) =>
-          w is TextFormField &&
-          w.controller?.text.contains('said hello') == true),
-      findsOneWidget,
-    );
+    expect(tester.widget<TextFormField>(
+        find.widgetWithText(TextFormField, 'Description')).controller!.text,
+        contains('said hello'));
 
-    // Fill in the required title and save. Title is the first of the two
-    // TextFormFields on this screen (the other is Description).
-    final titleField = find.byType(TextFormField).first;
+    // Edit the suggested title and save.
+    final titleField = find.widgetWithText(TextFormField, 'Title *');
     await tester.enterText(titleField, "Grandma's story");
     await tester.pump();
 
@@ -534,6 +542,8 @@ void main() {
       }));
     await tester.pumpAndSettle();
     final field = find.byType(DropdownButton<DatePrecision>);
+    await Scrollable.ensureVisible(tester.element(field), alignment: 0.3);
+    await tester.pumpAndSettle();
     await tester.tap(field);
     await tester.pumpAndSettle();
     final l10n = AppLocalizations.of(tester.element(find.byType(AddEventScreen)));

@@ -52,87 +52,108 @@ public class AnonymousTranscriptionTests
     }
 
     [Test]
-    public async Task Anonymous_ThreeRecordingsPerDay_WithIdempotentChunksAndHelpfulFourthError()
+    public async Task Anonymous_FiveMinutesAcrossRecordings_ResetsAtUtcMidnight()
     {
         var clock = new Clock();
         await using var factory = new TestWebApplicationFactory { Clock = clock };
         factory.TranscriptionService.IsConfigured = true;
         using var client = await factory.StartAsync();
-        var id = Guid.NewGuid();
-        Assert.That((await Send(client, id)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That((await Send(client, id)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That(factory.TranscriptionService.CallCount, Is.EqualTo(1), "A retry must reuse the result instead of sending the audio upstream again.");
-        Assert.That((await Send(client, id, 1)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That((await Send(client, Guid.NewGuid())).StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That((await Send(client, Guid.NewGuid())).StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        var fourth = await Send(client, Guid.NewGuid());
-        Assert.That(fourth.StatusCode, Is.EqualTo(HttpStatusCode.TooManyRequests));
-        Assert.That(await fourth.Content.ReadAsStringAsync(), Does.Contain("anonymous_daily_limit").And.Contain("Sign in").And.Contain("tomorrow"));
-        Assert.That(await (await client.GetAsync("/api/transcription/status")).Content.ReadAsStringAsync(), Does.Contain("\"remainingRecordings\":0"));
-        clock.Now = clock.Now.AddDays(1);
+        client.DefaultRequestHeaders.Add("X-Audio-Duration", "0"); // Client claims never determine the charged duration.
+        for (var i = 0; i < 5; i++)
+            Assert.That((await Send(client, Guid.NewGuid(), seconds: 60)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        var over = await Send(client, Guid.NewGuid(), seconds: 1);
+        Assert.That(over.StatusCode, Is.EqualTo(HttpStatusCode.TooManyRequests));
+        Assert.That(await over.Content.ReadAsStringAsync(), Does.Contain("anonymous_daily_limit").And.Contain("Sign in").And.Contain("tomorrow"));
+        var status = await (await client.GetAsync("/api/transcription/status")).Content.ReadAsStringAsync();
+        Assert.That(status, Does.Contain("\"usedSeconds\":300").And.Contain("\"remainingSeconds\":0").And.Contain("\"dailyLimitSeconds\":300").And.Contain("\"warningAfterSeconds\":180").And.Contain("2026-10-04T00:00:00+00:00"));
+        clock.Now = new DateTimeOffset(2026, 10, 4, 0, 0, 0, TimeSpan.Zero);
         Assert.That((await Send(client, Guid.NewGuid())).StatusCode, Is.EqualTo(HttpStatusCode.OK));
     }
 
     [Test]
-    public async Task Anonymous_EnforcesActualCombinedWavDuration_AndRejectsChangedRetry()
+    public async Task Anonymous_OneRecordingMayExceedOneMinute_AndRetryIsIdempotent()
     {
         await using var factory = new TestWebApplicationFactory();
         factory.TranscriptionService.IsConfigured = true;
         using var client = await factory.StartAsync();
         var id = Guid.NewGuid();
-        Assert.That((await Send(client, id, 0, 30)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That((await Send(client, id, 1, 30)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That((await Send(client, id, 0, 30)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        var over = await Send(client, id, 2, 1);
-        Assert.That(over.StatusCode, Is.EqualTo(HttpStatusCode.RequestEntityTooLarge));
-        Assert.That(await over.Content.ReadAsStringAsync(), Does.Contain("anonymous_recording_too_long").And.Contain("Sign in"));
-        Assert.That((await Send(client, id, 0, 30, 1)).StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        Assert.That((await Send(client, id, 0, 66)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That((await Send(client, id, 64, 66)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        var retried = await Send(client, id, 0, 66);
+        Assert.That(retried.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(await retried.Content.ReadAsStringAsync(), Does.Contain("\"usedSeconds\":132").And.Contain("\"remainingSeconds\":168").And.Contain("\"available\":true"));
+        Assert.That(factory.TranscriptionService.CallCount, Is.EqualTo(2));
+        Assert.That((await Send(client, id, 0, 66, 1)).StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
     }
 
     [Test]
-    public async Task Anonymous_RejectsUnverifiableAudio_AndInvalidBearer()
+    public async Task AllUploads_RequireVerifiableWav_RecordingIdentity_AndValidAuthentication()
     {
         await using var factory = new TestWebApplicationFactory();
         factory.TranscriptionService.IsConfigured = true;
         using var client = await factory.StartAsync();
-        using var invalid = new ByteArrayContent(new byte[100]);
-        invalid.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
-        var response = await client.PostAsync($"/api/transcription/segment?recordingId={Guid.NewGuid()}&segment=0", invalid);
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
-        Assert.That(await response.Content.ReadAsStringAsync(), Does.Contain("invalid_audio").And.Contain("Record it again"));
+        foreach (var authenticated in new[] { false, true })
+        {
+            if (authenticated) client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await TestAuthHelper.GetDevTokenAsync(client));
+            using var invalid = new ByteArrayContent(new byte[100]);
+            invalid.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
+            var response = await client.PostAsync($"/api/transcription/segment?recordingId={Guid.NewGuid()}&segment=0", invalid);
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+            Assert.That(await response.Content.ReadAsStringAsync(), Does.Contain("invalid_audio").And.Contain("Record it again"));
+            Assert.That((await client.PostAsync("/api/transcription/segment", Wav(1))).StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+            using var webm = new ByteArrayContent(new byte[100]);
+            webm.Headers.ContentType = new MediaTypeHeaderValue("audio/webm");
+            Assert.That((await client.PostAsync($"/api/transcription/segment?recordingId={Guid.NewGuid()}&segment=0", webm)).StatusCode, Is.EqualTo(HttpStatusCode.UnsupportedMediaType));
+        }
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "invalid");
         Assert.That((await Send(client, Guid.NewGuid())).StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
         Assert.That((await client.GetAsync("/api/transcription/status")).StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+        Assert.That(factory.TranscriptionService.CallCount, Is.Zero);
     }
 
     [Test]
-    public async Task Anonymous_QuotaSurvivesServerRestart_AndUntrustedForwardedIpCannotBypass()
+    public async Task Anonymous_QuotaSurvivesRestart_UntrustedForwardedIpCannotBypass_AndRetryDoesNotDoubleCharge()
     {
         var store = new InMemoryAnonymousQuotaStore();
+        var id = Guid.NewGuid();
         await using (var first = new TestWebApplicationFactory { AnonymousQuotaStore = store })
         {
             first.TranscriptionService.IsConfigured = true;
             using var client = await first.StartAsync();
-            for (var i = 0; i < 3; i++) Assert.That((await Send(client, Guid.NewGuid())).StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            for (var i = 0; i < 3; i++) Assert.That((await Send(client, id, i, 100)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
         }
         await using var second = new TestWebApplicationFactory { AnonymousQuotaStore = store };
         second.TranscriptionService.IsConfigured = true;
         using var next = await second.StartAsync();
         next.DefaultRequestHeaders.Add("X-Forwarded-For", "198.51.100.4");
         Assert.That((await Send(next, Guid.NewGuid())).StatusCode, Is.EqualTo(HttpStatusCode.TooManyRequests));
+        var retry = await Send(next, id, 0, 100);
+        Assert.That(retry.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(await retry.Content.ReadAsStringAsync(), Does.Contain("\"usedSeconds\":300"));
     }
 
     [Test]
-    public async Task SignedIn_DoesNotConsumeAnonymousQuota_OrHaveOneMinuteLimit()
+    public async Task SignedIn_TwentyMinutesArePerUser_AndSeparateFromGuestQuota()
     {
         await using var factory = new TestWebApplicationFactory();
         factory.TranscriptionService.IsConfigured = true;
         using var client = await factory.StartAsync();
         var token = await TestAuthHelper.GetDevTokenAsync(client);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        for (var i = 0; i < 4; i++) Assert.That((await client.PostAsync("/api/transcription/segment", Wav(61))).StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        var id = Guid.NewGuid();
+        for (var i = 0; i < 10; i++) Assert.That((await Send(client, id, i, 120)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        var over = await Send(client, Guid.NewGuid(), seconds: 1);
+        Assert.That(over.StatusCode, Is.EqualTo(HttpStatusCode.TooManyRequests));
+        Assert.That(await over.Content.ReadAsStringAsync(), Does.Contain("transcription_daily_limit"));
+        Assert.That((await Send(client, id, 0, 120)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(factory.TranscriptionService.CallCount, Is.EqualTo(10), "Signed-in retries also use the result cache.");
+        var status = await (await client.GetAsync("/api/transcription/status")).Content.ReadAsStringAsync();
+        Assert.That(status, Does.Contain("\"usedSeconds\":1200").And.Contain("\"dailyLimitSeconds\":1200"));
+        Assert.That(status, Does.Not.Contain("\"warningAfterSeconds\":180"));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestAuthHelper.MintTokenWithSub(factory, Guid.NewGuid().ToString()));
+        Assert.That((await Send(client, Guid.NewGuid())).StatusCode, Is.EqualTo(HttpStatusCode.OK));
         client.DefaultRequestHeaders.Authorization = null;
-        Assert.That(await (await client.GetAsync("/api/transcription/status")).Content.ReadAsStringAsync(), Does.Contain("\"remainingRecordings\":3"));
+        Assert.That(await (await client.GetAsync("/api/transcription/status")).Content.ReadAsStringAsync(), Does.Contain("\"remainingSeconds\":300"));
     }
 
     [Test]
@@ -146,7 +167,7 @@ public class AnonymousTranscriptionTests
         {
             client.DefaultRequestHeaders.Remove("X-Forwarded-For");
             client.DefaultRequestHeaders.Add("X-Forwarded-For", $"203.0.113.{i}, 198.51.100.4");
-            Assert.That((await Send(client, Guid.NewGuid())).StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That((await Send(client, Guid.NewGuid(), seconds: 100)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
         }
         client.DefaultRequestHeaders.Remove("X-Forwarded-For");
         client.DefaultRequestHeaders.Add("X-Forwarded-For", "203.0.113.99, 198.51.100.4");
@@ -157,31 +178,31 @@ public class AnonymousTranscriptionTests
     }
 
     [Test]
-    public async Task FailedRetries_AreBounded_ButCanRecoverAfterOneMinuteWithoutNewSlot()
+    public async Task FailedTranscriptions_ReleaseBudget_AndSameSegmentCanRecoverImmediately()
     {
-        var clock = new Clock();
-        await using var factory = new TestWebApplicationFactory { Clock = clock };
+        await using var factory = new TestWebApplicationFactory();
         factory.TranscriptionService.IsConfigured = true;
         factory.TranscriptionService.ThrowOnTranscribe = new TranscriptionFailedException("unavailable");
         using var client = await factory.StartAsync();
         var id = Guid.NewGuid();
-        for (var i = 0; i < 4; i++) Assert.That((await Send(client, id)).StatusCode, Is.EqualTo(HttpStatusCode.BadGateway));
-        var limited = await Send(client, id);
-        Assert.That(limited.StatusCode, Is.EqualTo(HttpStatusCode.TooManyRequests));
-        Assert.That(await limited.Content.ReadAsStringAsync(), Does.Contain("Wait one minute"));
-        clock.Now = clock.Now.AddMinutes(1);
+        for (var i = 0; i < 5; i++) Assert.That((await Send(client, id, seconds: 100)).StatusCode, Is.EqualTo(HttpStatusCode.BadGateway));
+        Assert.That(await (await client.GetAsync("/api/transcription/status")).Content.ReadAsStringAsync(), Does.Contain("\"usedSeconds\":0").And.Contain("\"remainingSeconds\":300"));
         factory.TranscriptionService.ThrowOnTranscribe = null;
-        Assert.That((await Send(client, id)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That(await (await client.GetAsync("/api/transcription/status")).Content.ReadAsStringAsync(), Does.Contain("\"remainingRecordings\":2"));
+        Assert.That((await Send(client, id, seconds: 100)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(await (await client.GetAsync("/api/transcription/status")).Content.ReadAsStringAsync(), Does.Contain("\"usedSeconds\":100").And.Contain("\"remainingSeconds\":200"));
     }
 
     [Test]
-    public async Task ConcurrentReservations_AcrossInstances_AllowExactlyThree()
+    public async Task CancelledUpstream_ReleasesReservationBeforeRetry()
     {
-        var store = new InMemoryAnonymousQuotaStore();
-        var quotas = Enumerable.Range(0, 10).Select(_ => new AnonymousRecordingQuota(store, TimeProvider.System));
-        var results = await Task.WhenAll(quotas.Select(q => q.ReserveAsync("same-ip", Guid.NewGuid(), 0, new byte[] {1}, 6)));
-        Assert.That(results.Count(r => r == null), Is.EqualTo(3));
-        Assert.That(results.Count(r => r == "anonymous_daily_limit"), Is.EqualTo(7));
+        await using var factory = new TestWebApplicationFactory();
+        factory.TranscriptionService.IsConfigured = true;
+        factory.TranscriptionService.ThrowOnTranscribe = new OperationCanceledException();
+        using var client = await factory.StartAsync();
+        var id = Guid.NewGuid();
+        Assert.That((await Send(client, id, seconds: 100)).IsSuccessStatusCode, Is.False);
+        Assert.That(await (await client.GetAsync("/api/transcription/status")).Content.ReadAsStringAsync(), Does.Contain("\"usedSeconds\":0").And.Contain("\"remainingSeconds\":300"));
+        factory.TranscriptionService.ThrowOnTranscribe = null;
+        Assert.That((await Send(client, id, seconds: 100)).StatusCode, Is.EqualTo(HttpStatusCode.OK));
     }
 }

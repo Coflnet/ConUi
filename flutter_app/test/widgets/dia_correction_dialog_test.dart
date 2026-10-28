@@ -16,6 +16,8 @@ import 'package:relationship_manager/services/wav.dart';
 import 'package:relationship_manager/widgets/dia_correction_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../support/fake_speech_detector.dart';
+
 class _Store implements RecordingFileStore {
   final Uint8List original;
   int reads = 0;
@@ -136,6 +138,8 @@ void main() {
                             regionSuggestion:
                                 regionSuggestion ?? () async => null,
                             transcriptionClient: transcriptionClient,
+                            createSpeechDetector: () async =>
+                                EndingDetector(minSpeechFrames: 1),
                             onTranscriptDetected: onTranscriptDetected,
                             language: language)),
                     child: const Text('Open'),
@@ -647,8 +651,11 @@ void main() {
     testWidgets(
         'local original ${silent ? 'silence' : 'sentence marks'} never invokes ASR',
         (tester) async {
-      final original =
-          silent ? const [RecordingTranscriptSlice(startByte: 0, endByte: 200, text: '')] : file.transcriptSlices;
+      final original = silent
+          ? const [
+              RecordingTranscriptSlice(startByte: 0, endByte: 200, text: '')
+            ]
+          : file.transcriptSlices;
       file.transcriptSlices = [];
       var calls = 0;
       final asr = TranscriptionClient(
@@ -874,6 +881,24 @@ void main() {
     expect(find.text(l10n.commonRetry), findsNothing);
     expect(file.transcriptSlices, isEmpty);
     expect(requests.where((request) => request.method == 'POST'), isEmpty);
+  });
+
+  testWidgets('authenticated daily quota has no guest sign-in guidance',
+      (tester) async {
+    file.transcriptSlices = [];
+    final asr = TranscriptionClient(
+        baseUrl: 'https://con.example',
+        getToken: () => 'signed-in',
+        httpClient: MockClient((_) async => http.Response(
+            '{"slug":"transcription_daily_limit","message":"daily allowance reached"}',
+            429)));
+    await open(tester, transcriptionClient: asr);
+    final l10n =
+        AppLocalizations.of(tester.element(find.byType(DiaCorrectionDialog)));
+    expect(tester.widget<Text>(find.byKey(const Key('dia-error'))).data,
+        l10n.liveTranscriptionDailyLimit);
+    expect(find.text(l10n.liveTranscriptionAnonymousLimit), findsNothing);
+    expect(file.transcriptSlices, isEmpty);
   });
 
   for (final language in ['en', 'de']) {

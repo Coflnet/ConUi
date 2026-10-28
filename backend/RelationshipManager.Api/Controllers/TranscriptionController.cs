@@ -23,7 +23,7 @@ public class TranscriptionController : ControllerBase
 {
     private static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "audio/wav", "audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg"
+        "audio/wav"
     };
 
     private static readonly Regex LanguagePattern = new(@"^[a-z]{2}$", RegexOptions.Compiled);
@@ -55,12 +55,9 @@ public class TranscriptionController : ControllerBase
         if (HasInvalidAuthentication()) return UnauthorizedError();
         try
         {
-            return Ok(new TranscriptionStatus
-            {
-                Available = _transcriptionService.IsConfigured,
-                RemainingRecordings = GetUserId() == null && _transcriptionService.IsConfigured
-                    ? await _anonymousQuota.RemainingAsync(ClientIp()) : null
-            });
+            var status = await _anonymousQuota.StatusAsync(QuotaIdentity(), DailyLimit());
+            status.Available = _transcriptionService.IsConfigured;
+            return Ok(status);
         }
         catch (Exception ex)
         {
@@ -85,7 +82,7 @@ public class TranscriptionController : ControllerBase
         if (contentType == null || !AllowedContentTypes.Contains(contentType))
         {
             return StatusCode(StatusCodes.Status415UnsupportedMediaType,
-                new ApiError("unsupported_content_type", "This audio format is not supported. Record again in the app using WAV, WebM, Ogg, MP4, or MP3."));
+                new ApiError("unsupported_content_type", "This audio format is not supported. Record again in the app using PCM WAV."));
         }
 
         if (!string.IsNullOrEmpty(language) && !LanguagePattern.IsMatch(language))
@@ -118,56 +115,67 @@ public class TranscriptionController : ControllerBase
 
         var maxBytes = _config.GetValue("Transcription:MaxSegmentBytes", 5 * 1024 * 1024);
         var sw = Stopwatch.StartNew();
+        AnonymousRecordingQuota.Reservation? reservation = null;
+        var completed = false;
+        var identity = QuotaIdentity();
+        var limit = DailyLimit();
         try
         {
             using var limitedBody = new LimitedStream(Request.Body, maxBytes);
-            Stream audio = limitedBody;
-            using var anonymousAudio = userId == null ? new MemoryStream() : null;
-            if (anonymousAudio != null)
+            if (recordingId == null || recordingId == Guid.Empty || segment is null or < 0 or > 4095)
+                return BadRequest(new ApiError("invalid_recording_segment", "Start a new recording in the app and try again."));
+            using var audio = new MemoryStream();
+            await limitedBody.CopyToAsync(audio, HttpContext.RequestAborted);
+            var bytes = audio.ToArray();
+            var seconds = AnonymousRecordingQuota.WavSeconds(bytes);
+            if (seconds == null)
+                return BadRequest(new ApiError("invalid_audio", "This recording is not a valid PCM WAV file. Record it again in the app."));
+            try
             {
-                if (recordingId == null || recordingId == Guid.Empty || segment is null or < 0 or > 63)
-                    return BadRequest(new ApiError("invalid_recording_segment", "Start a new recording in the app and try again."));
-                await limitedBody.CopyToAsync(anonymousAudio, HttpContext.RequestAborted);
-                var bytes = anonymousAudio.ToArray();
-                var seconds = contentType == "audio/wav" ? AnonymousRecordingQuota.WavSeconds(bytes) : null;
-                if (seconds == null)
-                    return BadRequest(new ApiError("invalid_audio", "This recording is not a valid PCM WAV file. Record it again in the app, or sign in to use another audio format."));
-                string? rejected;
-                try
+                var cached = _anonymousQuota.CachedText(identity, recordingId.Value, segment.Value, bytes, language, initialPrompt);
+                if (cached != null) return Ok(await ResultAsync(identity, limit, cached));
+                var reserved = await _anonymousQuota.ReserveAsync(identity, limit, recordingId.Value, segment.Value, bytes, seconds.Value);
+                if (reserved.Error != null)
                 {
-                    var cached = _anonymousQuota.CachedText(ClientIp(), recordingId.Value, segment.Value, bytes, language, initialPrompt);
-                    if (cached != null) return Ok(new TranscriptionResult { Text = cached });
-                    rejected = await _anonymousQuota.ReserveAsync(ClientIp(), recordingId.Value, segment.Value, bytes, seconds.Value);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning("Recording quota unavailable: {ExceptionType}", ex.GetType().Name);
-                    return QuotaUnavailable();
-                }
-                if (rejected != null)
-                {
-                    var message = rejected switch
+                    var message = reserved.Error switch
                     {
-                        "anonymous_daily_limit" => "You have used your three free recordings for today. Sign in to continue, or try again tomorrow. Your recording stays saved on this device.",
-                        "anonymous_recording_too_long" => "Free recordings can be at most one minute long. Sign in to transcribe longer recordings, or make a shorter recording. Your audio stays saved on this device.",
+                        "anonymous_daily_limit" => "You have used your five free transcription minutes for today. Sign in to continue, or try again tomorrow. Your recording stays saved on this device.",
+                        "transcription_daily_limit" => "You have used your twenty transcription minutes for today. Try again tomorrow; your recording stays saved on this device.",
                         "invalid_recording_segment" => "This recording segment has changed. Start a new recording and try again.",
-                        _ => "This recording has been retried too often. Wait one minute and retry, or sign in; your audio stays saved on this device."
+                        "too_many_requests" => "This recording segment has been retried too often. Wait one minute and retry; your audio stays saved on this device.",
+                        "recording_segment_limit" => "You have reached today's transcription segment limit. Try again after midnight UTC; your recording stays saved on this device.",
+                        _ => "This recording segment is already being transcribed. Wait a moment and retry; your audio stays saved on this device."
                     };
-                    return StatusCode(rejected == "anonymous_recording_too_long" ? 413 : rejected == "invalid_recording_segment" ? 400 : 429, new ApiError(rejected, message));
+                    return StatusCode(reserved.Error == "invalid_recording_segment" ? 400 : 429, new ApiError(reserved.Error, message));
                 }
-                anonymousAudio.Position = 0;
-                audio = anonymousAudio;
+                reservation = reserved.Reservation!;
             }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Recording quota unavailable: {ExceptionType}", ex.GetType().Name);
+                return QuotaUnavailable();
+            }
+            audio.Position = 0;
             var text = await _transcriptionService.TranscribeAsync(audio, contentType, language, HttpContext.RequestAborted, initialPrompt);
-
-            if (anonymousAudio != null)
-                _anonymousQuota.CacheText(ClientIp(), recordingId!.Value, segment!.Value, anonymousAudio.ToArray(), language, text, initialPrompt);
+            TranscriptionResult result;
+            try
+            {
+                await _anonymousQuota.CompleteAsync(reservation);
+                completed = true;
+                _anonymousQuota.CacheText(reservation, bytes, language, text, initialPrompt);
+                result = await ResultAsync(identity, limit, text);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Recording quota unavailable: {ExceptionType}", ex.GetType().Name);
+                return QuotaUnavailable();
+            }
             sw.Stop();
             _logger.LogInformation(
                 "Transcribed segment: content-type {ContentType}, {ElapsedMs}ms, status 200",
                 contentType, sw.ElapsedMilliseconds);
 
-            return Ok(new TranscriptionResult { Text = text });
+            return Ok(result);
         }
         catch (MaxLengthExceededException)
         {
@@ -188,8 +196,28 @@ public class TranscriptionController : ControllerBase
         }
         finally
         {
+            if (reservation != null && !completed)
+            {
+                try { await _anonymousQuota.ReleaseAsync(reservation); }
+                catch (Exception ex) { _logger.LogWarning("Recording reservation release failed: {ExceptionType}", ex.GetType().Name); }
+            }
             _limiter.Release(concurrencyId);
         }
+    }
+
+    private string QuotaIdentity() => GetUserId() is { } userId ? $"user:{userId}" : ClientIp();
+    private int DailyLimit() => GetUserId() == null ? 300 : 1200;
+
+    private async Task<TranscriptionResult> ResultAsync(string identity, int limit, string text)
+    {
+        var status = await _anonymousQuota.StatusAsync(identity, limit);
+        return new TranscriptionResult
+        {
+            Available = true, Text = text,
+            UsedSeconds = status.UsedSeconds, RemainingSeconds = status.RemainingSeconds,
+            DailyLimitSeconds = status.DailyLimitSeconds, WarningAfterSeconds = status.WarningAfterSeconds,
+            ResetAt = status.ResetAt
+        };
     }
 
     private ObjectResult NotConfigured()
@@ -204,7 +232,7 @@ public class TranscriptionController : ControllerBase
 
     private ObjectResult UnauthorizedError() => Unauthorized(new ApiError("unauthorized", "Your sign-in has expired. Sign in again and retry; your recording remains saved on this device."));
 
-    private ObjectResult QuotaUnavailable() => StatusCode(503, new ApiError("recording_quota_unavailable", "Free recording limits cannot be checked right now. Wait a moment and retry, or sign in; your recording remains saved on this device."));
+    private ObjectResult QuotaUnavailable() => StatusCode(503, new ApiError("recording_quota_unavailable", "Transcription limits cannot be checked right now. Wait a moment and retry; your recording remains saved on this device."));
 
     private static string? GetMediaType(string? contentType)
     {

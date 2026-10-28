@@ -1,14 +1,16 @@
-"""Hosted anonymous Con recording checks; consumes this IP's three daily allowances."""
+"""Bounded hosted guest recording and cumulative transcription-seconds checks."""
 import argparse
 import base64
 import hashlib
 import io
 import json
+import math
+from datetime import datetime
 import os
 from pathlib import Path
 import re
 import sys
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 import uuid
 import wave
 
@@ -31,8 +33,8 @@ def validate_fixture(path):
 def pcm_wav(seconds):
     stream = io.BytesIO()
     with wave.open(stream, "wb") as audio:
-        audio.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
-        audio.writeframes(bytes(seconds * 16000 * 2))
+        audio.setparams((1, 1, 8000, 0, "NONE", "not compressed"))
+        audio.writeframes(b"\x80" * (seconds * 8000))
     return stream.getvalue()
 
 
@@ -54,13 +56,32 @@ def segment(page, seconds, spoof_ip=False):
     }""", {"audio": base64.b64encode(pcm_wav(seconds)).decode("ascii"), "recordingId": str(uuid.uuid4()), "spoof": spoof_ip})
 
 
-def check_remaining(page, remaining):
+def check_usage(body):
+    assert body["dailyLimitSeconds"] == 300
+    assert body["warningAfterSeconds"] == 180
+    for name in ("usedSeconds", "remainingSeconds"):
+        assert isinstance(body[name], (int, float)) and math.isfinite(body[name])
+        assert 0 <= body[name] <= 300
+    assert body["usedSeconds"] + body["remainingSeconds"] <= 300 + 1e-6
+    reset = datetime.fromisoformat(body["resetAt"].replace("Z", "+00:00"))
+    assert reset.utcoffset().total_seconds() == 0
+    assert (reset.hour, reset.minute, reset.second, reset.microsecond) == (0, 0, 0, 0)
+    return body
+
+
+def usage(page):
     response = status(page)
     assert response["status"] == 200
     assert response["body"]["available"] is True
-    assert response["body"]["remainingRecordings"] == remaining
-    assert response["body"]["dailyLimit"] == 3
-    assert response["body"]["maxDurationSeconds"] == 60
+    body = check_usage(response["body"])
+    assert math.isclose(body["usedSeconds"] + body["remainingSeconds"], 300, abs_tol=1e-6), "Quota has outstanding reservations"
+    return body
+
+
+def unchanged(before, after):
+    assert after["resetAt"] == before["resetAt"], "UTC day changed during verification"
+    assert math.isclose(after["usedSeconds"], before["usedSeconds"], abs_tol=1e-6)
+    assert math.isclose(after["remainingSeconds"], before["remainingSeconds"], abs_tol=1e-6)
 
 
 def english_recording_language(page):
@@ -84,9 +105,24 @@ def record_story(page, number, result):
     notes = "Synthetische Notiz bleibt erhalten."
     print("Guest speech recording " + str(number) + " started", flush=True)
     responses = []
+    uploaded = {}
     def capture(response):
-        if urlsplit(response.url).path == '/api/transcription/segment':
+        url = urlsplit(response.url)
+        if url.path == '/api/transcription/segment':
             responses.append(response.status)
+            if response.status == 200:
+                check_usage(response.json())
+                query = parse_qs(url.query)
+                recording_id = str(uuid.UUID(query['recordingId'][0]))
+                sequence = int(query['segment'][0])
+                assert 0 <= sequence <= 4095
+                with wave.open(io.BytesIO(response.request.post_data_buffer), 'rb') as audio:
+                    assert audio.getcomptype() == 'NONE'
+                    seconds = audio.getnframes() / audio.getframerate()
+                assert seconds > 0
+                key = (recording_id, sequence)
+                assert key not in uploaded or uploaded[key] == seconds
+                uploaded[key] = seconds
     page.on('response', capture)
     result['last_recording_transcription_http_statuses'] = responses
     open_quick_add(page)
@@ -115,19 +151,22 @@ def record_story(page, number, result):
     hosted.playback(page)
     hosted.back(page)
     hosted.click(page, "Karte")
+    return sum(uploaded.values())
 
 
 def run(args):
     global PHASE
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
-    result = {"completed": False, "anonymous_daily_allowances_consumed": 0,
-              "initial_remaining": args.initial_remaining,
+    result = {"completed": False, "recordings_requested": args.recordings,
+              "recorded_stories_saved_played": 0, "consumedSeconds": 0,
+              "transcribed_upload_seconds": 0, "recording_skipped": None,
               "server_path": "isolated_deployed_backend" if args.api_forward else
                   "isolated_ingress" if any("--host-resolver-rules=" in arg for arg in args.browser_arg) else "public_ingress"}
     errors = []
     try:
-        validate_fixture(args.audio_fixture)
+        if args.audio_fixture:
+            validate_fixture(args.audio_fixture)
         with hosted.chromium(args, output) as endpoint, sync_playwright() as playwright:
             browser = playwright.chromium.connect_over_cdp(endpoint)
             context = browser.new_context(viewport={"width": 1440, "height": 900}, locale="de-DE", permissions=["microphone"])
@@ -156,53 +195,70 @@ def run(args):
             page.set_default_timeout(90000)
             page.on("pageerror", lambda _: errors.append(True))
             try:
-                PHASE = "anonymous app entry and fresh daily quota"
+                PHASE = "anonymous app entry and actual seconds quota"
                 page.goto(args.origin)
                 hosted.semantics(page)
                 expect(page.get_by_role("button", name="Einstellungen", exact=True)).to_be_visible()
-                check_remaining(page, args.initial_remaining)
-                result["initial_allowance_verified"] = True
-                if args.initial_remaining > 0:
-                    PHASE = "server rejects 61-second audio without consuming an allowance"
-                    too_long = segment(page, 61)
-                    assert too_long["status"] == 413
-                    assert too_long["body"]["slug"] == "anonymous_recording_too_long"
-                    assert "Sign in" in too_long["body"]["message"]
-                    check_remaining(page, args.initial_remaining)
-                    result["server_actual_duration_limit"] = True
-                english_recording_language(page)
-                for number in range(1, args.initial_remaining + 1):
-                    record_story(page, number, result)
-                    check_remaining(page, args.initial_remaining - number)
-                    result["anonymous_daily_allowances_consumed"] = number
-                result["remaining_anonymous_stories_transcribed_saved_played"] = args.initial_remaining > 0
-                result["server_total_daily_slots_used"] = 3
-                PHASE = "fourth recording clear German sign-in guidance before capture"
-                open_quick_add(page)
-                hosted.field(page, "Was ist hier passiert?", "Geschichte bleibt ohne weitere Aufnahme speicherbar.")
-                hosted.click(page, "Aufnahme starten")
-                page.wait_for_function("""() => [...document.querySelectorAll('flt-semantics')].some(element => {
-                  const text = element.innerText || '';
-                  return text.includes('3 täglichen Aufnahmen') && text.includes('melden Sie sich') && text.includes('morgen');
-                })""")
-                expect(page.get_by_text("Aufnahme beenden", exact=True)).to_have_count(0)
-                expect(page.get_by_role("button", name="Geschichte speichern", exact=True)).to_be_enabled()
-                page.get_by_role("button", name="Fotos hinzufügen", exact=True).scroll_into_view_if_needed()
-                expect(page.get_by_role("button", name="Fotos hinzufügen", exact=True)).to_be_visible()
-                result["fourth_recording_guidance_before_capture"] = True
-                result["text_and_photo_actions_remain_available"] = True
-                PHASE = "server quota rejects fresh UUID and spoofed client IP"
-                fourth = segment(page, 1, spoof_ip=True)
-                assert fourth["status"] == 429
-                assert fourth["body"]["slug"] == "anonymous_daily_limit"
-                assert "Sign in" in fourth["body"]["message"] and "tomorrow" in fourth["body"]["message"]
-                check_remaining(page, 0)
+                initial = current = usage(page)
+                result["initial_usage"] = initial
+                if args.recordings:
+                    english_recording_language(page)
+                for number in range(1, args.recordings + 1):
+                    # Capture lasts 13 seconds including the 11-second fixture's tail.
+                    # Reserve the full capture duration rather than assuming VAD savings.
+                    if current["remainingSeconds"] < 13:
+                        result["recording_skipped"] = "insufficient_remaining_seconds_for_13_second_capture"
+                        break
+                    result["consumedSeconds"] = None
+                    seconds = record_story(page, number, result)
+                    result["transcribed_upload_seconds"] += seconds
+                    result["recorded_stories_saved_played"] += 1
+                    current = usage(page)
+                    assert current["resetAt"] == initial["resetAt"], "UTC day changed during verification"
+                    result["consumedSeconds"] = current["usedSeconds"] - initial["usedSeconds"]
+                    assert math.isclose(result["consumedSeconds"], result["transcribed_upload_seconds"], abs_tol=1e-6), "Usage differs from successful unique PCM uploads; check concurrent activity"
+                result["recording_verification_complete"] = result["recorded_stories_saved_played"] == args.recordings
+                if current["remainingSeconds"] == 0:
+                    PHASE = "exhausted quota guidance after explicit Record action"
+                    open_quick_add(page)
+                    hosted.field(page, "Was ist hier passiert?", "Geschichte bleibt ohne weitere Aufnahme speicherbar.")
+                    hosted.click(page, "Aufnahme starten")
+                    expect(page.get_by_text(re.compile("5 Minuten automatische Mitschrift.*aufgebraucht"))).to_be_visible()
+                    expect(page.get_by_text("Aufnahme beenden", exact=True)).to_have_count(0)
+                    expect(page.get_by_role("button", name="Geschichte speichern", exact=True)).to_be_enabled()
+                    page.get_by_role("button", name="Fotos hinzufügen", exact=True).scroll_into_view_if_needed()
+                    expect(page.get_by_role("button", name="Fotos hinzufügen", exact=True)).to_be_visible()
+                    result["exhausted_quota_guidance_after_record_action"] = True
+                    result["text_and_photo_actions_remain_available"] = True
+                else:
+                    result["exhausted_quota_guidance_after_record_action"] = False
+                PHASE = "over-remaining PCM rejected before ASR without quota consumption"
+                # At most 301 seconds of 8-kHz mono 8-bit PCM: under 2.5 MB,
+                # valid audio below MaxSegmentBytes, but beyond today's remaining time.
+                probe_seconds = math.floor(current["remainingSeconds"]) + 1
+                result["rejected_probe_seconds"] = probe_seconds
+                for spoof in (False, True):
+                    rejected = segment(page, probe_seconds, spoof_ip=spoof)
+                    assert rejected["status"] == 429
+                    assert rejected["body"]["slug"] == "anonymous_daily_limit"
+                    assert "Sign in" in rejected["body"]["message"] and "tomorrow" in rejected["body"]["message"]
+                    unchanged(current, usage(page))
+                result["over_remaining_rejection_without_consumption"] = True
                 result["server_quota_not_bypassed_by_uuid_or_forwarded_header"] = True
+                result["final_usage"] = usage(page)
+                unchanged(current, result["final_usage"])
                 assert not errors, "Uncaught browser errors observed"
                 result["uncaught_errors"] = 0
                 result["completed"] = True
                 print(json.dumps(result), flush=True)
             except Exception:
+                if "initial_usage" in result:
+                    try:
+                        result["final_usage"] = usage(page)
+                        if result["final_usage"]["resetAt"] == result["initial_usage"]["resetAt"]:
+                            result["consumedSeconds"] = result["final_usage"]["usedSeconds"] - result["initial_usage"]["usedSeconds"]
+                    except Exception:
+                        result["usage_after_failure_unavailable"] = True
                 if page.url.startswith(args.origin):
                     page.screenshot(path=str(output / 'failure.png'))
                     result['synthetic_textbox_values'] = page.get_by_role('textbox').evaluate_all('nodes => nodes.map(e => e.value)')
@@ -220,9 +276,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--origin", default="https://con.coflnet.com")
     parser.add_argument("--output", required=True)
-    parser.add_argument("--audio-fixture", required=True, type=Path, help="Known public lifenizer speech-sample.wav; owner recordings are refused")
-    parser.add_argument("--initial-remaining", type=int, choices=range(0, 4), default=3,
-                        help="Expected remaining allowance; permits resuming after an interrupted test without resetting production quotas")
+    parser.add_argument("--audio-fixture", type=Path, help="Required for recordings: known public lifenizer speech-sample.wav; owner recordings are refused")
+    parser.add_argument("--recordings", type=int, choices=range(0, 4), default=1,
+                        help="Maximum synthetic UI recordings (default 1); 0 checks status and safe quota rejection without ASR")
     parser.add_argument("--api-forward", help="Optional deployed-backend tunnel, e.g. http://127.0.0.1:18083; isolates test quota from the public IP")
     parser.add_argument("--chromium", default="/usr/bin/chromium")
     parser.add_argument("--browser-arg", action="append", default=[])
@@ -240,7 +296,9 @@ def main():
                 or forwarded.username is not None or forwarded.password is not None
                 or forwarded.path not in ("", "/") or forwarded.query or forwarded.fragment):
             parser.error("--api-forward must be an HTTP loopback origin with an explicit port and no credentials, path, query, or fragment")
-    if not args.audio_fixture.is_file():
+    if args.recordings and args.audio_fixture is None:
+        parser.error("--audio-fixture is required when --recordings is greater than zero")
+    if args.audio_fixture is not None and not args.audio_fixture.is_file():
         parser.error("The synthetic audio fixture must exist")
     os.umask(0o077)
     try:

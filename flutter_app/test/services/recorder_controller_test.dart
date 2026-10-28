@@ -117,9 +117,12 @@ void main() {
     return TranscriptionClient(
       baseUrl: 'https://api.example.com',
       getToken: () => 'tok',
-      httpClient: MockClient(handler ??
-          (request) async => http.Response(
-              '{"text": "seg-${request.bodyBytes.length}"}', 200)),
+      httpClient: MockClient((request) async {
+        if (request.method == 'GET') return http.Response('{}', 200);
+        if (handler != null) return await handler(request);
+        return http.Response(
+              '{"text": "seg-${request.bodyBytes.length}"}', 200);
+      }),
     );
   }
 
@@ -752,7 +755,7 @@ void main() {
     await controller.start();
     expect(controller.liveTranscriptionReason, LiveTranscriptionReason.notStarted);
     expect(controller.isAnonymousRecording, isTrue);
-    expect(controller.effectiveMaxDuration, const Duration(minutes: 1));
+    expect(controller.effectiveMaxDuration, const Duration(hours: 2));
     capture.emitChunk(_pcmChunk(7, _bytesPerSegment));
     await Future<void>.delayed(Duration.zero);
     final result = await controller.stop();
@@ -760,45 +763,96 @@ void main() {
     expect(result.transcript, 'guest');
   });
 
-  test('anonymous audio stops at one minute and preserves the capped recording', () async {
-    final requestedSegments = <int>[];
+  test('silence beyond one minute does not consume transcription allowance or truncate audio',
+      () async {
+    var uploads = 0;
+    final controller = RecorderController(
+      audioCapture: capture,
+      createSpeechDetector: () async => _PcmSpeechDetector(),
+      fileStore: store,
+      database: db,
+      transcriptionClient: TranscriptionClient(
+        baseUrl: 'https://api.example.com',
+        getToken: () => null,
+        httpClient: MockClient((request) async {
+          if (request.method == 'POST') uploads++;
+          return http.Response(
+              jsonEncode({
+                'text': '',
+                'usedSeconds': 0,
+                'remainingSeconds': 300,
+                'dailyLimitSeconds': 300,
+                'resetAt': '2050-01-01T00:00:00Z'
+              }),
+              200);
+        }),
+      ),
+    );
+    addTearDown(controller.dispose);
+    await controller.start();
+    capture.emitChunk(Uint8List(61 * 32000));
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.state, RecorderState.recording);
+    final result = await controller.stop();
+    expect(result.stopReason, StopReason.user);
+    expect(result.attachedFile.durationMs, 61000);
+    expect(result.attachedFile.size, wavHeaderLength + 61 * 32000);
+    expect(uploads, 0);
+    expect(controller.transcribedSeconds, 0);
+    expect(controller.showGuestTranscriptionWarning, isFalse);
+  });
+
+  for (final authenticated in [false, true]) {
+    test(
+        'cumulative ${authenticated ? 'signed-in' : 'guest'} speech allowance stops capture without losing original', () async {
+    final limit = authenticated ? 1200 : 300;
     final controller = RecorderController(
       audioCapture: capture,
       createSpeechDetector: () async => EndingDetector(frames: 1000, minSpeechFrames: 1),
       fileStore: store,
       database: db,
       transcriptionClient: TranscriptionClient(
-        baseUrl: 'https://api.example.com', getToken: () => null,
-        httpClient: MockClient((request) async {
-          if (request.method != 'GET') {
-            requestedSegments.add(int.parse(request.url.queryParameters['segment']!));
-          }
-          return http.Response('{"text":"guest"}', 200);
-        }),
+        baseUrl: 'https://api.example.com', getToken: () => authenticated ? 'token' : null,
+        httpClient: MockClient((request) async => http.Response(jsonEncode({
+                'text': 'Final spoken sentence',
+                'usedSeconds': request.method == 'GET' ? limit - 6 : limit,
+                'remainingSeconds': request.method == 'GET' ? 6 : 0,
+                'dailyLimitSeconds': limit,
+                'resetAt': '2050-01-01T00:00:00Z',
+              }), 200)),
       ),
     );
+      addTearDown(controller.dispose);
     final stopped = Completer<void>();
     controller.addListener(() {
       if (controller.lastStopResult != null && !stopped.isCompleted) stopped.complete();
     });
     await controller.start();
-    capture.emitChunk(_pcmChunk(7, 61 * 32000));
-    await stopped.future.timeout(const Duration(seconds: 5));
+    capture.emitChunk(_pcmChunk(7, 6 * 32000));
+    await stopped.future.timeout(const Duration(seconds: 10));
     final result = controller.lastStopResult!;
-    expect(result.stopReason, StopReason.anonymousLimit);
-    expect(result.attachedFile.durationMs, 60000);
-    expect(result.attachedFile.size, wavHeaderLength + 60 * 32000);
+    expect(result.stopReason, authenticated ? StopReason.dailyLimit : StopReason.anonymousLimit);
+      expect(result.transcript, 'Final spoken sentence');
+    expect(result.attachedFile.durationMs, 6000);
     expect(await store.exists(result.attachedFile.id), isTrue);
-    expect(requestedSegments.length, lessThanOrEqualTo(64));
-    expect(requestedSegments, orderedEquals(List.generate(requestedSegments.length, (i) => i)));
+    expect(controller.transcribedSeconds, limit);
+    expect(controller.showGuestTranscriptionWarning, !authenticated);
   });
 
+  }
+
   test('exhausted guest allowance blocks microphone and clears previous stop result', () async {
-    var remaining = 1;
+    var remaining = 6;
     final controller = buildController(client: TranscriptionClient(
       baseUrl: 'https://api.example.com', getToken: () => null,
       httpClient: MockClient((request) async => http.Response(
-          request.method == 'GET' ? '{"remainingRecordings":$remaining}' : '{"text":"guest"}', 200)),
+          request.method == 'GET' ? jsonEncode({
+                  'usedSeconds': 300 - remaining,
+                  'remainingSeconds': remaining,
+                  'dailyLimitSeconds': 300,
+                  'resetAt': '2050-01-01T00:00:00Z'
+                })
+              : '{"text":"guest"}', 200)),
     ));
     await controller.start();
     await controller.stop();

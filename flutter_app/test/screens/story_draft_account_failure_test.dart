@@ -41,125 +41,143 @@ void main() {
       testWidgets(
           '${quick ? 'QuickAdd' : 'Story'} ${saveDraft ? 'draft save' : 'discard'} closes editor when final transcription hits quota',
           (tester) async {
-        final db = createTestDatabaseService();
-        await tester.runAsync(db.initialize);
-        final directory =
-            Directory.systemTemp.createTempSync('con-draft-quota');
-        addTearDown(() => directory.deleteSync(recursive: true));
-        final store = NativeRecordingFileStore(baseDirectory: directory);
-        final capture = FakeAudioCapture();
-        final recorder = RecorderController(
-            createSpeechDetector: () async =>
-                EndingDetector(minSpeechFrames: 1),
-            audioCapture: capture,
-            fileStore: store,
-            database: db,
-            maxSegmentRetries: 0,
-            transcriptionClient: TranscriptionClient(
-                baseUrl: 'https://example.invalid',
-                getToken: () => null,
-                httpClient: MockClient((request) async =>
-                    request.method == 'GET'
-                        ? http.Response(
-                            jsonEncode(
-                                {'available': true, 'remainingRecordings': 3}),
-                            200)
-                        : http.Response(
-                            jsonEncode({
-                              'slug': 'anonymous_daily_limit',
-                              'message': 'Sign in'
-                            }),
-                            429))));
-        addTearDown(recorder.dispose);
-        late Completer<void> closed;
-        late Completer<void> stopped;
-        await tester.runAsync(() async {
-          closed = Completer<void>();
-          stopped = Completer<void>();
-        });
-        recorder.addListener(() {
-          if (recorder.state == RecorderState.idle &&
-              recorder.lastStopResult != null &&
-              !stopped.isCompleted) {
-            stopped.complete();
-          }
-        });
-        final position = ValueNotifier(const LatLng(10, 10));
-        addTearDown(position.dispose);
-        final home = Builder(
-            builder: (context) => Scaffold(
-                body: TextButton(
-                    child: const Text('Compose'),
-                    onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            settings: const RouteSettings(name: 'editor'),
-                            builder: (_) => Scaffold(
-                                body: quick
-                                    ? QuickAddSheet(
-                                        position: position,
-                                        recorderController: recorder)
-                                    : AddEventScreen(
-                                        recorderController: recorder)))))));
-        await tester.pumpWidget(MultiProvider(
-            providers: [
-              ChangeNotifierProvider<DatabaseService>.value(value: db),
-              ChangeNotifierProvider<AuthService>.value(
-                  value: AccountPromptAuth()),
-            ],
-            child: MaterialApp(
-                localizationsDelegates: AppLocalizations.localizationsDelegates,
-                supportedLocales: AppLocalizations.supportedLocales,
-                navigatorObservers: [_EditorPopObserver(closed)],
-                home: home)));
-        await tester.tap(find.text('Compose'));
-        await tester.pump();
-        for (var frame = 0; frame < 2; frame++) {
-          await tester.runAsync(
-              () => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await http.runWithClient(() async {
+          final db = createTestDatabaseService();
+          await tester.runAsync(db.initialize);
+          final directory =
+              Directory.systemTemp.createTempSync('con-draft-quota');
+          addTearDown(() => directory.deleteSync(recursive: true));
+          final store = NativeRecordingFileStore(baseDirectory: directory);
+          final capture = FakeAudioCapture();
+          final recorder = RecorderController(
+              createSpeechDetector: () async =>
+                  EndingDetector(minSpeechFrames: 1),
+              audioCapture: capture,
+              fileStore: store,
+              database: db,
+              maxSegmentRetries: 0,
+              transcriptionClient: TranscriptionClient(
+                  baseUrl: 'https://example.invalid',
+                  getToken: () => null,
+                  httpClient: MockClient((request) async =>
+                      request.method == 'GET'
+                          ? http.Response(
+                              jsonEncode({
+                                'available': true,
+                                'usedSeconds': 0,
+                                'remainingSeconds': 300,
+                                'dailyLimitSeconds': 300,
+                                'resetAt': '2050-01-01T00:00:00Z'
+                              }),
+                              200)
+                          : http.Response(
+                              jsonEncode({
+                                'slug': 'anonymous_daily_limit',
+                                'message': 'Sign in'
+                              }),
+                              429))));
+          addTearDown(recorder.dispose);
+          late Completer<void> closed;
+          late Completer<void> stopped;
+          await tester.runAsync(() async {
+            closed = Completer<void>();
+            stopped = Completer<void>();
+          });
+          recorder.addListener(() {
+            if (recorder.state == RecorderState.idle &&
+                recorder.lastStopResult != null &&
+                !stopped.isCompleted) {
+              stopped.complete();
+            }
+          });
+          final position = ValueNotifier(const LatLng(10, 10));
+          addTearDown(position.dispose);
+          final home = Builder(
+              builder: (context) => Scaffold(
+                  body: TextButton(
+                      child: const Text('Compose'),
+                      onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              settings: const RouteSettings(name: 'editor'),
+                              builder: (_) => Scaffold(
+                                  body: quick
+                                      ? QuickAddSheet(
+                                          position: position,
+                                          recorderController: recorder)
+                                      : AddEventScreen(
+                                          recorderController: recorder)))))));
+          await tester.pumpWidget(MultiProvider(
+              providers: [
+                ChangeNotifierProvider<DatabaseService>.value(value: db),
+                ChangeNotifierProvider<AuthService>.value(
+                    value: AccountPromptAuth()),
+              ],
+              child: MaterialApp(
+                  localizationsDelegates:
+                      AppLocalizations.localizationsDelegates,
+                  supportedLocales: AppLocalizations.supportedLocales,
+                  navigatorObservers: [_EditorPopObserver(closed)],
+                  home: home)));
+          await tester.tap(find.text('Compose'));
           await tester.pump();
-        }
-        await tester.pumpAndSettle();
-        await tester.runAsync(() async {
-          await recorder.start();
-          capture.emitChunk(Uint8List(1600));
-          await Future<void>.delayed(Duration.zero);
-        });
-        await tester.pump();
-        // Enter the back callback in the real zone, so its stop can await SQLite.
-        await tester.runAsync(() async => tester.binding.handlePopRoute());
-        await tester.pumpAndSettle();
-        expect(find.text('Keep your changes?'), findsOneWidget);
-        final save = saveDraft
-            ? tester
-                .widget<FilledButton>(
-                    find.widgetWithText(FilledButton, 'Save draft'))
-                .onPressed!
-            : tester
-                .widget<TextButton>(find.widgetWithText(TextButton, 'Discard'))
-                .onPressed!;
-        await tester.runAsync(() async {
-          save();
-          await stopped.future.timeout(const Duration(seconds: 5));
-        });
-        await tester.pumpAndSettle();
-        expect(closed.isCompleted, isTrue,
-            reason:
-                'the editor must close, not an automatically opened account dialog');
-        expect(find.text('Compose'), findsOneWidget);
-        expect(find.byType(AlertDialog), findsNothing);
-        expect(recorder.lastStopResult!.failedSegments, isNotEmpty);
-        final draft =
-            await LocalDraftStore.read(quick ? 'quick-story:new' : 'story:new');
-        final recordingId = recorder.lastStopResult!.attachedFile.id;
-        if (saveDraft) {
-          expect((draft!['recording'] as Map)['id'], recordingId);
-          expect(draft['failedTranscription'], isTrue);
-        } else {
-          expect(draft, isNull);
-        }
-        await tester.runAsync(() async => expect(
-            (await store.readBytes(recordingId)).sublist(44), Uint8List(1600)));
+          for (var frame = 0; frame < 2; frame++) {
+            await tester.runAsync(
+                () => Future<void>.delayed(const Duration(milliseconds: 50)));
+            await tester.pump();
+          }
+          await tester.pumpAndSettle();
+          await tester.runAsync(() async {
+            await recorder.start();
+            capture.emitChunk(Uint8List(1600));
+            await Future<void>.delayed(Duration.zero);
+          });
+          await tester.pump();
+          // Enter the back callback in the real zone, so its stop can await SQLite.
+          await tester.runAsync(() async => tester.binding.handlePopRoute());
+          await tester.pumpAndSettle();
+          expect(find.text('Keep your changes?'), findsOneWidget);
+          final save = saveDraft
+              ? tester
+                  .widget<FilledButton>(
+                      find.widgetWithText(FilledButton, 'Save draft'))
+                  .onPressed!
+              : tester
+                  .widget<TextButton>(
+                      find.widgetWithText(TextButton, 'Discard'))
+                  .onPressed!;
+          await tester.runAsync(() async {
+            save();
+            await stopped.future.timeout(const Duration(seconds: 5));
+          });
+          await tester.pumpAndSettle();
+          expect(closed.isCompleted, isTrue,
+              reason:
+                  'the editor must close, not an automatically opened account dialog');
+          expect(find.text('Compose'), findsOneWidget);
+          expect(find.byType(AlertDialog), findsNothing);
+          expect(recorder.lastStopResult!.failedSegments, isNotEmpty);
+          final draft = await LocalDraftStore.read(
+              quick ? 'quick-story:new' : 'story:new');
+          final recordingId = recorder.lastStopResult!.attachedFile.id;
+          if (saveDraft) {
+            expect((draft!['recording'] as Map)['id'], recordingId);
+            expect(draft['failedTranscription'], isTrue);
+          } else {
+            expect(draft, isNull);
+          }
+          await tester.runAsync(() async => expect(
+              (await store.readBytes(recordingId)).sublist(44),
+              Uint8List(1600)));
+        },
+            () => MockClient((request) async => request.url.host ==
+                    'photon.komoot.io'
+                ? http.Response('{"features": []}', 200)
+                : http.Response.bytes(
+                    base64Decode(
+                        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='),
+                    200,
+                    headers: {'content-type': 'image/png'})));
       });
     }
   }

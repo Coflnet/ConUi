@@ -174,8 +174,8 @@ void main() {
     });
   });
 
-  group('remainingAnonymousRecordings', () {
-    test('reads server remaining recordings without authentication', () async {
+  group('refreshUsage', () {
+    test('reads cumulative speech allowance without authentication', () async {
       final client = TranscriptionClient(
         baseUrl: 'https://api.example.com',
         getToken: () => null,
@@ -183,10 +183,11 @@ void main() {
           expect(request.url.path, '/api/transcription/status');
           expect(request.headers.containsKey('Authorization'), isFalse);
           return http.Response(
-              '{"available":true,"remainingRecordings":0}', 200);
+              '{"available":true,"usedSeconds":300,"remainingSeconds":0,"dailyLimitSeconds":300,"resetAt":"2050-01-01T00:00:00Z"}',
+              200);
         }),
       );
-      expect(await client.remainingAnonymousRecordings(), 0);
+      expect((await client.refreshUsage())!.remainingSeconds, 0);
     });
 
     test('network failure leaves anonymous allowance unknown', () async {
@@ -197,11 +198,44 @@ void main() {
           throw const SocketExceptionStub();
         }),
       );
-      expect(await client.remainingAnonymousRecordings(), isNull);
+      expect(await client.refreshUsage(), isNull);
     });
   });
 
   group('isAvailable', () {
+    test('usage cannot regress within a day or leak across account changes', () async {
+      String? token;
+      final replies = [
+        {'usedSeconds': 240, 'remainingSeconds': 60, 'dailyLimitSeconds': 300,
+          'resetAt': '2050-01-02T00:00:00Z'},
+        {'usedSeconds': 181, 'remainingSeconds': 119, 'dailyLimitSeconds': 300,
+          'resetAt': '2050-01-02T00:00:00Z'},
+        {'usedSeconds': 0, 'remainingSeconds': 300, 'dailyLimitSeconds': 300,
+          'resetAt': '2050-01-03T00:00:00Z'},
+        {'usedSeconds': 250, 'remainingSeconds': 50, 'dailyLimitSeconds': 300,
+          'resetAt': '2050-01-02T00:00:00Z'},
+        {'usedSeconds': 30, 'remainingSeconds': 1170, 'dailyLimitSeconds': 1200,
+          'resetAt': '2050-01-03T00:00:00Z'},
+      ];
+      var index = 0;
+      final client = TranscriptionClient(baseUrl: 'https://api.example.com',
+        getToken: () => token,
+        httpClient: MockClient((request) async {
+          expect(request.headers['Authorization'], token == null ? null : 'Bearer $token');
+          return http.Response(jsonEncode(replies[index++]), 200);
+        }));
+      expect((await client.refreshUsage())!.usedSeconds, 240);
+      expect((await client.refreshUsage())!.usedSeconds, 240);
+      expect((await client.refreshUsage())!.usedSeconds, 0);
+      expect((await client.refreshUsage())!.usedSeconds, 0);
+      token = 'signed-in';
+      expect(client.usage, isNull);
+      final signed = (await client.refreshUsage())!;
+      expect(signed.usedSeconds, 30);
+      expect(signed.dailyLimitSeconds, 1200);
+      expect(signed.remainingSeconds, 1170);
+    });
+
     test('true when the backend reports available', () async {
       final client = TranscriptionClient(
         baseUrl: 'https://api.example.com',

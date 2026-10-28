@@ -20,11 +20,15 @@ void main() async {
   final dbService = DatabaseService();
   final authService = AuthService();
   final appSettings = AppSettingsService();
+  final requestedLanguage = kIsWeb ? Uri.base.queryParameters['lang'] : null;
   await Future.wait([
     dbService.initialize(),
     authService.initialize(),
     appSettings.initialize(),
   ]);
+  if (requestedLanguage == 'de' || requestedLanguage == 'en') {
+    await appSettings.setLanguageOverride(Locale(requestedLanguage!));
+  }
 
   final syncService = SyncService(dbService, authService);
 

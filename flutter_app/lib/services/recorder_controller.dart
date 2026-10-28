@@ -31,6 +31,8 @@ enum LiveTranscriptionReason {
   notConfigured,
   anonymousLimit,
 
+  dailyLimit,
+
   /// Segments keep failing for some other reason (rate limited, backend
   /// error, unsupported audio, ...).
   failing,
@@ -44,6 +46,8 @@ LiveTranscriptionReason _reasonFor(TranscriptionErrorKind kind) {
       return LiveTranscriptionReason.notSignedIn;
     case TranscriptionErrorKind.anonymousLimit:
       return LiveTranscriptionReason.anonymousLimit;
+    case TranscriptionErrorKind.dailyLimit:
+      return LiveTranscriptionReason.dailyLimit;
     case TranscriptionErrorKind.notConfigured:
       return LiveTranscriptionReason.notConfigured;
     case TranscriptionErrorKind.payloadTooLarge:
@@ -75,7 +79,7 @@ class TranscriptSegment {
   TranscriptSegment({required this.sequence, required this.pcmBytes, this.hasSpeech});
 }
 
-enum StopReason { user, maxDuration, anonymousLimit }
+enum StopReason { user, maxDuration, anonymousLimit, dailyLimit }
 
 /// Everything a caller needs after a recording stops: the file to attach to
 /// an Event, the transcript assembled so far, and which segments (if any)
@@ -136,6 +140,11 @@ class RecorderController extends ChangeNotifier {
   RecordingFileStore get fileStore => _fileStore;
   final DatabaseService _db;
   final TranscriptionClient _transcriptionClient;
+  double get transcribedSeconds => _transcriptionClient.usage?.usedSeconds ?? 0;
+  double? get remainingTranscriptionSeconds =>
+      _transcriptionClient.usage?.remainingSeconds;
+  bool get showGuestTranscriptionWarning =>
+      _transcriptionClient.getToken() == null && transcribedSeconds > 180;
   final WavFormat format;
   final Duration segmentDuration;
   final Future<SpeechDetector?> Function() createSpeechDetector;
@@ -233,12 +242,10 @@ class RecorderController extends ChangeNotifier {
   Timer? _ticker;
   bool _autoStopping = false;
   bool _anonymousRecording = false;
-  int _recordedPcmBytes = 0;
-  static const anonymousMaxDuration = Duration(minutes: 1);
+  bool _quotaExhausted = false;
   bool get isAnonymousRecording => _state == RecorderState.idle || _state == RecorderState.failed
       ? _transcriptionClient.getToken() == null : _anonymousRecording;
-  Duration get effectiveMaxDuration => _anonymousRecording && maxDuration > anonymousMaxDuration
-      ? anonymousMaxDuration : maxDuration;
+  Duration get effectiveMaxDuration => maxDuration;
   PageLifecycleUnsubscribe? _pageHideUnsubscribe;
 
   final Queue<TranscriptSegment> _pendingQueue = Queue();
@@ -267,9 +274,12 @@ class RecorderController extends ChangeNotifier {
     _lastStopResult = null;
     _anonymousRecording = _transcriptionClient.getToken() == null;
     notifyListeners();
-    if (_anonymousRecording &&
-        await _transcriptionClient.remainingAnonymousRecordings() == 0) {
-      _liveTranscriptionReason = LiveTranscriptionReason.anonymousLimit;
+    final usage = await _transcriptionClient.refreshUsage();
+    _quotaExhausted = usage != null && usage.remainingSeconds <= 0;
+    if (_quotaExhausted) {
+      _liveTranscriptionReason = _anonymousRecording
+          ? LiveTranscriptionReason.anonymousLimit
+          : LiveTranscriptionReason.dailyLimit;
       _state = RecorderState.idle;
       notifyListeners();
       return;
@@ -314,7 +324,6 @@ class RecorderController extends ChangeNotifier {
     // saved for retry rather than being sent without a speech check.
     unawaited(_attachSpeechDetector(segmenter));
     _appendChain = Future.value();
-    _recordedPcmBytes = 0;
     _liveTranscriptionReason = !_transcriptionClient.isConfigured
         ? LiveTranscriptionReason.offline
         : LiveTranscriptionReason.notStarted;
@@ -374,8 +383,7 @@ class RecorderController extends ChangeNotifier {
     notifyListeners();
     if (!_autoStopping && _elapsed >= effectiveMaxDuration) {
       _autoStopping = true;
-      unawaited(stop(reason: _anonymousRecording && effectiveMaxDuration == anonymousMaxDuration
-          ? StopReason.anonymousLimit : StopReason.maxDuration));
+      unawaited(stop(reason: StopReason.maxDuration));
     }
   }
 
@@ -386,18 +394,8 @@ class RecorderController extends ChangeNotifier {
   Future<void> _handleChunk(Uint8List chunk) async {
     // Crash safety first: the byte is durable before anything else happens
     // to it. Transcription problems below never affect this.
-    final byteLimit = anonymousMaxDuration.inSeconds * format.bytesPerSecond;
-    if (_anonymousRecording) {
-      final remaining = (byteLimit - _recordedPcmBytes).clamp(0, byteLimit);
-      if (chunk.length > remaining) chunk = Uint8List.sublistView(chunk, 0, remaining);
-    }
     await _fileStore.appendChunk(_recordingId!, chunk);
-    _recordedPcmBytes += chunk.length;
     await _segmenter!.add(chunk);
-    if (_anonymousRecording && !_autoStopping && _recordedPcmBytes >= byteLimit) {
-      _autoStopping = true;
-      unawaited(stop(reason: StopReason.anonymousLimit));
-    }
   }
 
   Future<void> _attachSpeechDetector(SentenceSegmenter segmenter) async {
@@ -414,6 +412,18 @@ class RecorderController extends ChangeNotifier {
     _pendingQueue.add(job);
     notifyListeners();
     _pumpQueue();
+  }
+
+  void _stopAtQuota(List<TranscriptSegment> segments) {
+    if (!identical(segments, _segments)) return;
+    _quotaExhausted = true;
+    if (_state == RecorderState.recording && !_autoStopping) {
+      _autoStopping = true;
+      unawaited(stop(
+          reason: _anonymousRecording
+              ? StopReason.anonymousLimit
+              : StopReason.dailyLimit));
+    }
   }
 
   void _pumpQueue() {
@@ -455,6 +465,14 @@ class RecorderController extends ChangeNotifier {
           notifyListeners();
           return;
         }
+        if (identical(segments, _segments) &&
+            _quotaExhausted &&
+            job.attempts == 0 &&
+            job.text == null) {
+          job.failed = true;
+          notifyListeners();
+          return;
+        }
         job.text ??= await _transcriptionClient.transcribeSegment(
           WavHeader.wrap(job.pcmBytes, format: format),
           language: language ?? this.language,
@@ -463,8 +481,16 @@ class RecorderController extends ChangeNotifier {
           initialPrompt: initialPrompt,
         );
         await _db.saveRecordingSegmentText(recordingId, job.sequence, job.pcmBytes.length, job.text!);
-        if (_liveTranscriptionReason != LiveTranscriptionReason.anonymousLimit) {
+        if (_liveTranscriptionReason != LiveTranscriptionReason.anonymousLimit &&
+            _liveTranscriptionReason != LiveTranscriptionReason.dailyLimit) {
           _liveTranscriptionReason = LiveTranscriptionReason.working;
+        }
+        final usage = _transcriptionClient.usage;
+        if (usage != null && usage.usedSeconds >= usage.dailyLimitSeconds) {
+          _liveTranscriptionReason = _transcriptionClient.getToken() == null
+              ? LiveTranscriptionReason.anonymousLimit
+              : LiveTranscriptionReason.dailyLimit;
+          _stopAtQuota(segments);
         }
         notifyListeners();
         return;
@@ -473,6 +499,12 @@ class RecorderController extends ChangeNotifier {
         final kind = e is TranscriptionException ? e.kind : TranscriptionErrorKind.other;
         _liveTranscriptionReason = _reasonFor(kind);
         if (kind == TranscriptionErrorKind.anonymousLimit ||
+            kind == TranscriptionErrorKind.dailyLimit) {
+          await _transcriptionClient.refreshUsage();
+          _stopAtQuota(segments);
+        }
+        if (kind == TranscriptionErrorKind.anonymousLimit ||
+            kind == TranscriptionErrorKind.dailyLimit ||
             kind == TranscriptionErrorKind.unauthorized ||
             kind == TranscriptionErrorKind.notConfigured ||
             kind == TranscriptionErrorKind.payloadTooLarge ||

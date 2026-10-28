@@ -13,8 +13,9 @@ enum TranscriptionErrorKind {
   /// The backend rejected authentication (401).
   unauthorized,
 
-  /// Anonymous daily or recording-duration allowance exhausted.
+  /// Guest daily transcription allowance exhausted.
   anonymousLimit,
+  dailyLimit,
 
   /// The segment was too large (413).
   payloadTooLarge,
@@ -54,15 +55,65 @@ class TranscriptionException implements Exception {
   String toString() => 'TranscriptionException($kind, $statusCode): $message';
 }
 
-/// Client for the backend's transcription contract:
-/// - `POST {baseUrl}/api/transcription/segment` with the segment's WAV
-///   bytes as the body, optional `Authorization: Bearer <token>` and
-///   `Content-Type: audio/wav`, with language/recordingId/segment query fields;
-///   success is
-///   `{"text": "..."}`; failure is `{"slug": "...", "message": "..."}`.
-/// - `GET {baseUrl}/api/transcription/status` -> `{"available": bool}`.
+/// Daily transcription usage returned by both status and successful uploads.
+class TranscriptionUsage {
+  final double usedSeconds;
+  final double remainingSeconds;
+  final int dailyLimitSeconds;
+  final DateTime resetAt;
+
+  const TranscriptionUsage(
+      {required this.usedSeconds,
+      required this.remainingSeconds,
+      required this.dailyLimitSeconds,
+      required this.resetAt});
+
+  static TranscriptionUsage? fromJson(Map<String, dynamic> data) {
+    final used = (data['usedSeconds'] as num?)?.toDouble();
+    final remaining = (data['remainingSeconds'] as num?)?.toDouble();
+    final limit = (data['dailyLimitSeconds'] as num?)?.toInt();
+    final reset = DateTime.tryParse(data['resetAt'] as String? ?? '');
+    if (used == null ||
+        remaining == null ||
+        limit == null ||
+        reset == null ||
+        !used.isFinite ||
+        !remaining.isFinite ||
+        used < 0 ||
+        remaining < 0 ||
+        limit <= 0) {
+      return null;
+    }
+    return TranscriptionUsage(
+        usedSeconds: used,
+        remainingSeconds: remaining,
+        dailyLimitSeconds: limit,
+        resetAt: reset.toUtc());
+  }
+}
+
+/// Sends PCM WAV segments with stable recording/segment identities and reads
+/// daily usage from `/api/transcription/status` and successful upload responses.
 class TranscriptionClient {
   static const maxPromptCharacters = 1024;
+  TranscriptionUsage? _usage;
+  String? _usageToken;
+  TranscriptionUsage? get usage => _usageToken == getToken() ? _usage : null;
+
+  void _updateUsage(Map<String, dynamic> data, String? token) {
+    final next = TranscriptionUsage.fromJson(data);
+    if (next == null || token != getToken()) return;
+    final current = usage;
+    // Concurrent segment responses may arrive out of order. Committed usage
+    // never decreases within the same UTC day and account.
+    _usage = current != null &&
+            (current.resetAt.isAfter(next.resetAt) ||
+                (current.resetAt == next.resetAt &&
+                    current.usedSeconds > next.usedSeconds))
+        ? current
+        : next;
+    _usageToken = token;
+  }
 
   /// Empty means no backend is configured (see AuthService.baseUrl).
   final String baseUrl;
@@ -83,8 +134,7 @@ class TranscriptionClient {
   void close() => _http.close();
 
   /// Sends one WAV-wrapped audio segment and returns its transcribed text.
-  /// Anonymous recordings carry stable recording/segment identities so
-  /// concurrent chunks and retries consume one recording allowance.
+  /// Stable recording/segment identities prevent retries from charging twice.
   /// Prior recognized text is bounded and sent in a header, outside URL logs.
   /// Throws [TranscriptionException] on offline or backend-reported errors.
   Future<String> transcribeSegment(
@@ -134,6 +184,7 @@ class TranscriptionClient {
     if (response.statusCode == 200) {
       try {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
+        _updateUsage(data, token);
         return data['text'] as String? ?? '';
       } catch (e) {
         throw TranscriptionException(TranscriptionErrorKind.other,
@@ -164,17 +215,18 @@ class TranscriptionClient {
   }
 
   /// Null means quota status could not be checked; offline capture stays usable.
-  Future<int?> remainingAnonymousRecordings() async {
+  Future<TranscriptionUsage?> refreshUsage() async {
     if (!isConfigured) return null;
+    final token = getToken();
     try {
-      final response = await _http
-          .get(
-            Uri.parse('$baseUrl/api/transcription/status'),
-          )
-          .timeout(const Duration(seconds: 3));
+      final response = await _http.get(
+        Uri.parse('$baseUrl/api/transcription/status'),
+        headers: {if (token != null) 'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 3));
       if (response.statusCode != 200) return null;
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      return data['remainingRecordings'] as int?;
+      _updateUsage(data, token);
+      return usage;
     } catch (_) {
       return null;
     }
@@ -195,6 +247,10 @@ class TranscriptionClient {
         slug == 'anonymous_recording_too_long') {
       return TranscriptionException(
           TranscriptionErrorKind.anonymousLimit, message,
+          statusCode: response.statusCode, slug: slug);
+    }
+    if (slug == 'transcription_daily_limit') {
+      return TranscriptionException(TranscriptionErrorKind.dailyLimit, message,
           statusCode: response.statusCode, slug: slug);
     }
     final TranscriptionErrorKind kind;

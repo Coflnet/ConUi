@@ -86,50 +86,70 @@ local run alone does not establish hosted completion.
 
 ## Anonymous recordings
 
-`anonymous.py` exercises guest capture, automatic text from the pinned public English
-speech fixture, preserved typed notes, saved playback, all three daily recording
-slots, the fourth-recording sign-in prompt, and raw server duration/quota rejection.
-It also tries a fresh recording UUID and spoofed forwarding header after exhaustion.
-The daily boundary is UTC. The one-minute automatic-stop attachment is additionally
-covered by controller and both story-form regression tests.
+`anonymous.py` verifies the deployed guest transcription-seconds contract without
+routinely exhausting an IP's allowance. Guests share 300 seconds per IP and UTC
+day, with a warning after 180 seconds. Only successfully transcribed PCM WAV
+seconds are charged; recording count and the former one-minute recording limit
+are no longer quota units. Status and successful transcription responses expose
+`usedSeconds`, `remainingSeconds`, `dailyLimitSeconds`, `warningAfterSeconds` and
+`resetAt`.
 
-The public mode spends the running connection's real daily guest allowance. Prefer
-an operator-owned loopback port-forward to the deployed Con backend on port 18083
-for this synthetic quota test:
+The default `--recordings 1` uses the hash-pinned public synthetic 11-second
+English speech fixture. The UI captures 13 seconds including the tail, preserves
+typed notes, saves the story and verifies playback. The receipt compares actual
+`consumedSeconds` with successful uploaded WAV durations, deduplicated by
+recording UUID and sequence. It does not assume a fresh quota or charge silent
+capture time that VAD did not upload. Up to three recordings can be requested;
+when fewer than 13 seconds remain, further capture is explicitly skipped rather
+than spending the last allowance on a partial fixture.
+
+Prefer an operator-owned loopback port-forward to the deployed backend:
 
 ```sh
 /home/ekwav/.cache/uv/archive-v0/eq7TXxf37ojESxDq/bin/python deployment/e2e/anonymous.py \
   --output /tmp/con-anonymous-e2e \
   --audio-fixture /run/media/ekwav/Data/dev/lifenizer/e2e/fixtures/speech-sample.wav \
-  --api-forward http://127.0.0.1:18083
+  --recordings 1 --api-forward http://127.0.0.1:18083
 ```
 
-Only transcription calls are forwarded; their actual method, audio body and
-headers reach the real deployed backend and its persistent quota store. UI assets
-and navigation still use the public HTTPS site. This mode tests a separate effective
-IP and leaves the owner's public allowance alone; its result explicitly records
-`server_path: isolated_deployed_backend`. It does not establish public ingress IP
-forwarding by itself. The public authenticated harness, exact Fleet proxy allowlist,
-rendered ingress directives and trusted/untrusted forwarding request tests provide
-that separate evidence. No fake transcription or quota response is injected.
+Only transcription calls are forwarded; actual methods, audio bodies and headers
+reach the deployed backend and persistent quota store. UI assets and navigation
+still use the public HTTPS site. This mode uses a separate effective IP and records
+`server_path: isolated_deployed_backend`; it does not establish public-ingress IP
+forwarding. Existing ingress allowlist/configuration and trusted/untrusted
+forwarding tests provide that separate evidence. No fake transcription or quota
+response is injected. Omit `--api-forward` to test the public path, which consumes
+real shared public-IP transcription time for successful UI recordings.
 
-The fixture is hash-pinned and must contain the known public synthetic 11-second
-speech; owner recordings are refused. Require exit zero, `completed: true` and zero
-uncaught errors. Partial runs retain `completed: false`; test quota state expires
-naturally rather than being reset through a production bypass.
+`--recordings 0` needs no audio fixture and performs status and quota rejection
+checks without ASR. Each rejection probe is valid mono 8-bit 8-kHz PCM WAV whose
+duration is `floor(remainingSeconds) + 1`: at most 301 seconds and under 2.5 MB,
+below the normal request-size limit. Both a fresh UUID and spoofed
+`X-Forwarded-For` must receive `anonymous_daily_limit` before ASR, with unchanged
+usage. At already-zero quota, the script also presses Record to verify the German
+quota notice and available text/photo actions; it does not spend allowance solely
+to reach that state. No quota warning is expected on app entry.
 
-Alternatively route the entire browser through an owned TLS ingress tunnel:
+Alternatively route the entire owned browser through a TLS ingress tunnel with
 `--browser-arg='--host-resolver-rules=MAP con.coflnet.com 127.0.0.1:18443'`.
-This still verifies HTTPS/SNI and the deployed ingress, with
-`server_path: isolated_ingress`. The tunnel's source can share the same effective
-quota as a backend tunnel; read status before starting.
+This preserves HTTPS/SNI and records `server_path: isolated_ingress`. The tunnel
+can share the same effective quota as a backend tunnel; the script reads actual
+status before starting. Existing owned Chromium profile/PID cleanup is preserved.
 
-Use `--initial-remaining N` to resume from the actual remaining allowance after
-an interrupted test. `N=0` runs only exhausted-quota guidance and anti-spoofing
-checks; its receipt explicitly records that no recordings were tested in that
-run. Duration rejection is checked while allowance remains; exhausted quota takes
-precedence afterward. Never reset production quota to obtain a passing receipt.
-A resumed completion does not establish three completed recordings in one run.
+Require exit zero, `completed: true` and zero uncaught errors for the performed
+checks. A guest recording claim additionally requires
+`recording_verification_complete: true` and the expected nonzero
+`recorded_stories_saved_played`. `--recordings 0` or an insufficient-budget skip
+establishes quota checks only; the receipt reports requested/completed recordings,
+`recording_skipped`, actual usage and consumption separately. Failures retain
+`completed: false`; unavailable failure-time consumption is left unknown. Never
+reset production quota to obtain a passing receipt. Concurrent use or a UTC day
+change prevents a reliable before/after comparison and fails verification.
+
+Backend unit tests separately cover signed-in 20-minute limits, CAS concurrency,
+idempotent retries and UTC day resets; this anonymous browser script does not
+claim those checks or authenticated coverage. Both anonymous and signed-in API
+segments require a recording UUID, sequence 0–4095 and valid PCM WAV.
 
 ## Automatic story participants
 
