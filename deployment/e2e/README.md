@@ -53,7 +53,7 @@ The harness uses Flutter's accessibility semantics for the German UI:
   older value even when the canvas displays the updated controller text; focus
   the transcript before asserting its value.
 - Person-add chips expose `checkbox`; relationship dropdown choices expose
-  `menuitem`. Navigation exposes `tab` or a button with a `Tab N von 5` suffix.
+  `menuitem`. Navigation exposes `tab` or a button with a `Tab N von 4` / `Tab N of 4` suffix.
   Select roles dynamically across route transitions, without matching tooltips.
 - Story and Settings buttons merge titles with dates or subtitles. `open_item`
   matches an anchored title followed by whitespace; ordinary controls retain
@@ -330,3 +330,23 @@ compression and cache headers; they do not establish deployed performance.
 `transfer_bytes` counts resource transfers and excludes the HTML document. A cold
 SQLite preload should appear once in the resource list, early alongside Flutter,
 and be reused by database initialization without an extra download.
+
+## Loading screen and guest-first entry
+
+`startup.py` checks the semantic HTML/SEO shell before Flutter, an actual blocked
+main script and reload recovery, JavaScript-disabled guidance, and direct guest
+entry with four primary navigation items at 390px/1440px in German and English (including 200% text). It creates a
+fictional local draft, visits the optional account page and returns, then verifies
+that the draft and saved story survive without an account. No sign-in is started
+and no account or cloud content is created.
+
+```sh
+python deployment/e2e/startup.py --origin http://127.0.0.1:18085 \
+  --serve-directory flutter_app/build/web --output /tmp/con-startup-local
+python deployment/e2e/startup.py --origin https://con.coflnet.com \
+  --output /tmp/con-startup-hosted
+```
+
+Require `result.json` with `completed: true` and six successful layout checks.
+`load.py` now measures readiness at the usable guest home rather than a login
+button; measurements using those different endpoints are not directly comparable.

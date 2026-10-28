@@ -6,12 +6,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../l10n/gen/app_localizations.dart';
 import '../../models/models.dart';
+import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
 import '../../services/location_service.dart';
 import '../../services/recording_file_store.dart';
 import '../../services/recording_recovery_service.dart';
 import '../../widgets/recovered_recordings_banner.dart';
 import '../places/place_sheet.dart';
+import '../events/add_event_screen.dart';
 import '../quick_add/quick_add_sheet.dart';
 import 'draggable_pin_marker.dart';
 import 'location_picker_screen.dart';
@@ -238,8 +240,8 @@ class MapScreenState extends State<MapScreen> {
         return FutureBuilder<List<Object>>(
           future: Future.wait([db.getPlaces(), db.getEvents()]),
           builder: (context, snapshot) {
+            final l10n = AppLocalizations.of(context);
             if (snapshot.hasError) {
-              final l10n = AppLocalizations.of(context);
               return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Text(l10n.savedDataLoadFailed, textAlign: TextAlign.center),
                 TextButton(onPressed: () => setState(() {}), child: Text(l10n.commonRetry)),
@@ -298,9 +300,47 @@ class MapScreenState extends State<MapScreen> {
                   top: 8,
                   left: 8,
                   right: 8,
-                  child: RecoveredRecordingsBanner(
-                    store: _recordingFileStore,
-                    pickerStartPosition: _lastKnownCenter,
+                  bottom: 96,
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: SingleChildScrollView(
+                        child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        RecoveredRecordingsBanner(
+                          store: _recordingFileStore,
+                          pickerStartPosition: _lastKnownCenter,
+                        ),
+                        if (snapshot.hasData &&
+                            events.isEmpty &&
+                            places.isEmpty &&
+                            context.watch<AuthService?>()?.isAuthenticated ==
+                                false)
+                          Card(
+                              child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(l10n.mapWelcomeTitle,
+                                    style: Theme.of(context).textTheme.titleLarge),
+                                const SizedBox(height: 8),
+                                Text(l10n.mapWelcomeBody),
+                                const SizedBox(height: 16),
+                                FilledButton.icon(
+                                  onPressed: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (_) =>
+                                              const AddEventScreen())),
+                                  icon: const Icon(Icons.edit_note),
+                                  label: Text(l10n.mapWelcomeStart),
+                                ),
+                              ],
+                            ),
+                          )),
+                      ],
+                    )),
                   ),
                 ),
                 Positioned(

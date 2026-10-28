@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../l10n/gen/app_localizations.dart';
 import '../services/database_service.dart';
+import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import '../widgets/sync_prompt.dart';
 import '../widgets/sync_progress_indicator.dart';
@@ -10,8 +11,9 @@ import 'events/events_screen.dart';
 import 'map/map_screen.dart';
 import 'places/places_screen.dart';
 import 'places/place_sheet.dart';
-import 'objects/objects_screen.dart';
+import 'objects/objects_screen.dart' show showObjectDetails;
 import 'settings_screen.dart';
+import 'login_screen.dart';
 import 'persons/person_detail_screen.dart';
 import 'events/event_detail_screen.dart';
 
@@ -53,7 +55,6 @@ class _HomeScreenState extends State<HomeScreen>
     const PersonsScreen(),
     const EventsScreen(),
     const PlacesScreen(),
-    const ObjectsScreen(),
   ];
 
   @override
@@ -99,7 +100,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // Shared between the bottom NavigationBar (narrow) and the side
-  // NavigationRail (wide, see build()) so the five destinations' icons are
+  // NavigationRail (wide, see build()) so the four destinations' icons are
   // declared exactly once. Labels come from [_navLabel] (localized), in the
   // same order.
   static const _destinationIcons = [
@@ -107,7 +108,6 @@ class _HomeScreenState extends State<HomeScreen>
     (icon: Icons.people_outline, selected: Icons.people),
     (icon: Icons.event_outlined, selected: Icons.event),
     (icon: Icons.place_outlined, selected: Icons.place),
-    (icon: Icons.category_outlined, selected: Icons.category),
   ];
 
   String _navLabel(AppLocalizations l10n, int index) {
@@ -118,15 +118,12 @@ class _HomeScreenState extends State<HomeScreen>
         return l10n.homeNavPeople;
       case 2:
         return l10n.homeNavStories;
-      case 3:
-        return l10n.homeNavPlaces;
       default:
-        return l10n.homeNavObjects;
+        return l10n.homeNavPlaces;
     }
   }
 
-  // About a tablet/small-desktop width: wide enough that a 5-item bottom
-  // bar would spread its labels thin, per the brief.
+  // Switch to a side rail at tablet/small-desktop widths.
   static const _wideLayoutBreakpoint = 840.0;
 
   void _onDestinationSelected(int index) {
@@ -221,6 +218,26 @@ class _HomeScreenState extends State<HomeScreen>
         ],
       ),
       body: Column(children: [
+        Consumer<AuthService>(builder: (context, auth, _) {
+          if (auth.isAuthenticated ||
+              (!auth.signInFailed && !auth.signInUnavailable)) {
+            return const SizedBox.shrink();
+          }
+          return MaterialBanner(
+            content: Text(auth.signInUnavailable
+                ? l10n.loginAccountUnavailable
+                : l10n.loginAccountFailed),
+            actions: [
+              TextButton(
+                  onPressed: auth.continueWithoutAccount,
+                  child: Text(l10n.loginContinueWithoutAccount)),
+              TextButton(
+                  onPressed: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const LoginScreen())),
+                  child: Text(l10n.loginAccountButton)),
+            ],
+          );
+        }),
         Consumer<SyncService>(builder: (context, sync, _) {
           if (sync.isSyncing && sync.isUnlocked &&
               ModalRoute.isCurrentOf(context) == true) {
@@ -452,7 +469,6 @@ class _HomeScreenState extends State<HomeScreen>
         );
         break;
       case SearchResultType.object:
-        setState(() => _selectedIndex = 4);
         try {
           final object = await context.read<DatabaseService>().getObject(result.id);
           if (!mounted) return;

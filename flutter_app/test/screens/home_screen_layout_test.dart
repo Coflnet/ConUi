@@ -3,6 +3,7 @@
 // pixels wide, a side NavigationRail at or above it - never both, and
 // switching tabs works the same way through either one.
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,6 +12,7 @@ import 'package:http/testing.dart';
 
 import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/screens/home_screen.dart';
+import 'package:relationship_manager/screens/events/add_event_screen.dart';
 import 'package:relationship_manager/screens/places/place_sheet.dart';
 import 'package:relationship_manager/models/models.dart';
 import 'package:relationship_manager/screens/persons/persons_screen.dart';
@@ -104,6 +106,7 @@ void main() {
       } else {
         expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('Object detail content')), findsOneWidget);
         expect(find.widgetWithText(TextButton, 'Close'), findsOneWidget);
+        expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex, lessThan(4));
       }
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -116,6 +119,46 @@ void main() {
 
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.byType(NavigationRail), findsNothing);
+    expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).destinations
+        .map((destination) => (destination as NavigationDestination).label),
+        ['Map', 'People', 'Stories', 'Places']);
+  });
+
+  testWidgets(
+      'guest introduction opens a first story with no required location',
+      (tester) async {
+    const recorderChannel = MethodChannel('com.llfbandit.record/messages');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        recorderChannel, (call) async {
+      expect(call.method, isIn(['create', 'dispose']));
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(recorderChannel, null));
+    await pumpHome(tester, const Size(390, 844));
+    expect(find.text('Your stories. No account needed.'), findsOneWidget);
+    await tester.tap(find.text('Create your first story'));
+    await _settle(tester);
+    expect(find.byType(AddEventScreen), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Continue with Google'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('returning guests keep their stories instead of another welcome',
+      (tester) async {
+    await pumpHome(tester, const Size(390, 844), seed: (db) async {
+      await db
+          .saveEvent(Event(title: 'Remember this', dateTime: DateTime(2026)));
+    });
+    expect(find.text('Your stories. No account needed.'), findsNothing);
+    await tester.tap(find.descendant(
+        of: find.byType(NavigationBar), matching: find.text('Stories')));
+    await _settle(tester);
+    expect(find.textContaining('2026'), findsWidgets);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('wide window (>=840): side NavigationRail, no bottom bar',
@@ -124,6 +167,9 @@ void main() {
 
     expect(find.byType(NavigationRail), findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
+    expect(tester.widget<NavigationRail>(find.byType(NavigationRail)).destinations
+        .map((destination) => (destination.label as Text).data),
+        ['Map', 'People', 'Stories', 'Places']);
   });
 
   testWidgets(

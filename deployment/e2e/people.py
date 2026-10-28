@@ -67,8 +67,8 @@ def local_server(args, output):
 def guest(page, origin):
     page.goto(origin)
     hosted.semantics(page)
-    hosted.click(page, 'Ohne Konto fortfahren')
     expect(page.get_by_text('Karte', exact=True).last).to_be_visible()
+    expect(page.get_by_role('button', name='Einstellungen', exact=True)).to_be_visible()
 
 
 def quick_add(page):

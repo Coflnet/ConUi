@@ -27,56 +27,49 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('boots to the login screen and wires up providers',
+  testWidgets('fresh launch opens local home without any sign-in request',
       (tester) async {
-    // sqflite_common_ffi talks to a background isolate for real, which
-    // doesn't resolve inside testWidgets' FakeAsync zone (it would hang
-    // forever waiting for a message that only arrives on the real event
-    // loop). runAsync() steps outside FakeAsync for just this setup.
-    late DatabaseService dbService;
-    late AuthService authService;
+    late DatabaseService db;
+    late AuthService auth;
+    var requests = 0;
     await tester.runAsync(() async {
-      dbService = createTestDatabaseService();
-      await dbService.initialize();
-
-      authService = AuthService(
-        httpClient: MockClient((request) async => http.Response('{}', 404)),
+      db = createTestDatabaseService();
+      await db.initialize();
+      auth = AuthService(
+        httpClient: MockClient((_) async {
+          requests++;
+          return http.Response('{}', 404);
+        }),
       );
-      await authService.initialize();
+      await auth.initialize();
     });
-
-    final syncService = SyncService(dbService, authService);
-    final appSettings = AppSettingsService();
-
-    await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider.value(value: dbService),
-          ChangeNotifierProvider.value(value: authService),
-          ChangeNotifierProvider.value(value: syncService),
-          ChangeNotifierProvider.value(value: appSettings),
-        ],
-        child: const RelationshipManagerApp(),
-      ),
-    );
-
-    expect(find.text('Relationship Manager'), findsOneWidget);
-    expect(find.text('Login'), findsOneWidget);
-    expect(dbService.isInitialized, isTrue);
-    expect(authService.isAuthenticated, isFalse);
-
-    // The login screen auto-logs in after a 500ms delay in debug mode.
-    // Flush that timer and the (mocked, failing) network round trip so no
-    // timers are left pending when the test ends. Deliberately NOT using
-    // pumpAndSettle: while `_isLoading` is true the screen shows an
-    // indeterminate CircularProgressIndicator, whose animation never
-    // "settles", which would hang pumpAndSettle forever.
-    await tester.pump(const Duration(milliseconds: 600));
-    for (var i = 0; i < 5; i++) {
+    addTearDown(auth.dispose);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<DatabaseService>.value(value: db),
+        ChangeNotifierProvider<AuthService>.value(value: auth),
+        ChangeNotifierProvider<SyncService>(
+            create: (_) => SyncService(db, auth)),
+        ChangeNotifierProvider<AppSettingsService>(
+            create: (_) => AppSettingsService()),
+      ],
+      child: const RelationshipManagerApp(),
+    ));
+    for (var i = 0; i < 20; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)));
       await tester.pump();
     }
-
-    expect(find.textContaining('Could not sign in'), findsOneWidget);
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.byType(LoginScreen), findsNothing);
+    expect(find.text('Your stories. No account needed.'), findsOneWidget);
+    expect(find.text('Create your first story'), findsOneWidget);
+    expect(auth.isAuthenticated, isFalse);
+    expect(auth.continuedWithoutAccount, isFalse,
+        reason: 'opening the app must not require an earlier guest choice');
+    expect(requests, 0, reason: 'do not begin authentication on first launch');
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('failed account sign-in keeps the remembered guest home mounted',
@@ -111,6 +104,7 @@ void main() {
     await tester.runAsync(() async => expect(await auth.signIn(), isFalse));
     await tester.pump();
     expect(auth.signInFailed, isTrue);
+    expect(find.textContaining('Sign-in could not be completed'), findsOneWidget);
     expect(find.byType(LoginScreen), findsNothing);
     expect(tester.state(find.byType(HomeScreen)), same(home));
     await tester.runAsync(() async {

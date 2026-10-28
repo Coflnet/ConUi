@@ -9,7 +9,6 @@ import 'services/auth_service.dart';
 import 'services/database_service.dart';
 import 'services/sync_service.dart';
 import 'services/interaction_feedback.dart';
-import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'widgets/app_page_transitions.dart';
 
@@ -123,15 +122,7 @@ class RelationshipManagerApp extends StatelessWidget {
           filled: true,
         ),
       ),
-      home: Consumer<AuthService>(
-        builder: (context, authService, _) {
-          if (authService.isAuthenticated ||
-              authService.continuedWithoutAccount) {
-            return const HomeScreen();
-          }
-          return const LoginScreen();
-        },
-      ),
+      home: const HomeScreen(),
     );
   }
 }

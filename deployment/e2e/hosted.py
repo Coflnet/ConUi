@@ -119,7 +119,7 @@ def semantics(page):
 def click(page, text, *, force=False):
     global PHASE
     PHASE = 'UI control: ' + text
-    name = re.compile('^' + re.escape(text) + r'(?: Tab [1-5] von 5)?$')
+    name = re.compile('^' + re.escape(text) + r'(?: Tab [1-4] (?:von|of) 4)?$')
     target = page.get_by_role('tab', name=text, exact=True).or_(
         page.get_by_role('button', name=name)).or_(
         page.get_by_role('checkbox', name=text, exact=True)).or_(
@@ -183,9 +183,11 @@ def login(page, origin, user):
     try:
         page.goto(origin)
         semantics(page)
-        click(page, 'Mit Ihrem Konto anmelden')
+        click(page, 'Einstellungen')
+        open_item(page, 'Mit Ihrem Konto anmelden')
+        click(page, 'Mit E-Mail anmelden')
         PHASE = 'PKCE login: wait for Keycloak'
-        page.wait_for_url('https://app.rfind.de/auth/realms/con/**')
+        page.wait_for_url(re.compile(r'^https://(?:auth\.coflnet\.com|app\.rfind\.de)/auth/realms/con/'))
         PHASE = 'PKCE login: submit synthetic identity'
         page.locator('#username').fill(user['username'])
         page.locator('#password').fill(user['password'])
@@ -404,7 +406,7 @@ def run(args):
             result['reload_preserved_account_recording'] = True
             restore.goto(args.origin)
             semantics(restore)
-            click(restore, 'Ohne Konto fortfahren')
+            expect(restore.get_by_role('button', name='Einstellungen', exact=True)).to_be_visible()
             settings(restore)
             with restore.expect_file_chooser() as chooser:
                 open_item(restore, 'Aus Sicherung wiederherstellen')

@@ -39,7 +39,7 @@ def main():
                     start = time.monotonic()
                     page.goto(args.origin, wait_until='domcontentloaded', timeout=90000)
                     semantics(page)
-                    page.get_by_role('button', name='Continue without account', exact=True).wait_for(timeout=90000)
+                    page.get_by_role('button', name='Settings', exact=True).wait_for(timeout=90000)
                     ready_ms = round((time.monotonic() - start) * 1000)
                     resources = page.evaluate("""performance.getEntriesByType('resource').map(x => ({
                         path: new URL(x.name).pathname, start_ms: Math.round(x.startTime),

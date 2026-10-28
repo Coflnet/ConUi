@@ -1,15 +1,5 @@
-// Widget-level regression test for "Continue without account": tapping the
-// button on the login screen must be enough to record that choice, without
-// any sign-in.
-//
-// Pumps LoginScreen directly (not the full RelationshipManagerApp): once
-// continuedWithoutAccount flips, main.dart's root routing swaps in
-// HomeScreen, whose child screens immediately query the real (FFI-backed)
-// database - and sqflite_common_ffi's isolate synchronization doesn't
-// resolve inside testWidgets' FakeAsync zone (see widget_test.dart's
-// runAsync note), so mounting HomeScreen here would deadlock the test.
-// main.dart's routing itself is a one-line condition on
-// continuedWithoutAccount, which this test does verify.
+// Account sign-in is an optional route. Continuing without an account records
+// that explicit choice and returns to the existing local app when pushed.
 import 'dart:async';
 
 import 'package:flutter/material.dart';

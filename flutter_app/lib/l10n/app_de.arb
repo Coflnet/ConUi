@@ -737,5 +737,8 @@
       }
     }
   },
-  "syncRecordingFinishing": "Aufnahme wird geprüft und gespeichert…"
+  "syncRecordingFinishing": "Aufnahme wird geprüft und gespeichert…",
+  "mapWelcomeTitle": "Deine Geschichten. Ohne Konto.",
+  "mapWelcomeBody": "Halte Erinnerungen fest und verbinde die Menschen darin. Deine Geschichten bleiben auf diesem Gerät gespeichert.",
+  "mapWelcomeStart": "Erste Geschichte festhalten"
 }

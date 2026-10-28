@@ -120,6 +120,16 @@ async function session(locale, viewport, textScale = 1, configFailure = false) {
   const page = await context.newPage();
   await page.goto(origin + '/', {waitUntil: 'domcontentloaded'});
   await page.locator('flt-semantics-placeholder').evaluate(el => el.click());
+  await page.getByRole('button', {name: locale.startsWith('de') ? 'Einstellungen' : 'Settings', exact: true}).click();
+  const account = page.getByRole('button', {name: locale.startsWith('de') ? /^Mit Ihrem Konto anmelden\b/ : /^Sign in with your account\b/});
+  for (let step = 0; step < 8; step++) {
+    const box = await account.count() ? await account.boundingBox() : null;
+    if (box && box.y >= 64 && box.y + box.height <= viewport.height) break;
+    await page.mouse.move(viewport.width / 2, viewport.height / 2);
+    await page.mouse.wheel(0, box ? Math.max(-600, Math.min(600, box.y - 80)) : 600);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  }
+  await account.click();
   await page.getByRole('button', {name: labels(locale).google, exact: true}).waitFor();
   return {context, page, evidence};
 }
@@ -177,7 +187,7 @@ async function choices(page, locale, name, viewport, scale) {
       const text = labels(locale);
       if (action === 'dialogGoogle') {
         await page.getByRole('button', {name: text.guest, exact: true}).click();
-        await page.getByRole('button', {name: locale.startsWith('de') ? 'Einstellungen' : 'Settings', exact: true}).click();
+        await page.getByText(locale.startsWith('de') ? 'Einstellungen' : 'Settings', {exact: true}).waitFor();
         await page.getByText(locale.startsWith('de') ? /^Jetzt abgleichen/ : /^Force Sync\b/).click();
         await page.getByText(text.hint, {exact: true}).waitFor();
         await screenshot(page, `${locale}-account-dialog`);

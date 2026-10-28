@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:relationship_manager/backup/backup_service.dart';
 import 'package:relationship_manager/l10n/gen/app_localizations.dart';
 import 'package:relationship_manager/screens/settings_screen.dart';
+import 'package:relationship_manager/screens/objects/objects_screen.dart';
 import 'package:relationship_manager/services/app_settings_service.dart';
 import 'package:relationship_manager/services/auth_service.dart';
 import 'package:relationship_manager/services/database_service.dart';
@@ -24,18 +25,18 @@ Widget _wrap({
   required BackupService backupService,
   required AppSettingsService appSettings,
 }) {
-  return MaterialApp(
-    locale: const Locale('en'),
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
-    supportedLocales: const [Locale('en'), Locale('de')],
-    home: MultiProvider(
-      providers: [
-        ChangeNotifierProvider<DatabaseService>.value(value: db),
-        ChangeNotifierProvider<AuthService>(create: (_) => AuthService()),
-        ChangeNotifierProvider<SyncService>(create: (_) => SyncService(db, AuthService())),
-        ChangeNotifierProvider<AppSettingsService>.value(value: appSettings),
-      ],
-      child: SettingsScreen(backupService: backupService),
+  return MultiProvider(
+    providers: [
+      ChangeNotifierProvider<DatabaseService>.value(value: db),
+      ChangeNotifierProvider<AuthService>(create: (_) => AuthService()),
+      ChangeNotifierProvider<SyncService>(create: (_) => SyncService(db, AuthService())),
+      ChangeNotifierProvider<AppSettingsService>.value(value: appSettings),
+    ],
+    child: MaterialApp(
+      locale: const Locale('en'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: const [Locale('en'), Locale('de')],
+      home: SettingsScreen(backupService: backupService),
     ),
   );
 }
@@ -69,6 +70,24 @@ void main() {
 
   tearDown(() {
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+  });
+
+  testWidgets('Objects remains reachable from Settings with a way back',
+      (tester) async {
+    await tester.pumpWidget(
+        _wrap(db: db, backupService: backupService, appSettings: appSettings));
+    await _settle(tester);
+    await tester.scrollUntilVisible(find.text('Objects'), 300);
+    await tester.tap(find.text('Objects'));
+    await _settle(tester);
+    expect(find.byType(ObjectsScreen), findsOneWidget);
+    expect(find.byType(BackButton), findsOneWidget);
+    expect(find.widgetWithText(FloatingActionButton, 'Add Object'), findsOneWidget);
+    await tester.tap(find.byType(BackButton));
+    await _settle(tester);
+    expect(find.byType(ObjectsScreen), findsNothing);
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('starts on System / Automatic and shows both language tiles',

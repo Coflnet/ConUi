@@ -159,7 +159,7 @@ def run(args):
                 PHASE = "anonymous app entry and fresh daily quota"
                 page.goto(args.origin)
                 hosted.semantics(page)
-                hosted.click(page, "Ohne Konto fortfahren")
+                expect(page.get_by_role("button", name="Einstellungen", exact=True)).to_be_visible()
                 check_remaining(page, args.initial_remaining)
                 result["initial_allowance_verified"] = True
                 if args.initial_remaining > 0:

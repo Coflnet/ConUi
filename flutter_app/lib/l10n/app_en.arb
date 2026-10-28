@@ -876,5 +876,8 @@
       }
     }
   },
-  "syncRecordingFinishing": "Verifying and saving recording…"
+  "syncRecordingFinishing": "Verifying and saving recording…",
+  "mapWelcomeTitle": "Your stories. No account needed.",
+  "mapWelcomeBody": "Capture memories and connect the people in them. Your stories are saved on this device.",
+  "mapWelcomeStart": "Create your first story"
 }

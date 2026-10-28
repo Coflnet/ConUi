@@ -66,6 +66,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (success) {
       // Initialize encryption with password
       await syncService.initializeEncryption(_passwordController.text);
+      if (mounted && Navigator.canPop(context)) Navigator.pop(context);
 
       // Don't sync on login screen - let home screen handle it
       // await syncService.syncOnOpen();
@@ -101,8 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _continueWithoutAccount() async {
     final authService = context.read<AuthService>();
     await authService.continueWithoutAccount();
-    // No navigation call needed: main.dart's root Consumer<AuthService>
-    // rebuilds into HomeScreen as soon as continuedWithoutAccount is true.
+    if (mounted && Navigator.canPop(context)) Navigator.pop(context);
   }
 
   @override

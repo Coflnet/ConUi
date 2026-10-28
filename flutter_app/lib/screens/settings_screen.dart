@@ -16,6 +16,7 @@ import '../services/interaction_feedback.dart';
 import '../services/local_draft_store.dart';
 import 'contacts/contacts_import_screen.dart';
 import 'login_screen.dart';
+import 'objects/objects_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   /// Overridable so tests can supply a BackupService backed by a temp-dir
@@ -341,6 +342,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 context,
                 MaterialPageRoute(
                     builder: (_) => const ContactsImportScreen())),
+          ),
+
+          const Divider(),
+
+          ListTile(
+            leading: const Icon(Icons.category_outlined),
+            title: Text(l10n.homeNavObjects),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => Scaffold(
+                          appBar: AppBar(title: Text(l10n.homeNavObjects)),
+                          body: const ObjectsScreen(),
+                        ))),
           ),
 
           const Divider(),

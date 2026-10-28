@@ -1,42 +1,98 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
-
   <meta charset="UTF-8">
-  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="Bewahren Sie familiäre Beziehungen und die dazugehörigen Geschichten, einschließlich Audioaufnahmen.">
-
-  <!-- iOS meta tags & icons -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Mit Con Geschichten, Menschen und Beziehungen bewahren – auch als Audioaufnahme. Ohne Konto auf diesem Gerät starten, optional verschlüsselt synchronisieren.">
+  <link rel="canonical" href="https://con.coflnet.com/">
+  <meta property="og:title" content="Con – Geschichten und Beziehungen bewahren">
+  <meta property="og:description" content="Erinnerungen und Audioaufnahmen mit den Menschen verbinden, die dazugehören. Ohne Konto auf diesem Gerät starten.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://con.coflnet.com/">
+  <meta property="og:image" content="https://con.coflnet.com/icons/Icon-512.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="Relationship Manager">
+  <meta name="apple-mobile-web-app-title" content="Con">
   <meta name="theme-color" content="#3f51b5">
   <link rel="apple-touch-icon" href="icons/Icon-192.png?v=2">
-
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png?v=2"/>
-
-  <title>Relationship Manager</title>
+  <link rel="icon" type="image/png" href="favicon.png?v=2">
+  <title>Con – Geschichten und Beziehungen bewahren</title>
   <link rel="manifest" href="manifest.json">
   <!-- Start the local database download alongside Flutter, before Dart initializes it. -->
   <link rel="preload" href="sqlite3.wasm" as="fetch" type="application/wasm" crossorigin>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; background: #f7f8fc; color: #20233b; }
+    body { margin: 0; }
+    #startup { position: fixed; inset: 0; z-index: 10000; overflow: auto; background: #f7f8fc; }
+    .welcome { box-sizing: border-box; max-width: 780px; min-height: 100%; margin: auto; padding: clamp(32px, 8vh, 88px) 24px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
+    .brand { display: flex; align-items: center; gap: 12px; font-size: 1.5rem; font-weight: 700; color: #3f51b5; }
+    .brand img { width: 52px; height: 52px; border-radius: 14px; }
+    #startup h1 { font-size: clamp(2rem, 5vw, 3rem); max-width: 100%; overflow-wrap: anywhere; line-height: 1.15; letter-spacing: -.025em; margin: 32px 0 16px; }
+    #startup p { max-width: 62ch; font-size: 1.0625rem; line-height: 1.65; margin: 0 0 16px; }
+    .privacy { color: #4d526c; font-size: .9375rem; }
+    .loading { display: flex; align-items: center; gap: 12px; margin-top: 20px; font-weight: 600; }
+    .spinner { width: 18px; height: 18px; flex: 0 0 auto; border: 3px solid #d6daf1; border-top-color: #3f51b5; border-radius: 50%; animation: spin 1s linear infinite; }
+    #startup [hidden], #startup.failed .spinner { display: none; }
+    #startup button { font: inherit; font-weight: 600; background: #3f51b5; color: white; border: 0; border-radius: 12px; padding: 12px 20px; margin-top: 16px; cursor: pointer; }
+    #startup button:focus-visible { outline: 3px solid #6376e1; outline-offset: 4px; }
+    #javascript-guidance { margin-top: 20px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+    @media (prefers-color-scheme: dark) {
+      :root, #startup { background: #141623; color: #eef0ff; }
+      .brand { color: #bcc5ff; }
+      .privacy { color: #bcc0d5; }
+      .spinner { border-color: #373d60; border-top-color: #bcc5ff; }
+      #startup button { background: #bcc5ff; color: #17205a; }
+    }
+  </style>
 </head>
 <body>
-  <script src="vad/ort.wasm.min.js"></script>
-  <script src="flutter_bootstrap.js" async></script>
+  <main id="startup">
+    <div class="welcome">
+      <div class="brand"><img src="icons/Icon-192.png?v=2" alt="" width="52" height="52"><span>Con</span></div>
+      <h1 id="welcome-title">Geschichten bleiben.<br>Menschen verbinden.</h1>
+      <p id="welcome-copy">Bewahre Erinnerungen als Geschichten und Audioaufnahmen. Halte fest, welche Menschen dazugehören und wie sie miteinander verbunden sind.</p>
+      <p class="privacy" id="welcome-privacy">Starte ohne Konto. Deine Geschichten und Aufnahmen werden auf diesem Gerät gespeichert. Ein Konto ist optional, zum Beispiel für den verschlüsselten Abgleich zwischen deinen Geräten.</p>
+      <div class="loading" id="loading" role="status" aria-live="polite" hidden><span class="spinner" aria-hidden="true"></span><span id="loading-copy">Con wird geladen …</span></div>
+      <button id="retry" type="button" hidden>Erneut laden</button>
+      <p id="javascript-guidance">Aktiviere JavaScript, um Con zu öffnen und deine erste Geschichte festzuhalten.</p>
+    </div>
+  </main>
+  <script>
+    (() => {
+      const startup = document.getElementById('startup');
+      const status = document.getElementById('loading-copy');
+      const retry = document.getElementById('retry');
+      const english = !navigator.language.toLowerCase().startsWith('de');
+      document.getElementById('javascript-guidance').remove();
+      if (english) {
+        document.documentElement.lang = 'en';
+        document.getElementById('welcome-title').textContent = 'Keep stories. Connect people.';
+        document.getElementById('welcome-copy').textContent = 'Save memories as stories and audio recordings. Remember the people behind them and how they are connected.';
+        document.getElementById('welcome-privacy').textContent = 'Start without an account. Your stories and recordings are saved on this device. An account is optional, for example to sync securely between your devices using encryption.';
+        status.textContent = 'Loading Con …';
+        retry.textContent = 'Reload';
+      }
+      document.getElementById('loading').hidden = false;
+      retry.addEventListener('click', () => location.reload());
+      function failed(event) {
+        if (event.type === 'error' && event.target !== window && !(event.target instanceof HTMLScriptElement)) return;
+        startup.classList.add('failed');
+        status.textContent = english ? 'Con could not start. Check your connection and try again.' : 'Con konnte nicht starten. Prüfe deine Verbindung und versuche es erneut.';
+        retry.hidden = false;
+      }
+      window.addEventListener('error', failed, true);
+      window.addEventListener('unhandledrejection', failed);
+      window.addEventListener('flutter-first-frame', () => {
+        startup.remove();
+        window.removeEventListener('error', failed, true);
+        window.removeEventListener('unhandledrejection', failed);
+      }, { once: true });
+    })();
+  </script>
+  <script src="vad/ort.wasm.min.js" defer></script>
+  <script src="flutter_bootstrap.js" defer></script>
 </body>
 </html>
