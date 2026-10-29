@@ -48,6 +48,7 @@ dependencies:
   archive: ^4.2.0
   flutter_contacts: ^2.5.0
   flutter_appauth: ^12.1.0
+  wakelock_plus: ^1.5.2
 
 # Upstream's unused microphone handler declares record 6; we feed its
 # VadIterator from our existing record 7 PCM capture instead.

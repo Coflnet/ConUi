@@ -20,6 +20,8 @@ Detection also supports possessives, appositions, explicit named lists, and natu
 
 Unfinished forms warn before a browser refresh or tab close; in-app back navigation offers Save draft, Discard or Keep editing.
 
+Microphone capture requests a screen wake lock to prevent automatic dimming and locking, and releases it on stop, failure or disposal. Wake-lock denial does not interrupt recording; manual locking, backgrounding and OS power policy can still suspend capture. Web hiding/closing retains the existing best-effort stop and durable-audio recovery. `deployment/e2e/wake_lock.py` checks real browser acquisition/release plus denied and delayed requests using a synthetic microphone and mocked transcription.
+
 Web startup preloads SQLite while Flutter downloads and initializes the database, account and settings concurrently. Repeat cold/warm browser measurements with `deployment/e2e/load.py`. The app icon source and generator live in `flutter_app/tool/`; run `python3 flutter_app/tool/generate_app_icons.py` with `rsvg-convert` installed to regenerate the web and Android icons.
 
 New unnamed places use the closest mapped street address within 50 metres. The client queries [Photon’s reverse geocoder](https://github.com/komoot/photon/blob/master/docs/api-v1.md) with the selected coordinates and previews the address while choosing a location. Photon uses OpenStreetMap data; its public service has no availability guarantee and requires reasonable request volume. Manually entered names are preserved; opening or moving a place with a generated coordinate name retries its address lookup. Missing addresses or lookup failures retain the localized coordinate fallback.

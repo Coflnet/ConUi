@@ -10,6 +10,7 @@ import 'database_service.dart';
 import 'interaction_feedback.dart';
 import 'page_lifecycle_hooks.dart';
 import 'recording_file_store.dart';
+import 'recording_wake_lock.dart';
 import 'sentence_segmenter.dart';
 import 'transcription_client.dart';
 import 'wav.dart';
@@ -153,6 +154,7 @@ class RecorderController extends ChangeNotifier {
   final int maxConcurrentRequests;
   final String? language;
   final InteractionFeedback? feedback;
+  final RecordingWakeLock _wakeLock;
   bool _feedbackCapture = false;
   bool _disposed = false;
   bool _canRetryStop = false;
@@ -174,12 +176,14 @@ class RecorderController extends ChangeNotifier {
     this.maxConcurrentRequests = 2,
     this.language,
     this.feedback,
+    RecordingWakeLock? wakeLock,
     Duration Function(int attempt)? backoff,
     // Overridable for tests; defaults to the real platform hook (a no-op
     // everywhere except web - see page_lifecycle_hooks.dart).
     PageLifecycleUnsubscribe Function(void Function() onMightBeClosing)?
         registerPageHideHook,
   })  : _audioCapture = audioCapture,
+        _wakeLock = wakeLock ?? RecordingWakeLock(),
         _fileStore = fileStore,
         _db = database,
         _transcriptionClient = transcriptionClient,
@@ -309,6 +313,7 @@ class RecorderController extends ChangeNotifier {
       return;
     }
 
+    unawaited(_wakeLock.setEnabled(true));
     _recordingId = const Uuid().v4();
     _segments.clear();
     _pendingQueue.clear();
@@ -338,6 +343,7 @@ class RecorderController extends ChangeNotifier {
         state: RecordingLifecycleState.recording,
       ));
     } catch (e) {
+      unawaited(_wakeLock.setEnabled(false));
       await _audioCapture.stop();
       await _endFeedback(failed: true);
       _failure = AudioCaptureException(AudioCaptureFailureReason.other, '$e');
@@ -553,6 +559,7 @@ class RecorderController extends ChangeNotifier {
       await _amplitudeSubscription?.cancel();
       _amplitudeSubscription = null;
       await _audioCapture.stop();
+      unawaited(_wakeLock.setEnabled(false));
       await _endFeedback();
 
       // Make sure every chunk already delivered has been appended before we
@@ -597,6 +604,7 @@ class RecorderController extends ChangeNotifier {
       notifyListeners();
       return result;
     } catch (e) {
+      unawaited(_wakeLock.setEnabled(false));
       _failure = AudioCaptureException(AudioCaptureFailureReason.other, '$e');
       _state = RecorderState.failed;
       _canRetryStop = true;
@@ -713,6 +721,7 @@ class RecorderController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    unawaited(_wakeLock.setEnabled(false));
     unawaited(_audioCapture
         .stop()
         .then((_) => _endFeedback(silent: true))
